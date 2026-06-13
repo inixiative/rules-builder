@@ -15,9 +15,10 @@
     "build": "tsup",
     "test": "NODE_ENV=development bun test",
     "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck",
     "example": "vite",
     "example:build": "vite build",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run check && bun run test && bun run build"
   },
   "keywords": [
     "json-rules",
