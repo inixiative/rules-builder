@@ -5,6 +5,7 @@ export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,
   getNode,
+  groupSiblings,
   removeNode,
   setNode,
   stripMeta,

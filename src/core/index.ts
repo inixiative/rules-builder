@@ -3,6 +3,7 @@ export type { RulePath, RulePathSegment } from './tree';
 export {
   addRule,
   getNode,
+  groupSiblings,
   removeNode,
   setNode,
   unwrapCompound,

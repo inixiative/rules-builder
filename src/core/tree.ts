@@ -82,11 +82,56 @@ export const wrapInCompound = (cond: Condition, path: RulePath, kind: 'all' | 'a
   return setNode(cond, path, wrapped);
 };
 
+// Groups selected siblings of an all/any compound into a new subgroup at the
+// position of the earliest selected index (push a subset down a layer).
+export const groupSiblings = (
+  cond: Condition,
+  parentPath: RulePath,
+  indices: number[],
+  kind: 'all' | 'any',
+): Condition => {
+  const parent = getNode(cond, parentPath);
+  if (parent === undefined || (!isAll(parent) && !isAny(parent))) {
+    throw new Error('groupSiblings: parent must be an all/any compound');
+  }
+  const arr = childArray(parent) as Condition[];
+  const sorted = [...new Set(indices)].sort((a, b) => a - b);
+  if (sorted.length === 0) throw new Error('groupSiblings: no indices selected');
+  if (sorted.some((i) => i < 0 || i >= arr.length)) throw new Error('groupSiblings: index out of range');
+
+  const selected = new Set(sorted);
+  const group: Condition = kind === 'all' ? { all: sorted.map((i) => arr[i] as Condition) } : { any: sorted.map((i) => arr[i] as Condition) };
+  const next: Condition[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i === sorted[0]) next.push(group);
+    if (!selected.has(i)) next.push(arr[i] as Condition);
+  }
+  return setNode(cond, parentPath, withChildArray(parent as AllNode | AnyNode, next));
+};
+
+// Dissolves a compound into its parent: splices its children up a layer when the
+// parent is an all/any (any child count); otherwise requires a single child.
 export const unwrapCompound = (cond: Condition, path: RulePath): Condition => {
   const node = getNode(cond, path);
   if (node === undefined) throw new Error('unwrapCompound: path does not resolve');
-  const arr = childArray(node);
-  if (!arr) throw new Error('unwrapCompound: node is not an all/any compound');
-  if (arr.length !== 1) throw new Error('unwrapCompound: only a single-child compound can be unwrapped');
-  return setNode(cond, path, arr[0] as Condition);
+  const children = childArray(node);
+  if (!children) throw new Error('unwrapCompound: node is not an all/any compound');
+
+  if (path.length === 0) {
+    if (children.length !== 1) throw new Error('unwrapCompound: cannot dissolve a multi-child root');
+    return children[0] as Condition;
+  }
+
+  const parentPath = path.slice(0, -1);
+  const key = path[path.length - 1];
+  const parent = getNode(cond, parentPath);
+  if (typeof key === 'number' && parent !== undefined && (isAll(parent) || isAny(parent))) {
+    const arr = childArray(parent) as Condition[];
+    const next = [...arr.slice(0, key), ...children, ...arr.slice(key + 1)];
+    return setNode(cond, parentPath, withChildArray(parent as AllNode | AnyNode, next));
+  }
+  if (children.length !== 1) {
+    throw new Error('unwrapCompound: a single-slot parent can only take a single-child compound');
+  }
+  return setNode(cond, path, children[0] as Condition);
 };

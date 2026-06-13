@@ -3,6 +3,7 @@ import type { Condition } from '@inixiative/json-rules';
 import {
   addRule,
   getNode,
+  groupSiblings,
   removeNode,
   setNode,
   unwrapCompound,
@@ -94,7 +95,35 @@ describe('wrap / unwrap', () => {
     expect(getNode(unwrapped, [0])).toEqual(leaf('a', 1));
   });
 
-  test('unwrap refuses a multi-child compound', () => {
-    expect(() => unwrapCompound(tree(), [1])).toThrow(); // nested any has 2 children
+  test('unwrap dissolves a multi-child compound into its all/any parent (move up a layer)', () => {
+    // tree(): all[ leaf(a), any[leaf(b), leaf(c)] ] → dissolve the any at [1]
+    const next = unwrapCompound(tree(), [1]) as { all: Condition[] };
+    expect(next.all).toEqual([leaf('a', 1), leaf('b', 2), leaf('c', 3)]);
+  });
+
+  test('unwrap refuses to dissolve a multi-child root', () => {
+    expect(() => unwrapCompound(tree(), [])).toThrow();
+  });
+});
+
+describe('groupSiblings (move selected siblings down a layer)', () => {
+  test('groups chosen indices into a new subgroup at the earliest position', () => {
+    const t = { all: [leaf('a', 1), leaf('b', 2), leaf('c', 3)] } as Condition;
+    const next = groupSiblings(t, [], [0, 2], 'any') as { all: Condition[] };
+    // a and c grouped into an any at index 0; b remains after.
+    expect(next.all).toEqual([{ any: [leaf('a', 1), leaf('c', 3)] }, leaf('b', 2)]);
+  });
+
+  test('round-trips with unwrap (group then dissolve restores order of the grouped subset)', () => {
+    const t = { all: [leaf('a', 1), leaf('b', 2), leaf('c', 3)] } as Condition;
+    const grouped = groupSiblings(t, [], [0, 1], 'any');
+    const back = unwrapCompound(grouped, [0]) as { all: Condition[] };
+    expect(back.all).toEqual([leaf('a', 1), leaf('b', 2), leaf('c', 3)]);
+  });
+
+  test('throws on out-of-range index or empty selection', () => {
+    const t = { all: [leaf('a', 1)] } as Condition;
+    expect(() => groupSiblings(t, [], [5], 'all')).toThrow();
+    expect(() => groupSiblings(t, [], [], 'all')).toThrow();
   });
 });
