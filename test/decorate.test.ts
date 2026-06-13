@@ -42,6 +42,15 @@ describe('stripMeta', () => {
       value: 1,
     });
   });
+
+  test('is artifact-agnostic — strips any _-prefixed key from an arbitrary tree', () => {
+    const tree = {
+      _wsId: 'w1',
+      name: 'lens',
+      models: { User: { _modelId: 'm1', fields: ['a'] } },
+    };
+    expect(stripMeta(tree)).toEqual({ name: 'lens', models: { User: { fields: ['a'] } } });
+  });
 });
 
 describe('editor boundary: decorate in, strip out → DB form stays clean', () => {

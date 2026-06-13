@@ -34,18 +34,17 @@ export const trimEmptyGroups = (node: Condition): Condition | undefined => {
   return next as Condition;
 };
 
-export const stripMeta = (node: Condition): Condition => {
-  if (!isObj(node)) return node;
+// Removes editor metadata deeply. Convention: meta keys are `_`-prefixed, so this
+// is artifact-agnostic — usable on any tree (conditions, maps, lenses, …).
+export const stripMeta = <T>(node: T): T => {
+  if (!isObj(node as unknown)) return node;
+  if (Array.isArray(node)) return node.map((x) => stripMeta(x)) as unknown as T;
   const out: Rec = {};
-  for (const [k, v] of Object.entries(node)) {
-    if (k === '_id' || k === '_groupId') continue;
-    out[k] = Array.isArray(v)
-      ? v.map((x) => (isObj(x) ? stripMeta(x as Condition) : x))
-      : isObj(v)
-        ? stripMeta(v as Condition)
-        : v;
+  for (const [k, v] of Object.entries(node as Rec)) {
+    if (k.startsWith('_')) continue;
+    out[k] = stripMeta(v);
   }
-  return out as Condition;
+  return out as T;
 };
 
 const defaultMakeId = (): string =>
