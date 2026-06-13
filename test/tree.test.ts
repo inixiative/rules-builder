@@ -104,6 +104,12 @@ describe('wrap / unwrap', () => {
   test('unwrap refuses to dissolve a multi-child root', () => {
     expect(() => unwrapCompound(tree(), [])).toThrow();
   });
+
+  test('unwrapping an empty group deletes the wrapper entirely (nothing to promote)', () => {
+    const t = { all: [leaf('a', 1), { any: [] }, leaf('b', 2)] } as Condition;
+    const next = unwrapCompound(t, [1]) as { all: Condition[] };
+    expect(next.all).toEqual([leaf('a', 1), leaf('b', 2)]); // empty group gone, contents (none) promoted
+  });
 });
 
 describe('groupSiblings (move selected siblings down a layer)', () => {
