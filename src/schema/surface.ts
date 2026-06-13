@@ -23,7 +23,9 @@ export type RuleBuilderSource = {
   bridges?: Bridge[];
   mapName: string;
   model: string;
-  narrowing?: LensNarrowing;
+  // Parent-less: the builder attaches the composed lens as the parent, so callers
+  // pass only serializable narrowing data (no in-memory object graph).
+  narrowing?: Omit<LensNarrowing, 'parent'>;
 };
 
 export const composeSurface = (source: RuleBuilderSource): Lens => {
@@ -33,7 +35,7 @@ export const composeSurface = (source: RuleBuilderSource): Lens => {
     mapName: source.mapName,
     model: source.model,
   });
-  return exposedSurface(source.narrowing ?? lens);
+  return exposedSurface(source.narrowing ? { parent: lens, ...source.narrowing } : lens);
 };
 
 export type BuilderField = {

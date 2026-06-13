@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap, LensNarrowing } from '@inixiative/json-rules';
-import { createLens } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/json-rules';
 import { composeSurface, describeModelFields } from '../src/schema/surface';
 
 const map: FieldMap = {
@@ -23,13 +22,13 @@ describe('composeSurface — accepts serializable maps', () => {
     expect(names).toEqual(['email', 'password', 'role']);
   });
 
-  test('applies a narrowing and does not leak the omitted field', () => {
-    const base = createLens({ maps: { app: map }, mapName: 'app', model: 'User' });
-    const narrowing: LensNarrowing = {
-      parent: base,
-      mapDefaults: { app: { models: { User: { omits: ['password'] } } } },
-    };
-    const lens = composeSurface({ maps: { app: map }, mapName: 'app', model: 'User', narrowing });
+  test('applies a parent-less narrowing and does not leak the omitted field', () => {
+    const lens = composeSurface({
+      maps: { app: map },
+      mapName: 'app',
+      model: 'User',
+      narrowing: { mapDefaults: { app: { models: { User: { omits: ['password'] } } } } },
+    });
     const names = describeModelFields(lens, 'app', 'User').map((f) => f.name).sort();
     expect(names).toEqual(['email', 'role']); // password omitted, not exposed
   });

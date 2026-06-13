@@ -26,9 +26,23 @@ export type {
   MultiSelectSlotProps,
   NumberInputSlotProps,
   PartialComponentSlots,
+  RuleBuilderContextValue,
+  RuleBuilderProps,
   SelectSlotProps,
   SwitchSlotProps,
   TextInputSlotProps,
+  UseRuleBuilder,
+  UseRuleBuilderOptions,
   ValueModeToggleSlotProps,
   WrapperSlotProps,
+} from './builder';
+export {
+  GroupFooter,
+  GroupHeader,
+  RuleBuilder,
+  RuleBuilderContext,
+  RuleGroup,
+  RuleRow,
+  useRuleBuilder,
+  useRuleBuilderContext,
 } from './builder';
