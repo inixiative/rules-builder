@@ -1,0 +1,62 @@
+{
+  "name": "@inixiative/rules-builder",
+  "version": "0.0.1",
+  "description": "Visual rule builder for @inixiative/json-rules",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "json-rules",
+    "rule-builder",
+    "visual-editor",
+    "react",
+    "form-builder"
+  ],
+  "author": "Aron Greenspan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/inixiative/rules-builder"
+  },
+  "peerDependencies": {
+    "@inixiative/json-rules": "^2.8.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@inixiative/json-rules": "^2.8.0",
+    "@types/bun": "latest",
+    "@types/react": "^18.2.0",
+    "react": "^18.2.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js",
+      "require": "./dist/schema/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.cjs"
+    }
+  }
+}
