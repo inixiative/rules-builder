@@ -44,6 +44,25 @@ describe('stripMeta', () => {
   });
 });
 
+describe('editor boundary: decorate in, strip out → DB form stays clean', () => {
+  test('stripMeta(withIds(clean)) deep-equals the original clean Condition', () => {
+    const clean = {
+      all: [
+        { field: 'a', operator: 'equals', value: 1 },
+        { any: [{ field: 'b', operator: 'equals', value: 2 }] },
+      ],
+    } as unknown as Condition;
+    const decorated = withIds(clean, (() => {
+      let n = 0;
+      return () => `id${n++}`;
+    })());
+    // Decorated form carries ids (for React keys)...
+    expect(JSON.stringify(decorated)).toContain('_groupId');
+    // ...but the round-trip back out is byte-identical to what went in.
+    expect(stripMeta(decorated)).toEqual(clean);
+  });
+});
+
 describe('withIds', () => {
   test('assigns ids where missing and is idempotent', () => {
     let n = 0;

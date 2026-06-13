@@ -1,10 +1,5 @@
 import type { Condition } from '@inixiative/json-rules';
 
-/**
- * Addresses a node in a Condition tree. Numeric segments index into an `all`/`any`
- * array; `'if'`/`'then'`/`'else'` step into a conditional; `'condition'` steps into
- * an array/aggregate rule's nested predicate.
- */
 export type RulePathSegment = number | 'if' | 'then' | 'else' | 'condition';
 export type RulePath = RulePathSegment[];
 
@@ -22,7 +17,6 @@ const childArray = (c: Condition): Condition[] | undefined =>
 const withChildArray = (c: AllNode | AnyNode, next: Condition[]): Condition =>
   isAll(c) ? { ...c, all: next } : { ...(c as AnyNode), any: next };
 
-/** Reads the node at `path`, or `undefined` if the path doesn't resolve. */
 export const getNode = (cond: Condition, path: RulePath): Condition | undefined => {
   let cur: Condition | undefined = cond;
   for (const seg of path) {
@@ -37,7 +31,6 @@ export const getNode = (cond: Condition, path: RulePath): Condition | undefined 
   return cur;
 };
 
-/** Returns a new tree with the node at `path` replaced by `node`. Empty path replaces the root. */
 export const setNode = (cond: Condition, path: RulePath, node: Condition): Condition => {
   if (path.length === 0) return node;
   const [seg, ...rest] = path;
@@ -54,7 +47,6 @@ export const setNode = (cond: Condition, path: RulePath, node: Condition): Condi
   return { ...record, [seg]: setNode(record[seg] as Condition, rest, node) } as unknown as Condition;
 };
 
-/** Removes the node at `path`. Only `all`/`any` elements and an `else` branch are removable. */
 export const removeNode = (cond: Condition, path: RulePath): Condition => {
   if (path.length === 0) throw new Error('removeNode: cannot remove the root');
   const parentPath = path.slice(0, -1);
@@ -74,7 +66,6 @@ export const removeNode = (cond: Condition, path: RulePath): Condition => {
   throw new Error(`removeNode: segment '${key}' is required and cannot be removed`);
 };
 
-/** Appends `node` to the `all`/`any` array at `parentPath`. */
 export const addRule = (cond: Condition, parentPath: RulePath, node: Condition): Condition => {
   const parent = getNode(cond, parentPath);
   if (parent === undefined || (!isAll(parent) && !isAny(parent))) {
@@ -84,7 +75,6 @@ export const addRule = (cond: Condition, parentPath: RulePath, node: Condition):
   return setNode(cond, parentPath, withChildArray(parent, [...arr, node]));
 };
 
-/** Wraps the node at `path` in a new `all`/`any` compound. */
 export const wrapInCompound = (cond: Condition, path: RulePath, kind: 'all' | 'any'): Condition => {
   const node = getNode(cond, path);
   if (node === undefined) throw new Error('wrapInCompound: path does not resolve');
@@ -92,7 +82,6 @@ export const wrapInCompound = (cond: Condition, path: RulePath, kind: 'all' | 'a
   return setNode(cond, path, wrapped);
 };
 
-/** Replaces a single-child `all`/`any` compound at `path` with its only child. */
 export const unwrapCompound = (cond: Condition, path: RulePath): Condition => {
   const node = getNode(cond, path);
   if (node === undefined) throw new Error('unwrapCompound: path does not resolve');

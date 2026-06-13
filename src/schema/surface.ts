@@ -1,4 +1,5 @@
 import {
+  ALL_KINDS,
   type ArrayOperator,
   type Bridge,
   createLens,
@@ -17,29 +18,14 @@ import {
   type ValueShape,
 } from '@inixiative/json-rules';
 
-/**
- * Serializable input for composing a builder surface — the shape of prisma-map
- * (and the source-map importer) output: named `FieldMap`s, cross-source bridges,
- * an entrypoint, and an optional server-applied narrowing. The builder composes
- * the lens and reduces it to the leak-safe exposed surface itself, so callers pass
- * plain JSON, never a live `Lens` object graph.
- */
 export type RuleBuilderSource = {
   maps: Record<string, FieldMap>;
   bridges?: Bridge[];
-  /** Entrypoint source (key in `maps`). */
   mapName: string;
-  /** Entrypoint model. */
   model: string;
-  /** Optional narrowing whose `parent` resolves to the lens built from `maps`. */
   narrowing?: LensNarrowing;
 };
 
-/**
- * Builds the leak-safe exposed surface (a `Lens`, maps intact) the builder draws
- * from, given serializable maps. If a `narrowing` is supplied it is reduced;
- * otherwise the bare composed lens is reduced.
- */
 export const composeSurface = (source: RuleBuilderSource): Lens => {
   const lens = createLens({
     maps: source.maps,
@@ -50,39 +36,28 @@ export const composeSurface = (source: RuleBuilderSource): Lens => {
   return exposedSurface(source.narrowing ?? lens);
 };
 
-/**
- * A field as the builder sees it: its kind, the operators valid for it (already
- * intersected across the configured execution targets), and — for relations —
- * where descending into it leads. Derived from an `exposedSurface` Lens, so it
- * only ever describes fields the narrowing exposes.
- */
 export type BuilderField = {
-  /** Field key on the model (e.g. `email`, or a bridge key like `crm:Contact`). */
   name: string;
-  /** Display label — decoration; defaults to `name`. */
   label: string;
   kind: FieldKind;
   isList: boolean;
-  /** For relation/bridge fields: the model descending into this field reaches. */
   relation?: { mapName: string; modelName: string };
   isBridge: boolean;
-  /** Operators valid for this field, by family, for the configured targets. */
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
-  /** Allowed enum values (already narrowed) for enum fields. */
+  /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
 };
 
 export type SurfaceOptions = {
-  /**
-   * Execution targets the rule must support. An operator is offered only if every
-   * listed target supports it. Omit to offer every operator (check superset).
-   */
   targets?: RuleTarget[];
-  /** Optional display labels, keyed by `"Model.field"` or `field`. */
   labels?: Record<string, string>;
 };
 
 const RELATION_KINDS = new Set(['object', 'bridge']);
+const KNOWN_KINDS = new Set<string>(ALL_KINDS);
+
+// Unknown (non-Prisma) types fall back to String so the field still gets operators.
+const toFieldKind = (type: string): FieldKind => (KNOWN_KINDS.has(type) ? (type as FieldKind) : 'String');
 
 const relationTarget = (
   entry: FieldMapEntry,
@@ -109,7 +84,6 @@ const fieldAndDateOperators = (
   kind: FieldKind,
   targets: RuleTarget[] | undefined,
 ): { field: Operator[]; date: DateOperator[] } => {
-  // No-target call is the superset; intersect down per configured target.
   const base = getOperatorsForKind(kind);
   const field = base.field.filter((op) =>
     supportedByAllTargets(op, targets, (t) => getOperatorsForKind(kind, t).field),
@@ -123,12 +97,6 @@ const fieldAndDateOperators = (
 const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
   getArrayOperators().filter((op) => supportedByAllTargets(op, targets, (t) => getArrayOperators(t)));
 
-/**
- * Describes the fields of one model in an exposed-surface lens as `BuilderField`s.
- * Relation/bridge list fields carry array operators (and a `relation` target to
- * descend into); scalar/enum/date fields carry field/date operators valid for the
- * configured targets.
- */
 export const describeModelFields = (
   lens: Lens,
   mapName: string,
@@ -142,10 +110,14 @@ export const describeModelFields = (
   for (const [name, entry] of Object.entries(model.fields)) {
     const isRelation = RELATION_KINDS.has(entry.kind);
     const isList = entry.isList === true;
-    const kind: FieldKind = entry.kind === 'enum' ? 'Enum' : (entry.type as FieldKind);
+    const kind: FieldKind = entry.kind === 'enum' ? 'Enum' : toFieldKind(entry.type);
 
     const operators = isRelation
-      ? { field: [] as Operator[], date: [] as DateOperator[], array: isList ? arrayOperators(opts.targets) : [] }
+      ? {
+          field: [] as Operator[],
+          date: [] as DateOperator[],
+          array: isList ? arrayOperators(opts.targets) : [],
+        }
       : { ...fieldAndDateOperators(kind, opts.targets), array: [] as ArrayOperator[] };
 
     out.push({
@@ -156,13 +128,12 @@ export const describeModelFields = (
       isBridge: entry.kind === 'bridge',
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
-      enumValues: entry.kind === 'enum' ? entry.values : undefined,
+      enumValues: entry.values,
     });
   }
   return out;
 };
 
-/** The value-input shape an operator expects — drives which slot the UI renders. */
 export const valueShapeForOperator = (
   operator: Operator | DateOperator | ArrayOperator,
 ): ValueShape => getValueShape(operator);

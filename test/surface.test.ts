@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createLens, exposedSurface, type FieldMap } from '@inixiative/json-rules';
-import { describeModelFields } from '../src/schema/surface';
+import { describeModelFields, valueShapeForOperator } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -75,5 +75,42 @@ describe('describeModelFields — target intersection', () => {
   test('labels decorate field names', () => {
     const f = fields('User', { labels: { 'User.email': 'Email Address' } }).email;
     expect(f.label).toBe('Email Address');
+  });
+});
+
+describe('describeModelFields — pseudo-enums and unknown types', () => {
+  test('a value-bearing scalar (hydrated table) surfaces enumValues but keeps its kind', () => {
+    const m: FieldMap = {
+      models: {
+        User: {
+          fields: { tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] } },
+        },
+      },
+    };
+    const l = exposedSurface(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }));
+    const f = describeModelFields(l, 'app', 'User')[0];
+    expect(f.enumValues).toEqual(['gold', 'silver']); // → select in the UI
+    expect(f.kind).toBe('String'); // operators still string-based
+    expect(f.operators.field).toContain('contains');
+  });
+
+  test('an unknown (non-Prisma) scalar type falls back to String operators, not empty', () => {
+    const m: FieldMap = {
+      models: { User: { fields: { handle: { kind: 'scalar', type: 'Citext' } } } },
+    };
+    const l = exposedSurface(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }));
+    const f = describeModelFields(l, 'app', 'User')[0];
+    expect(f.kind).toBe('String');
+    expect(f.operators.field.length).toBeGreaterThan(0);
+  });
+});
+
+describe('valueShapeForOperator drives the value slot', () => {
+  test('maps operators to their value shapes', () => {
+    expect(valueShapeForOperator('equals')).toBe('scalar');
+    expect(valueShapeForOperator('between')).toBe('range');
+    expect(valueShapeForOperator('within')).toBe('dateWindow');
+    expect(valueShapeForOperator('all')).toBe('predicate');
+    expect(valueShapeForOperator('isEmpty')).toBe('none');
   });
 });

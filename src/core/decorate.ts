@@ -1,13 +1,5 @@
 import type { Condition } from '@inixiative/json-rules';
 
-/**
- * UI-decoration layer over the pure `Condition` tree (see `tree.ts`). The builder
- * keeps stable ids on nodes so React can key them across inserts/removes without
- * remounting (`_groupId` on `all`/`any` compounds, `_id` on leaf rules), then
- * strips them with `stripMeta` before handing the rule to json-rules. This mirrors
- * the proven pattern in Zealot PR 1022's `treeOps.ts`; the canonical AST stays clean.
- */
-
 type Rec = Record<string, unknown>;
 const isObj = (c: unknown): c is Rec => typeof c === 'object' && c !== null;
 
@@ -16,7 +8,6 @@ const groupKey = (c: Rec): 'all' | 'any' | undefined =>
 
 const groupChildren = (c: Rec, key: 'all' | 'any'): Condition[] => c[key] as Condition[];
 
-/** Toggles an `all`/`any` compound to the other operator, preserving children and id. */
 export const switchGroupOperator = (node: Condition, kind: 'all' | 'any'): Condition => {
   if (!isObj(node)) throw new Error('switchGroupOperator: not a compound');
   const rec = node as Rec;
@@ -28,7 +19,6 @@ export const switchGroupOperator = (node: Condition, kind: 'all' | 'any'): Condi
   return next as Condition;
 };
 
-/** Recursively prunes empty `all`/`any` compounds. Returns `undefined` if the whole tree is empty. */
 export const trimEmptyGroups = (node: Condition): Condition | undefined => {
   if (!isObj(node)) return node;
   const rec = node as Rec;
@@ -44,7 +34,6 @@ export const trimEmptyGroups = (node: Condition): Condition | undefined => {
   return next as Condition;
 };
 
-/** Deep-removes builder metadata (`_id`/`_groupId`), yielding a clean json-rules `Condition`. */
 export const stripMeta = (node: Condition): Condition => {
   if (!isObj(node)) return node;
   const out: Rec = {};
@@ -64,10 +53,6 @@ const defaultMakeId = (): string =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
-/**
- * Assigns stable ids to any nodes missing them (idempotent — existing ids are kept).
- * `makeId` is injectable for deterministic tests. Compounds get `_groupId`; leaves `_id`.
- */
 export const withIds = (node: Condition, makeId: () => string = defaultMakeId): Condition => {
   if (!isObj(node)) return node;
   const rec = node as Rec;
