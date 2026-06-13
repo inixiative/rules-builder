@@ -1,16 +1,54 @@
 import {
   type ArrayOperator,
+  type Bridge,
+  createLens,
   type DateOperator,
+  exposedSurface,
   type FieldKind,
+  type FieldMap,
   type FieldMapEntry,
   getArrayOperators,
   getOperatorsForKind,
   getValueShape,
   type Lens,
+  type LensNarrowing,
   type Operator,
   type RuleTarget,
   type ValueShape,
 } from '@inixiative/json-rules';
+
+/**
+ * Serializable input for composing a builder surface — the shape of prisma-map
+ * (and the source-map importer) output: named `FieldMap`s, cross-source bridges,
+ * an entrypoint, and an optional server-applied narrowing. The builder composes
+ * the lens and reduces it to the leak-safe exposed surface itself, so callers pass
+ * plain JSON, never a live `Lens` object graph.
+ */
+export type RuleBuilderSource = {
+  maps: Record<string, FieldMap>;
+  bridges?: Bridge[];
+  /** Entrypoint source (key in `maps`). */
+  mapName: string;
+  /** Entrypoint model. */
+  model: string;
+  /** Optional narrowing whose `parent` resolves to the lens built from `maps`. */
+  narrowing?: LensNarrowing;
+};
+
+/**
+ * Builds the leak-safe exposed surface (a `Lens`, maps intact) the builder draws
+ * from, given serializable maps. If a `narrowing` is supplied it is reduced;
+ * otherwise the bare composed lens is reduced.
+ */
+export const composeSurface = (source: RuleBuilderSource): Lens => {
+  const lens = createLens({
+    maps: source.maps,
+    bridges: source.bridges,
+    mapName: source.mapName,
+    model: source.model,
+  });
+  return exposedSurface(source.narrowing ?? lens);
+};
 
 /**
  * A field as the builder sees it: its kind, the operators valid for it (already

@@ -1,15 +1,19 @@
-// Schema surface — derive builder field metadata from an exposedSurface lens.
-export type { BuilderField, SurfaceOptions } from './schema';
-export { describeModelFields, valueShapeForOperator } from './schema';
+// Schema surface — compose a lens from serializable maps and read field metadata.
+export type { BuilderField, RuleBuilderSource, SurfaceOptions } from './schema';
+export { composeSurface, describeModelFields, valueShapeForOperator } from './schema';
 
-// Condition-tree engine — pure, immutable, path-addressed mutations.
+// Condition-tree engine — pure, immutable, path-addressed mutations + UI decoration.
 export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,
   getNode,
   removeNode,
   setNode,
+  stripMeta,
+  switchGroupOperator,
+  trimEmptyGroups,
   unwrapCompound,
+  withIds,
   wrapInCompound,
 } from './core';
 

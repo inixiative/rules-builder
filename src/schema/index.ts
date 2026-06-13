@@ -1,2 +1,2 @@
-export type { BuilderField, SurfaceOptions } from './surface';
-export { describeModelFields, valueShapeForOperator } from './surface';
+export type { BuilderField, RuleBuilderSource, SurfaceOptions } from './surface';
+export { composeSurface, describeModelFields, valueShapeForOperator } from './surface';
