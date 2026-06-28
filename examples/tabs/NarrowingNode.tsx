@@ -56,11 +56,15 @@ const FieldVisibility = ({
     <div style={{ display: 'grid', gap: 6 }}>
       <Row>
         <strong style={{ fontSize: 12 }}>field visibility</strong>
-        {(['none', 'picks', 'omits'] as const).map((m) => (
-          <label key={m} style={{ fontSize: 12, color: tokens.textMuted }}>
-            <input type="radio" checked={mode === m} onChange={() => setMode(m)} /> {m}
-          </label>
-        ))}
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as 'none' | 'picks' | 'omits')}
+          style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}` }}
+        >
+          <option value="none">none</option>
+          <option value="picks">picks</option>
+          <option value="omits">omits</option>
+        </select>
       </Row>
       {mode !== 'none' && (
         <Row>
