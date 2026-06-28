@@ -7,6 +7,8 @@ exposed surface and the json-rules operator catalog, so the builder always offer
 exactly what the engine can run. Bring your own components (slot contracts + an
 example set), not bundled UI.
 
+**Live demo:** [www.inixiative.com/rules-builder](https://www.inixiative.com/rules-builder/) — the lifecycle playground (fieldmaps → bridges → lenses → sources → builder → value picker).
+
 ## Status
 
 🚧 Headless core done (surface adapter + condition-tree engine, typechecked &
