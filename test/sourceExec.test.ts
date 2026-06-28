@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createLens, type FieldMap, Operator } from '@inixiative/json-rules';
-import {
-  computeAllSources,
-  injectSources,
-  runSources,
-  type WorkspaceSource,
-} from '../examples/sourceExec';
+import { runSources } from '../examples/sourceExec';
 
 const maps: Record<string, FieldMap> = {
   app: {
@@ -29,30 +24,28 @@ const rows = {
   ],
 };
 
-const tierSource: WorkspaceSource = {
-  map: 'app',
-  model: 'User',
-  field: 'tier',
-  where: { all: [{ field: 'active', operator: Operator.equals, value: true }] },
-};
+const tierSourceWhere = { all: [{ field: 'active', operator: Operator.equals, value: true }] };
 
 describe('demo source executor', () => {
-  test('computeAllSources returns DISTINCT column values under the where (as SourceValues)', () => {
-    const computed = computeAllSources(maps, [], [tierSource], rows);
-    expect(computed).toEqual([
+  test('runSources returns DISTINCT column values under the source where (as SourceValues)', () => {
+    const lens = createLens({ maps, mapName: 'app', model: 'User' });
+    const narrowed = { parent: lens, root: { sources: { tier: tierSourceWhere } } };
+    expect(runSources(narrowed, rows)).toEqual([
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: ['gold', 'silver'] },
     ]);
   });
 
-  test('a lens narrowing composes with the source where (AND) before DISTINCT', () => {
+  test('the narrowing where composes (AND) with the source where before DISTINCT', () => {
     const lens = createLens({ maps, mapName: 'app', model: 'User' });
-    const narrowed = injectSources(
-      { root: { where: { all: [{ field: 'tier', operator: Operator.notEquals, value: 'gold' }] } } },
-      [tierSource],
-    );
-    const computed = runSources({ parent: lens, ...narrowed }, rows);
+    const narrowed = {
+      parent: lens,
+      root: {
+        where: { all: [{ field: 'tier', operator: Operator.notEquals, value: 'gold' }] },
+        sources: { tier: tierSourceWhere },
+      },
+    };
     // active = true  AND  tier != gold  → only silver
-    expect(computed).toEqual([
+    expect(runSources(narrowed, rows)).toEqual([
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: ['silver'] },
     ]);
   });

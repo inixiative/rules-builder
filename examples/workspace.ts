@@ -1,7 +1,7 @@
 import type { Bridge, Condition, FieldMap, LensNarrowing } from '@inixiative/json-rules';
-import type { WorkspaceSource } from './sourceExec';
 
-/** A saved lens bundles its anchor + attached bridges with the narrowing so it loads standalone. */
+/** A saved lens bundles its anchor + attached bridges with the narrowing so it loads standalone.
+ *  Data-backed option sets live in the narrowing (`narrowing.sources`), not as a separate list. */
 export type SavedLens = {
   mapName: string;
   model: string;
@@ -14,7 +14,6 @@ export type Workspace = {
   maps: Record<string, FieldMap>;
   bridges: Bridge[];
   narrowings: Record<string, SavedLens>;
-  sources: WorkspaceSource[]; // field option sets — DISTINCT(column) under a `where`
   rule: Condition; // the working draft in the builder
   rules: Record<string, Condition>; // saved, named rules
 };
@@ -23,7 +22,6 @@ export const emptyWorkspace = (): Workspace => ({
   maps: {},
   bridges: [],
   narrowings: {},
-  sources: [],
   rule: { all: [] },
   rules: {},
 });
@@ -50,11 +48,6 @@ export const importWorkspace = (json: string): Workspace => {
     if (!isPlainObject(parsed.narrowings))
       throw new Error('importWorkspace: narrowings must be an object');
     ws.narrowings = parsed.narrowings as Record<string, SavedLens>;
-  }
-  if ('sources' in parsed) {
-    if (!Array.isArray(parsed.sources))
-      throw new Error('importWorkspace: sources must be an array');
-    ws.sources = parsed.sources as WorkspaceSource[];
   }
   if ('rule' in parsed && parsed.rule !== undefined) {
     ws.rule = parsed.rule as Condition;

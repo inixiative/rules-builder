@@ -8,7 +8,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { describeModelFields } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
-import { computeAllSources } from '../sourceExec';
+import { runSources } from '../sourceExec';
 import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import type { SavedLens } from '../workspace';
 import { NarrowingNode, type NodeCtx } from './NarrowingNode';
@@ -33,10 +33,16 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
     }
   }, [selected, ws.narrowings]);
 
-  const sourceValues = useMemo(
-    () => computeAllSources(ws.maps, draft.bridges ?? [], ws.sources, sampleRows),
-    [ws.maps, draft.bridges, ws.sources],
-  );
+  const sourceValues = useMemo(() => {
+    if (!draft.mapName || !draft.model || !ws.maps[draft.mapName]?.models[draft.model]) return [];
+    try {
+      const parent = createLens({ maps: ws.maps, bridges: draft.bridges ?? [], mapName: draft.mapName, model: draft.model });
+      const narrowed = draft.narrowing ? { parent, ...draft.narrowing } : parent;
+      return runSources(narrowed, sampleRows);
+    } catch {
+      return [];
+    }
+  }, [ws.maps, draft]);
   // Stitch the lens's attached bridges so the narrowing editor surfaces bridge relations.
   const stitchedMaps = useMemo(
     () => stitchFieldMaps({ maps: ws.maps, bridges: draft.bridges ?? [] }).maps,

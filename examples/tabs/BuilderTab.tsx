@@ -4,7 +4,7 @@ import { resolve, type RuleBuilderSource } from '../../src/schema/surface';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
 import { sampleRows } from '../samples';
-import { injectSources, runSources } from '../sourceExec';
+import { runSources } from '../sourceExec';
 import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import type { TabProps } from './types';
 
@@ -49,7 +49,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
       // Compose source eligibility with this lens's narrowing and run it over the
       // sample rows → fetched values are passed to resolve (folded in the projection),
       // so the option sets are narrowed by the selected lens, not the raw column.
-      const narrowing = injectSources(choice.narrowing ?? {}, ws.sources);
+      const narrowing = choice.narrowing ?? {};
       const bridges = choice.bridges ?? ws.bridges;
       const base = createLens({ maps: ws.maps, bridges, mapName: choice.mapName, model: choice.model });
       const sourceValues = runSources({ parent: base, ...narrowing }, sampleRows);
@@ -71,7 +71,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
     } catch (err) {
       return { error: String(err), source: null, sourceValues: [], description: null, check: null };
     }
-  }, [choice, ws.maps, ws.bridges, ws.sources, ws.rule]);
+  }, [choice, ws.maps, ws.bridges, ws.rule]);
 
   if (!choice) {
     return (

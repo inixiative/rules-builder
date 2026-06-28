@@ -184,6 +184,17 @@ export const NarrowingNode = ({
     onChange({ ...value, relations: Object.keys(next).length ? next : undefined });
   };
 
+  const setSource = (field: string, where: Condition | null) => {
+    const next = { ...(value.sources ?? {}) };
+    if (where === null) delete next[field];
+    else next[field] = where;
+    onChange({ ...value, sources: Object.keys(next).length ? next : undefined });
+  };
+  const sources = value.sources ?? {};
+  const addableSourceFields = fieldEntries.filter(
+    ([n, e]) => e.kind !== 'object' && e.kind !== 'bridge' && !sources[n],
+  );
+
   return (
     <div
       style={{
@@ -218,6 +229,39 @@ export const NarrowingNode = ({
             onChange={(where) => onChange({ ...value, where: isEmptyCond(where) ? undefined : where })}
           />
         )}
+      </div>
+
+      <div style={{ display: 'grid', gap: 6 }}>
+        <Row>
+          <strong style={{ fontSize: 12 }}>sources (data-backed options)</strong>
+          <Select
+            ariaLabel="add source field"
+            value=""
+            placeholder="add field…"
+            onChange={(f) => f && setSource(f, { all: [] })}
+            options={addableSourceFields.map(([n]) => ({ value: n, label: n }))}
+            style={{ fontSize: 12, padding: '3px 6px' }}
+          />
+        </Row>
+        {Object.entries(sources).map(([field, where]) => (
+          <div key={field} style={{ border: `1px dashed ${tokens.borderStrong}`, borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Badge tone="accent">{field}</Badge>
+              <Button variant="danger" onClick={() => setSource(field, null)}>
+                remove
+              </Button>
+            </Row>
+            <span style={{ fontSize: 11, color: tokens.textMuted }}>
+              options = DISTINCT <code>{field}</code> where this holds
+            </span>
+            <RuleEditor
+              source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
+              sourceValues={ctx.sourceValues}
+              rule={where && typeof where === 'object' ? where : { all: [] }}
+              onChange={(w) => setSource(field, w)}
+            />
+          </div>
+        ))}
       </div>
 
       {allowRelations && relations.length > 0 && (

@@ -1,5 +1,4 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
-import type { WorkspaceSource } from './sourceExec';
 import type { SavedLens, Workspace } from './workspace';
 import { emptyWorkspace } from './workspace';
 
@@ -91,18 +90,6 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
   ],
 };
 
-/** Declarations: these fields draw options from their model's DISTINCT values,
- *  filtered by an eligibility `where` (a json-rules Condition). */
-export const sampleSources: WorkspaceSource[] = [
-  {
-    map: 'app',
-    model: 'User',
-    field: 'tier',
-    where: { all: [{ field: 'active', operator: 'equals', value: true }] },
-  },
-  { map: 'crm', model: 'Account', field: 'industry', where: { all: [] } },
-];
-
 /** A cross-map lens: anchored at app.User, attaches the bridge, narrows User (root)
  *  and the bridged crm.Account (mapDefaults) — so it touches both fieldMaps. */
 export const sampleNarrowings: Record<string, SavedLens> = {
@@ -115,9 +102,12 @@ export const sampleNarrowings: Record<string, SavedLens> = {
         picks: ['id', 'email', 'tier', 'role', 'active', 'metadata'],
         where: { all: [{ field: 'active', operator: 'equals', value: true }] },
         enumPicks: { role: ['admin', 'member'] },
+        sources: { tier: { all: [{ field: 'active', operator: 'equals', value: true }] } },
       },
       mapDefaults: {
-        crm: { models: { Account: { picks: ['id', 'name', 'industry', 'tier'] } } },
+        crm: {
+          models: { Account: { picks: ['id', 'name', 'industry', 'tier'], sources: { industry: { all: [] } } } },
+        },
       },
     },
   },
@@ -128,5 +118,4 @@ export const defaultWorkspace = (): Workspace => ({
   maps: sampleMaps,
   bridges: sampleBridges,
   narrowings: sampleNarrowings,
-  sources: sampleSources,
 });

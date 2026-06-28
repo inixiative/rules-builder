@@ -9,11 +9,17 @@ const sampleMap: FieldMap = {
 const sample = (): Workspace => ({
   maps: { app: sampleMap },
   bridges: [],
-  narrowings: { vip: { mapName: 'app', model: 'User', narrowing: { root: { picks: ['tier'] } } } },
-  sources: [
-    { map: 'app', model: 'User', field: 'tier', where: { all: [{ field: 'active', operator: 'equals', value: true }] } },
-  ],
+  narrowings: {
+    vip: {
+      mapName: 'app',
+      model: 'User',
+      narrowing: {
+        root: { picks: ['tier'], sources: { tier: { all: [{ field: 'active', operator: 'equals', value: true }] } } },
+      },
+    },
+  },
   rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] },
+  rules: { 'g-tier': { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } },
 });
 
 describe('workspace', () => {
@@ -22,8 +28,8 @@ describe('workspace', () => {
       maps: {},
       bridges: [],
       narrowings: {},
-      sources: [],
       rule: { all: [] },
+      rules: {},
     });
   });
 
@@ -36,7 +42,7 @@ describe('workspace', () => {
     const ws = importWorkspace(JSON.stringify({ maps: { app: sampleMap } }));
     expect(ws.bridges).toEqual([]);
     expect(ws.narrowings).toEqual({});
-    expect(ws.sources).toEqual([]);
+    expect(ws.rules).toEqual({});
     expect(ws.rule).toEqual({ all: [] });
   });
 

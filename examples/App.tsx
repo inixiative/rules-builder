@@ -1,3 +1,4 @@
+import type { ModelNarrowing } from '@inixiative/json-rules';
 import { useState } from 'react';
 import { defaultWorkspace } from './samples';
 import { BridgesTab } from './tabs/BridgesTab';
@@ -6,25 +7,39 @@ import { FieldmapsTab } from './tabs/FieldmapsTab';
 import { LensesTab } from './tabs/LensesTab';
 import { PathPickerTab } from './tabs/PathPickerTab';
 import { SettingsTab } from './tabs/SettingsTab';
-import { SourcesTab } from './tabs/SourcesTab';
 import { tokens } from './ui';
-import { type Workspace } from './workspace';
+import type { SavedLens, Workspace } from './workspace';
 
-type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'sources' | 'rules' | 'valuepicker' | 'settings';
+type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'rules' | 'valuepicker' | 'settings';
 type Selection = { section: Section; item?: string };
-type InvItem = { id: string; label: string };
+type InvItem = { id: string; label: string; children?: InvItem[] };
 
 const bridgeLabel = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
 
+/** A lens's sources live in its narrowing (root + mapDefaults + relations) — collect them for the tree. */
+const collectLensSources = (lens: SavedLens): InvItem[] => {
+  const out: InvItem[] = [];
+  const fromModel = (m: ModelNarrowing | undefined, modelLabel: string) => {
+    if (!m) return;
+    for (const f of Object.keys(m.sources ?? {})) out.push({ id: `${modelLabel}.${f}`, label: `${modelLabel}.${f}` });
+    for (const [rel, sub] of Object.entries(m.relations ?? {})) fromModel(sub, rel);
+  };
+  const n = lens.narrowing;
+  if (n?.root) fromModel(n.root, lens.model);
+  for (const md of Object.values(n?.mapDefaults ?? {})) {
+    for (const [model, mm] of Object.entries(md.models ?? {})) fromModel(mm as ModelNarrowing, model);
+  }
+  return out;
+};
+
 const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem[] }[] => [
   { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
   { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
-  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.narrowings).map((n) => ({ id: n, label: n })) },
   {
-    key: 'sources',
-    label: 'Sources',
-    items: ws.sources.map((s, i) => ({ id: String(i), label: `${s.map}.${s.model}.${s.field}` })),
+    key: 'lenses',
+    label: 'Lenses',
+    items: Object.entries(ws.narrowings).map(([n, lens]) => ({ id: n, label: n, children: collectLensSources(lens) })),
   },
   { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
 ];
@@ -49,8 +64,6 @@ export const App = () => {
     } else if (section === 'lenses') {
       const { [id]: _, ...rest } = ws.narrowings;
       patch({ narrowings: rest });
-    } else if (section === 'sources') {
-      patch({ sources: ws.sources.filter((_, i) => String(i) !== id) });
     } else if (section === 'rules') {
       const { [id]: _, ...rest } = ws.rules;
       patch({ rules: rest });
@@ -66,8 +79,6 @@ export const App = () => {
         return <BridgesTab ws={ws} patch={patch} />;
       case 'lenses':
         return <LensesTab ws={ws} patch={patch} selected={sel.item} />;
-      case 'sources':
-        return <SourcesTab ws={ws} patch={patch} />;
       case 'rules':
         return <BuilderTab ws={ws} patch={patch} />;
       case 'valuepicker':
@@ -96,6 +107,21 @@ export const App = () => {
     textAlign: 'left',
   });
 
+  const labelBtn: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    border: 'none',
+    background: 'none',
+    cursor: 'pointer',
+    color: 'inherit',
+    font: 'inherit',
+    textAlign: 'left',
+    fontFamily: 'monospace',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
+
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', color: tokens.text, background: tokens.bgMuted, minHeight: '100vh' }}>
       <header
@@ -110,7 +136,7 @@ export const App = () => {
       >
         <strong style={{ fontSize: 16 }}>Rules Builder</strong>
         <span style={{ fontSize: 12, color: tokens.textMuted }}>
-          fieldMaps → bridges → lenses → sources → builder → value picker
+          fieldMaps → bridges → lenses (+ sources) → builder → value picker
         </span>
       </header>
 
@@ -137,36 +163,34 @@ export const App = () => {
                 <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
               </button>
               {s.items.map((it) => (
-                <div key={it.id} style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => selectItem(s.key, it.id)}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      color: 'inherit',
-                      font: 'inherit',
-                      textAlign: 'left',
-                      fontFamily: 'monospace',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {it.label}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`remove ${it.label}`}
-                    title="remove"
-                    onClick={() => removeItem(s.key, it.id)}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
-                  >
-                    ✕
-                  </button>
+                <div key={it.id} style={{ display: 'grid', gap: 2 }}>
+                  <div style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12 }}>
+                    <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
+                      {it.label}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`remove ${it.label}`}
+                      title="remove"
+                      onClick={() => removeItem(s.key, it.id)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {it.children?.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      title="source — edit in the lens"
+                      onClick={() => setSel({ section: s.key, item: it.id })}
+                      style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted }}
+                    >
+                      <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        ↳ {c.label}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               ))}
             </div>

@@ -1,17 +1,15 @@
 import { type Bridge, type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
 import { type ChangeEvent, useRef, useState } from 'react';
-import type { WorkspaceSource } from '../sourceExec';
-import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';
 import { defaultWorkspace } from '../samples';
+import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';
 import { emptyWorkspace, exportWorkspace, importWorkspace, type Workspace } from '../workspace';
 
-type ImportType = 'workspace' | 'maps' | 'bridges' | 'sources';
+type ImportType = 'workspace' | 'maps' | 'bridges';
 
 const IMPORT_TYPES: { value: ImportType; label: string }[] = [
   { value: 'workspace', label: 'Full workspace' },
   { value: 'maps', label: 'FieldMaps' },
   { value: 'bridges', label: 'Bridges' },
-  { value: 'sources', label: 'Sources' },
 ];
 
 export const SettingsTab = ({
@@ -69,10 +67,6 @@ export const SettingsTab = ({
           if (!Array.isArray(parsed)) throw new Error('Bridges must be a JSON array');
           patch({ bridges: parsed as Bridge[] });
           break;
-        case 'sources':
-          if (!Array.isArray(parsed)) throw new Error('Sources must be a JSON array');
-          patch({ sources: parsed as WorkspaceSource[] });
-          break;
       }
       setError(null);
       setOk(`Loaded ${type}.`);
@@ -84,10 +78,9 @@ export const SettingsTab = ({
   };
 
   const placeholder: Record<ImportType, string> = {
-    workspace: '{ "maps": {...}, "bridges": [...], "narrowings": {...}, "sources": [...], "rule": {...} }',
+    workspace: '{ "maps": {...}, "bridges": [...], "narrowings": {...}, "rule": {...}, "rules": {...} }',
     maps: '{ "app": { "models": { "User": { "fields": { "email": { "kind": "scalar", "type": "String" } } } } } }',
     bridges: '[ { "endpoints": [ {...}, {...} ], "cardinality": "oneToMany" } ]',
-    sources: '[ { "map": "app", "model": "User", "field": "tier", "where": { "all": [] } } ]',
   };
 
   return (
@@ -108,7 +101,7 @@ export const SettingsTab = ({
           <Badge>{Object.keys(ws.maps).length} maps</Badge>
           <Badge>{ws.bridges.length} bridges</Badge>
           <Badge>{Object.keys(ws.narrowings).length} lenses</Badge>
-          <Badge>{ws.sources.length} sources</Badge>
+          <Badge>{Object.keys(ws.rules).length} rules</Badge>
         </Row>
       </Panel>
 
