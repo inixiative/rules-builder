@@ -11,7 +11,7 @@ import { Button, tokens } from './ui';
 import { exportWorkspace, importWorkspace, type Workspace } from './workspace';
 
 const TABS: { id: string; label: string; Comp: FC<TabProps> }[] = [
-  { id: 'fieldmaps', label: '1 · Fieldmaps', Comp: FieldmapsTab },
+  { id: 'fieldmaps', label: '1 · FieldMaps', Comp: FieldmapsTab },
   { id: 'bridges', label: '2 · Bridges', Comp: BridgesTab },
   { id: 'lenses', label: '3 · Lenses', Comp: LensesTab },
   { id: 'sources', label: '4 · Sources', Comp: SourcesTab },
@@ -58,7 +58,7 @@ export const App = () => {
           <div>
             <h1 style={{ fontSize: 20, margin: 0 }}>Rules Builder — lifecycle playground</h1>
             <p style={{ fontSize: 13, color: tokens.textMuted, margin: '4px 0 0' }}>
-              fieldmaps → bridges → lenses → sources → builder
+              fieldMaps → bridges → lenses → sources → builder → value picker
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

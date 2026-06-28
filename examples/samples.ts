@@ -106,5 +106,6 @@ export const sampleSources: WorkspaceSource[] = [
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
+  bridges: sampleBridges,
   sources: sampleSources,
 });
