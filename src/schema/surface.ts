@@ -15,6 +15,7 @@ import {
   type LensNarrowing,
   type Operator,
   type RuleTarget,
+  type SourceValues,
   type ValueShape,
 } from '@inixiative/json-rules';
 
@@ -24,18 +25,29 @@ export type RuleBuilderSource = {
   mapName: string;
   model: string;
   // Parent-less: the builder attaches the composed lens as the parent, so callers
-  // pass only serializable narrowing data (no in-memory object graph).
+  // pass only serializable narrowing data (no in-memory object graph). `sources` on
+  // the narrowing's models declare table-backed option sets; their fetched values
+  // arrive separately via `resolve(..., { sourceValues })`.
   narrowing?: Omit<LensNarrowing, 'parent'>;
 };
 
-export const composeSurface = (source: RuleBuilderSource): Lens => {
+export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
+
+/**
+ * Resolve a serializable source (+ optional fetched `sourceValues`) to the public
+ * surface the builder reads. Folds createLens + narrowing + value-decoration +
+ * projection in one call — fetched values land on `field.values` inside the
+ * projection, never by mutating the maps.
+ */
+export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens => {
   const lens = createLens({
     maps: source.maps,
     bridges: source.bridges,
     mapName: source.mapName,
     model: source.model,
   });
-  return exposedSurface(source.narrowing ? { parent: lens, ...source.narrowing } : lens);
+  const narrowed = source.narrowing ? { parent: lens, ...source.narrowing } : lens;
+  return exposedSurface(narrowed, { sourceValues: opts.sourceValues });
 };
 
 export type BuilderField = {
@@ -59,9 +71,10 @@ const RELATION_KINDS = new Set(['object', 'bridge']);
 const KNOWN_KINDS = new Set<string>(ALL_KINDS);
 
 // Unknown (non-Prisma) types fall back to String so the field still gets operators.
-const toFieldKind = (type: string): FieldKind => (KNOWN_KINDS.has(type) ? (type as FieldKind) : 'String');
+export const toFieldKind = (type: string): FieldKind =>
+  KNOWN_KINDS.has(type) ? (type as FieldKind) : 'String';
 
-const relationTarget = (
+export const relationTarget = (
   entry: FieldMapEntry,
   currentMap: string,
 ): { mapName: string; modelName: string } | undefined => {

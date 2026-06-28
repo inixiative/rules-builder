@@ -1,5 +1,18 @@
-export type { BuilderField, RuleBuilderSource, SurfaceOptions } from './schema';
-export { composeSurface, describeModelFields, valueShapeForOperator } from './schema';
+export type {
+  BuilderField,
+  LensValueOption,
+  LensValuePickerOptions,
+  ResolveOptions,
+  RuleBuilderSource,
+  SurfaceOptions,
+} from './schema';
+export {
+  describeModelFields,
+  lensValuePicker,
+  resolve,
+  useLensValuePicker,
+  valueShapeForOperator,
+} from './schema';
 
 export type { RulePath, RulePathSegment } from './core';
 export {
@@ -17,32 +30,14 @@ export {
 } from './core';
 
 export type {
-  BaseInputProps,
-  ButtonSlotProps,
-  ComponentSlots,
-  DatePickerSlotProps,
-  ErrorMessageSlotProps,
-  LabelSlotProps,
-  MultiSelectSlotProps,
-  NumberInputSlotProps,
-  PartialComponentSlots,
-  RuleBuilderContextValue,
-  RuleBuilderProps,
-  SelectSlotProps,
-  SwitchSlotProps,
-  TextInputSlotProps,
+  BuilderNode,
+  FieldControl,
+  GroupNode,
+  LeafNode,
+  OperatorControl,
+  PickOption,
   UseRuleBuilder,
   UseRuleBuilderOptions,
-  ValueModeToggleSlotProps,
-  WrapperSlotProps,
+  ValueControl,
 } from './builder';
-export {
-  GroupFooter,
-  GroupHeader,
-  RuleBuilder,
-  RuleBuilderContext,
-  RuleGroup,
-  RuleRow,
-  useRuleBuilder,
-  useRuleBuilderContext,
-} from './builder';
+export { asGroupRoot, buildRoot, useRuleBuilder } from './builder';

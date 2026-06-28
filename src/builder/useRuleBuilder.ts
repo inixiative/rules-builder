@@ -7,63 +7,55 @@ import {
   validateRule,
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { stripMeta, switchGroupOperator, trimEmptyGroups, withIds } from '../core/decorate';
-import {
-  addRule,
-  getNode,
-  groupSiblings,
-  removeNode,
-  type RulePath,
-  setNode,
-  unwrapCompound,
-  wrapInCompound,
-} from '../core/tree';
-import {
-  type BuilderField,
-  composeSurface,
-  describeModelFields,
-  type RuleBuilderSource,
-} from '../schema/surface';
+import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
+import { describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
+import { asGroupRoot, buildRoot, type GroupNode } from './buildNodes';
 
 const EMPTY: Condition = { all: [] };
 
 export type UseRuleBuilderOptions = {
   source: RuleBuilderSource;
+  /** Fetched option sets for the source's sourced fields → folded onto field.values. */
+  sourceValues?: import('@inixiative/json-rules').SourceValues[];
   targets?: RuleTarget[];
   value?: Condition;
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
+  maxDepth?: number;
 };
 
+/**
+ * Headless rule builder. Owns the Condition JSON and exposes a `root` descriptor
+ * tree (what controls exist at each level + bound actions). Renders nothing —
+ * wire your own components to `root`. `value` is the cleaned, serializable output.
+ */
 export type UseRuleBuilder = {
+  value: Condition;
+  root: GroupNode;
   lens: Lens;
-  condition: Condition;
-  getClean: () => Condition;
-  fields: (mapName?: string, modelName?: string) => BuilderField[];
-  describe: () => RuleDescription;
-  validate: (target: RuleTarget) => ReturnType<typeof validateRule>;
   setCondition: (clean: Condition) => void;
-  update: (path: RulePath, node: Condition) => void;
-  remove: (path: RulePath) => void;
-  add: (parentPath: RulePath, node: Condition) => void;
-  wrap: (path: RulePath, kind: 'all' | 'any') => void;
-  unwrap: (path: RulePath) => void;
-  group: (parentPath: RulePath, indices: number[], kind: 'all' | 'any') => void;
-  switchOperator: (path: RulePath, kind: 'all' | 'any') => void;
+  validate: (target: RuleTarget) => ReturnType<typeof validateRule>;
+  describe: () => RuleDescription;
 };
 
 export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
-  const lens = useMemo(() => composeSurface(opts.source), [opts.source]);
-  const [tree, setTree] = useState<Condition>(() => withIds(opts.value ?? EMPTY));
+  const lens = useMemo(
+    () => resolve(opts.source, { sourceValues: opts.sourceValues }),
+    [opts.source, opts.sourceValues],
+  );
+  const fields = useMemo(
+    () => describeModelFields(lens, lens.mapName, lens.model, { targets: opts.targets, labels: opts.labels }),
+    [lens, opts.targets, opts.labels],
+  );
+  const maxDepth = opts.maxDepth ?? 4;
+
+  const [tree, setTree] = useState<Condition>(() => withIds(asGroupRoot(opts.value)));
 
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;
   const first = useRef(true);
 
-  const clean = useCallback(
-    (t: Condition): Condition => stripMeta(trimEmptyGroups(t) ?? EMPTY),
-    [],
-  );
+  const clean = useCallback((t: Condition): Condition => stripMeta(trimEmptyGroups(t) ?? EMPTY), []);
 
   useEffect(() => {
     if (first.current) {
@@ -73,30 +65,18 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     onChangeRef.current?.(clean(tree));
   }, [tree, clean]);
 
-  const apply = useCallback((fn: (t: Condition) => Condition) => {
-    setTree((prev) => withIds(fn(prev)));
-  }, []);
+  const commit = useCallback((next: Condition) => setTree(withIds(next)), []);
+  const root = useMemo(
+    () => buildRoot(tree, lens, fields, maxDepth, commit),
+    [tree, lens, fields, maxDepth, commit],
+  );
 
   return {
+    value: clean(tree),
+    root,
     lens,
-    condition: tree,
-    getClean: () => clean(tree),
-    fields: (mapName = lens.mapName, modelName = lens.model) =>
-      describeModelFields(lens, mapName, modelName, { targets: opts.targets, labels: opts.labels }),
-    describe: () => describeRule(clean(tree), lens),
+    setCondition: (c) => setTree(withIds(asGroupRoot(c))),
     validate: (target) => validateRule(clean(tree), { target }),
-    setCondition: (c) => setTree(withIds(c)),
-    update: (path, node) => apply((t) => setNode(t, path, node)),
-    remove: (path) => apply((t) => removeNode(t, path)),
-    add: (parentPath, node) => apply((t) => addRule(t, parentPath, node)),
-    wrap: (path, kind) => apply((t) => wrapInCompound(t, path, kind)),
-    unwrap: (path) => apply((t) => unwrapCompound(t, path)),
-    group: (parentPath, indices, kind) => apply((t) => groupSiblings(t, parentPath, indices, kind)),
-    switchOperator: (path, kind) =>
-      apply((t) => {
-        const node = getNode(t, path);
-        if (node === undefined) throw new Error('switchOperator: path does not resolve');
-        return setNode(t, path, switchGroupOperator(node, kind));
-      }),
+    describe: () => describeRule(clean(tree), lens),
   };
 };

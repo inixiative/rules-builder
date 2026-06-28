@@ -39,15 +39,22 @@ The builder is driven by a **lens**, not a hand-written schema:
 
 - ✅ Headless core: surface adapter + condition-tree engine (typechecked, tested).
 - ✅ Slot contracts.
-- ⏳ React layer: `useRuleBuilder` hook (wraps the tree engine + surface), recursive
-  `RuleBuilder` / `ConditionRenderer`, value-vs-field-reference toggle, live
-  validation badge via `describeRule` + `checkRuleAgainstLens`.
+- ✅ React layer: `useRuleBuilder` hook (wraps the tree engine + surface), recursive
+  `RuleBuilder` / `RuleGroup` / `RuleRow`, value slot rendering, live
+  classification via `describeRule` + `checkRuleAgainstLens`.
+- ✅ Hydration seam (`src/hydration/`): `hydrateFieldMaps` projects fetched table
+  contents onto fields as gated pseudo-enums (`kind:'enum'` + `values`); wired into
+  `RuleBuilderSource.hydration` → `composeSurface`. A consumer fetches from the DB,
+  passes `source.hydration`, and the field takes over with no component changes.
+- ✅ Lifecycle playground (`examples/`): tabbed demo (fieldmaps → bridges → lenses →
+  hydration → builder) over an ephemeral workspace with JSON import/export. The
+  Lenses tab is a recursive narrowing editor (`where` dogfoods an embedded
+  `RuleBuilder`); the Builder tab is classify-only.
 - ⏳ Example shadcn slot set + `testing/` slot contract test suite.
-- ⏳ Preview panel running `check()` against sample data; hydration spec for
-  bridge-crossing rules.
+- ⏳ Preview panel running `check()` against sample data; bridge-data hydration
+  (`buildBridgeDictionary`) — distinct from the value-hydration seam above.
 
-The React layer needs `react` installed and a DOM test harness, and is best built
-once json-rules 2.8 is published so the dependency resolves from the registry.
+Design: `docs/plans/2026-06-27-lifecycle-demo-and-hydration-design.md`.
 
 ## Slot value shapes
 
