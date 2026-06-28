@@ -106,6 +106,15 @@ const ValueField = ({ value }: { value: ValueControl }) => {
 const Leaf = ({ node }: { node: LeafNode }) => (
   <div style={row} data-depth={node.depth} aria-invalid={!node.valid}>
     <Picker ariaLabel="field" value={node.field.value} options={node.field.options} onChange={node.field.set} />
+    {node.field.acceptsSubPath && node.field.setSubPath && (
+      <input
+        aria-label="json sub-path"
+        placeholder="json.path"
+        style={sel}
+        value={node.field.subPath ?? ''}
+        onChange={(e) => node.field.setSubPath?.(e.target.value)}
+      />
+    )}
     <Picker ariaLabel="operator" value={node.operator.value} options={node.operator.options} onChange={node.operator.set} />
     <ValueField value={node.value} />
     {!node.valid && <span style={{ color: '#c00', fontSize: 12 }}>✗</span>}

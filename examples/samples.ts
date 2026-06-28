@@ -15,6 +15,7 @@ export const sampleMaps: Record<string, FieldMap> = {
           role: { kind: 'enum', type: 'UserRole' },
           tier: { kind: 'scalar', type: 'String' }, // sourced → pseudo-enum
           active: { kind: 'scalar', type: 'Boolean' },
+          metadata: { kind: 'scalar', type: 'Json' }, // freeform sub-path (metadata.theme)
           createdAt: { kind: 'scalar', type: 'DateTime' },
           accountId: { kind: 'scalar', type: 'Int' },
           orders: { kind: 'object', type: 'Order', isList: true },

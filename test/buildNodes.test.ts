@@ -9,6 +9,7 @@ const map: FieldMap = {
       fields: {
         tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
         age: { kind: 'scalar', type: 'Int' },
+        metadata: { kind: 'scalar', type: 'Json' },
       },
     },
   },
@@ -45,7 +46,7 @@ describe('buildRoot — descriptor tree', () => {
   test('leaf exposes field / operator / value controls with options', () => {
     const leaf = build(cond()).children[0] as LeafNode;
     expect(leaf.field.value).toBe('tier');
-    expect(leaf.field.options.map((o) => o.value).sort()).toEqual(['age', 'tier']);
+    expect(leaf.field.options.map((o) => o.value).sort()).toEqual(['age', 'metadata', 'tier']);
     expect(leaf.operator.value).toBe('equals');
     expect(leaf.operator.options.map((o) => o.value)).toContain('in');
     expect(leaf.value.current).toBe('gold');
@@ -97,6 +98,27 @@ describe('buildRoot — descriptor tree', () => {
     root2.addGroup();
     const added = (committed as { all: Condition[] }).all.at(-1);
     expect(added).toEqual({ all: [] });
+  });
+
+  test('a Json field exposes acceptsSubPath + freeform subPath wiring', () => {
+    expect(fields.find((f) => f.name === 'metadata')?.acceptsSubPath).toBe(true);
+
+    const jsonCond: Condition = { all: [{ field: 'metadata.theme', operator: 'equals', value: 'dark', _id: 'm' }] };
+    const leaf = build(jsonCond).children[0] as LeafNode;
+    expect(leaf.field.value).toBe('metadata'); // base field selected
+    expect(leaf.field.acceptsSubPath).toBe(true);
+    expect(leaf.field.subPath).toBe('theme');
+
+    leaf.field.setSubPath?.('mode');
+    const child = (committed as { all: Condition[] }).all[0] as Record<string, unknown>;
+    expect(child.field).toBe('metadata.mode'); // recomposed, op/value preserved
+    expect(child.value).toBe('dark');
+  });
+
+  test('a non-Json field has no sub-path affordance', () => {
+    const leaf = build(cond()).children[0] as LeafNode;
+    expect(leaf.field.acceptsSubPath).toBeFalsy();
+    expect(leaf.field.setSubPath).toBeUndefined();
   });
 
   test('a non-group root is normalized into a group', () => {

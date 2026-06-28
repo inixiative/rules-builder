@@ -4,6 +4,7 @@ import { BridgesTab } from './tabs/BridgesTab';
 import { BuilderTab } from './tabs/BuilderTab';
 import { FieldmapsTab } from './tabs/FieldmapsTab';
 import { LensesTab } from './tabs/LensesTab';
+import { PathPickerTab } from './tabs/PathPickerTab';
 import { SourcesTab } from './tabs/SourcesTab';
 import type { TabProps } from './tabs/types';
 import { Button, tokens } from './ui';
@@ -15,6 +16,7 @@ const TABS: { id: string; label: string; Comp: FC<TabProps> }[] = [
   { id: 'lenses', label: '3 · Lenses', Comp: LensesTab },
   { id: 'sources', label: '4 · Sources', Comp: SourcesTab },
   { id: 'builder', label: '5 · Builder', Comp: BuilderTab },
+  { id: 'pathpicker', label: '6 · Value Picker', Comp: PathPickerTab },
 ];
 
 export const App = () => {

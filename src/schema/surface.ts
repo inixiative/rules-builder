@@ -60,6 +60,9 @@ export type BuilderField = {
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
+  /** A `Json` column: no declared sub-fields, but the kernel resolves a dotted JSON
+   *  path on the operand — a renderer may let the user append a freeform sub-path. */
+  acceptsSubPath?: boolean;
 };
 
 export type SurfaceOptions = {
@@ -144,6 +147,7 @@ export const describeModelFields = (
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
       enumValues: entry.values,
+      acceptsSubPath: kind === 'Json',
     });
   }
   return out;

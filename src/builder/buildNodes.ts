@@ -13,7 +13,17 @@ import { defaultRule, groupChildrenOf, groupOperatorOf, isGroupNode, ruleForFiel
 
 export type PickOption = { value: string; label: string };
 
-export type FieldControl = { value?: string; options: PickOption[]; set: (name: string) => void };
+export type FieldControl = {
+  value?: string;
+  options: PickOption[];
+  set: (name: string) => void;
+  /** The selected base field is a `Json` column → a freeform sub-path may be appended. */
+  acceptsSubPath?: boolean;
+  /** The current JSON sub-path (the segment after the base field), if any. */
+  subPath?: string;
+  /** Set the freeform sub-path; composes `base[.sub]` into the rule's `field`. */
+  setSubPath?: (sub: string) => void;
+};
 export type OperatorControl = { value?: string; options: PickOption[]; set: (op: string) => void };
 export type ValueControl = {
   current: unknown;
@@ -64,7 +74,19 @@ const idOf = (n: Condition, index: number): string => {
 const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx): LeafNode => {
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
-  const field = ctx.fields.find((f) => f.name === fieldName);
+  // Resolve the base field: an exact match, or a Json column carrying a dotted sub-path.
+  let field = ctx.fields.find((f) => f.name === fieldName);
+  let baseName = fieldName;
+  let subPath: string | undefined;
+  if (!field && fieldName?.includes('.')) {
+    const head = fieldName.slice(0, fieldName.indexOf('.'));
+    const candidate = ctx.fields.find((f) => f.name === head);
+    if (candidate?.acceptsSubPath) {
+      field = candidate;
+      baseName = head;
+      subPath = fieldName.slice(head.length + 1);
+    }
+  }
   const operator = (rec.dateOperator ?? rec.operator) as string | undefined;
   const operatorOptions = field
     ? [...field.operators.field, ...field.operators.date].map((o) => ({ value: o, label: o }))
@@ -78,12 +100,18 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx): Le
     path,
     depth,
     field: {
-      value: fieldName,
+      value: baseName,
       options: ctx.fields.map((f) => ({ value: f.name, label: f.label })),
       set: (name) => {
         const next = ctx.fields.find((f) => f.name === name);
         if (next) ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
       },
+      acceptsSubPath: field?.acceptsSubPath,
+      subPath,
+      setSubPath: field?.acceptsSubPath
+        ? (sub: string) =>
+            ctx.commit(setNode(ctx.root, path, { ...rec, field: sub ? `${baseName}.${sub}` : baseName } as Condition))
+        : undefined,
     },
     operator: {
       value: operator,
