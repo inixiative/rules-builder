@@ -1,15 +1,16 @@
-import { type ChangeEvent, useRef, useState } from 'react';
+import { useState } from 'react';
 import { defaultWorkspace } from './samples';
 import { BridgesTab } from './tabs/BridgesTab';
 import { BuilderTab } from './tabs/BuilderTab';
 import { FieldmapsTab } from './tabs/FieldmapsTab';
 import { LensesTab } from './tabs/LensesTab';
 import { PathPickerTab } from './tabs/PathPickerTab';
+import { SettingsTab } from './tabs/SettingsTab';
 import { SourcesTab } from './tabs/SourcesTab';
-import { Button, tokens } from './ui';
-import { emptyWorkspace, exportWorkspace, importWorkspace, type Workspace } from './workspace';
+import { tokens } from './ui';
+import { type Workspace } from './workspace';
 
-type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'sources' | 'rules' | 'valuepicker';
+type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'sources' | 'rules' | 'valuepicker' | 'settings';
 type Selection = { section: Section; item?: string };
 type InvItem = { id: string; label: string };
 
@@ -31,32 +32,8 @@ const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem
 export const App = () => {
   const [ws, setWs] = useState<Workspace>(defaultWorkspace);
   const [sel, setSel] = useState<Selection>({ section: 'fieldmaps' });
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const patch = (partial: Partial<Workspace>) => setWs((prev) => ({ ...prev, ...partial }));
-
-  const onExport = () => {
-    const blob = new Blob([exportWorkspace(ws)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rules-builder-workspace.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const onImport = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    file.text().then((text) => {
-      try {
-        setWs(importWorkspace(text));
-      } catch (err) {
-        alert(`Import failed: ${String(err)}`);
-      }
-    });
-  };
 
   const editor = (() => {
     switch (sel.section) {
@@ -72,6 +49,8 @@ export const App = () => {
         return <BuilderTab ws={ws} patch={patch} />;
       case 'valuepicker':
         return <PathPickerTab ws={ws} patch={patch} />;
+      case 'settings':
+        return <SettingsTab ws={ws} patch={patch} replace={setWs} />;
     }
   })();
 
@@ -99,31 +78,17 @@ export const App = () => {
       <header
         style={{
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          alignItems: 'baseline',
           gap: 12,
           padding: '14px 20px',
           borderBottom: `1px solid ${tokens.border}`,
           background: tokens.bg,
         }}
       >
-        <div>
-          <strong style={{ fontSize: 16 }}>Rules Builder</strong>
-          <span style={{ fontSize: 12, color: tokens.textMuted, marginLeft: 10 }}>
-            fieldMaps → bridges → lenses → sources → builder → value picker
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button onClick={onExport}>Export</Button>
-          <Button onClick={() => fileRef.current?.click()}>Import</Button>
-          <Button variant="ghost" onClick={() => setWs(emptyWorkspace())} title="Empty workspace">
-            Clean
-          </Button>
-          <Button variant="primary" onClick={() => setWs(defaultWorkspace())} title="Load bundled samples">
-            Load sample
-          </Button>
-          <input ref={fileRef} type="file" accept="application/json" onChange={onImport} style={{ display: 'none' }} />
-        </div>
+        <strong style={{ fontSize: 16 }}>Rules Builder</strong>
+        <span style={{ fontSize: 12, color: tokens.textMuted }}>
+          fieldMaps → bridges → lenses → sources → builder → value picker
+        </span>
       </header>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: 20, maxWidth: 1200, margin: '0 auto' }}>
@@ -166,6 +131,9 @@ export const App = () => {
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: tokens.textMuted }}>TOOLS</div>
             <button type="button" style={navItem(sel.section === 'valuepicker')} onClick={() => setSel({ section: 'valuepicker' })}>
               <span>Value Picker</span>
+            </button>
+            <button type="button" style={navItem(sel.section === 'settings')} onClick={() => setSel({ section: 'settings' })}>
+              <span>⚙ Settings</span>
             </button>
           </div>
         </nav>

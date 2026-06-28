@@ -1,7 +1,5 @@
-import { type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
-import { useState } from 'react';
-import { sampleMaps } from '../samples';
-import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';
+import type { FieldMap } from '@inixiative/json-rules';
+import { Badge, Empty, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
 
 const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
@@ -39,32 +37,13 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
   </div>
 );
 
-export const FieldmapsTab = ({ ws, patch }: TabProps) => {
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const loadJson = () => {
-    try {
-      const parsed = JSON.parse(draft) as Record<string, FieldMap>;
-      validateFieldMapSet({ maps: parsed });
-      patch({ maps: parsed });
-      setError(null);
-      setDraft('');
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
+export const FieldmapsTab = ({ ws }: TabProps) => {
   const mapNames = Object.keys(ws.maps);
-
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <Panel
-        title="Loaded fieldmaps"
-        actions={<Button variant="primary" onClick={() => patch({ maps: sampleMaps })}>Load app + crm samples</Button>}
-      >
+      <Panel title="Loaded fieldMaps">
         {mapNames.length === 0 ? (
-          <Empty>No fieldmaps loaded. Load the samples or paste JSON below.</Empty>
+          <Empty>No fieldMaps loaded. Load the samples or import JSON from Settings.</Empty>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
             {mapNames.map((name) => (
@@ -72,36 +51,6 @@ export const FieldmapsTab = ({ ws, patch }: TabProps) => {
             ))}
           </div>
         )}
-      </Panel>
-
-      <Panel
-        title="Import fieldmaps from JSON"
-        actions={
-          <Button onClick={loadJson} disabled={!draft.trim()}>
-            Load maps
-          </Button>
-        }
-      >
-        <Empty>
-          Paste a <code>{'{ mapName: FieldMap }'}</code> object. Validated with <code>validateFieldMapSet</code>.
-        </Empty>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder='{ "app": { "models": { "User": { "fields": { "email": { "kind": "scalar", "type": "String" } } } } } }'
-          spellCheck={false}
-          style={{
-            width: '100%',
-            minHeight: 120,
-            fontFamily: 'monospace',
-            fontSize: 12,
-            padding: 10,
-            borderRadius: 6,
-            border: `1px solid ${tokens.borderStrong}`,
-            resize: 'vertical',
-          }}
-        />
-        {error && <Badge tone="danger">{error}</Badge>}
       </Panel>
     </div>
   );
