@@ -4,7 +4,7 @@ import {
   type ModelNarrowing,
   validateNarrowing,
 } from '@inixiative/json-rules';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { describeModelFields } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
 import { computeAllSources } from '../sourceExec';
@@ -19,11 +19,18 @@ const firstAnchor = (maps: Record<string, { models: Record<string, unknown> }>) 
   return { mapName, model };
 };
 
-export const LensesTab = ({ ws, patch }: TabProps) => {
+export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const [draft, setDraft] = useState<SavedLens>(() => ({ ...firstAnchor(ws.maps), narrowing: {} }));
-  const [name, setName] = useState('');
+  const [name, setName] = useState(selected ?? '');
   const [addMap, setAddMap] = useState('');
   const [addModel, setAddModel] = useState('');
+
+  useEffect(() => {
+    if (selected && ws.narrowings[selected]) {
+      setDraft(ws.narrowings[selected]);
+      setName(selected);
+    }
+  }, [selected, ws.narrowings]);
 
   const sourceValues = useMemo(
     () => computeAllSources(ws.maps, ws.bridges, ws.sources, sampleRows),

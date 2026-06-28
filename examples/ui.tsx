@@ -50,6 +50,52 @@ export const Row = ({ children, style }: { children: ReactNode; style?: CSSPrope
   </div>
 );
 
+/** The single-select element used everywhere — no more radio-vs-dropdown drift. */
+export const Select = ({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled,
+  style,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+  style?: CSSProperties;
+  ariaLabel?: string;
+}) => (
+  <select
+    aria-label={ariaLabel}
+    value={value}
+    disabled={disabled}
+    onChange={(e) => onChange(e.target.value)}
+    style={{
+      padding: '5px 8px',
+      borderRadius: 6,
+      border: `1px solid ${tokens.borderStrong}`,
+      fontSize: 13,
+      background: tokens.bg,
+      color: tokens.text,
+      ...style,
+    }}
+  >
+    {placeholder !== undefined && (
+      <option value="" disabled>
+        {placeholder}
+      </option>
+    )}
+    {options.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
+);
+
 export const Button = ({
   children,
   onClick,
