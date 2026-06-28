@@ -20,12 +20,12 @@ const bridgeLabel = (b: Workspace['bridges'][number]) =>
 const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem[] }[] => [
   { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
   { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
+  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.narrowings).map((n) => ({ id: n, label: n })) },
   {
     key: 'sources',
     label: 'Sources',
     items: ws.sources.map((s, i) => ({ id: String(i), label: `${s.map}.${s.model}.${s.field}` })),
   },
-  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.narrowings).map((n) => ({ id: n, label: n })) },
   { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
 ];
 
@@ -110,7 +110,7 @@ export const App = () => {
       >
         <strong style={{ fontSize: 16 }}>Rules Builder</strong>
         <span style={{ fontSize: 12, color: tokens.textMuted }}>
-          fieldMaps → bridges → sources → lenses → builder → value picker
+          fieldMaps → bridges → lenses → sources → builder → value picker
         </span>
       </header>
 
