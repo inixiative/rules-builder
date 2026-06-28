@@ -1,6 +1,6 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
 import type { WorkspaceSource } from './sourceExec';
-import type { Workspace } from './workspace';
+import type { SavedLens, Workspace } from './workspace';
 import { emptyWorkspace } from './workspace';
 
 /** Two sources so bridges connect across maps and sources have somewhere to land. */
@@ -103,9 +103,30 @@ export const sampleSources: WorkspaceSource[] = [
   { map: 'crm', model: 'Account', field: 'industry', where: { all: [] } },
 ];
 
+/** A cross-map lens: anchored at app.User, attaches the bridge, narrows User (root)
+ *  and the bridged crm.Account (mapDefaults) — so it touches both fieldMaps. */
+export const sampleNarrowings: Record<string, SavedLens> = {
+  'vip-active': {
+    mapName: 'app',
+    model: 'User',
+    bridges: sampleBridges,
+    narrowing: {
+      root: {
+        picks: ['id', 'email', 'tier', 'role', 'active', 'metadata'],
+        where: { all: [{ field: 'active', operator: 'equals', value: true }] },
+        enumPicks: { role: ['admin', 'member'] },
+      },
+      mapDefaults: {
+        crm: { models: { Account: { picks: ['id', 'name', 'industry', 'tier'] } } },
+      },
+    },
+  },
+};
+
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
   bridges: sampleBridges,
+  narrowings: sampleNarrowings,
   sources: sampleSources,
 });

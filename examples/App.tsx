@@ -20,13 +20,13 @@ const bridgeLabel = (b: Workspace['bridges'][number]) =>
 const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem[] }[] => [
   { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
   { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
-  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.narrowings).map((n) => ({ id: n, label: n })) },
   {
     key: 'sources',
     label: 'Sources',
     items: ws.sources.map((s, i) => ({ id: String(i), label: `${s.map}.${s.model}.${s.field}` })),
   },
-  { key: 'rules', label: 'Rules', items: [] },
+  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.narrowings).map((n) => ({ id: n, label: n })) },
+  { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
 ];
 
 export const App = () => {
@@ -34,6 +34,29 @@ export const App = () => {
   const [sel, setSel] = useState<Selection>({ section: 'fieldmaps' });
 
   const patch = (partial: Partial<Workspace>) => setWs((prev) => ({ ...prev, ...partial }));
+
+  const selectItem = (section: Section, id: string) => {
+    if (section === 'rules') patch({ rule: ws.rules[id] });
+    setSel({ section, item: id });
+  };
+
+  const removeItem = (section: Section, id: string) => {
+    if (section === 'fieldmaps') {
+      const { [id]: _, ...rest } = ws.maps;
+      patch({ maps: rest });
+    } else if (section === 'bridges') {
+      patch({ bridges: ws.bridges.filter((_, i) => String(i) !== id) });
+    } else if (section === 'lenses') {
+      const { [id]: _, ...rest } = ws.narrowings;
+      patch({ narrowings: rest });
+    } else if (section === 'sources') {
+      patch({ sources: ws.sources.filter((_, i) => String(i) !== id) });
+    } else if (section === 'rules') {
+      const { [id]: _, ...rest } = ws.rules;
+      patch({ rules: rest });
+    }
+    setSel((s) => (s.section === section && s.item === id ? { section } : s));
+  };
 
   const editor = (() => {
     switch (sel.section) {
@@ -87,7 +110,7 @@ export const App = () => {
       >
         <strong style={{ fontSize: 16 }}>Rules Builder</strong>
         <span style={{ fontSize: 12, color: tokens.textMuted }}>
-          fieldMaps → bridges → lenses → sources → builder → value picker
+          fieldMaps → bridges → sources → lenses → builder → value picker
         </span>
       </header>
 
@@ -114,16 +137,37 @@ export const App = () => {
                 <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
               </button>
               {s.items.map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12 }}
-                  onClick={() => setSel({ section: s.key, item: it.id })}
-                >
-                  <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div key={it.id} style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => selectItem(s.key, it.id)}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                      font: 'inherit',
+                      textAlign: 'left',
+                      fontFamily: 'monospace',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {it.label}
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`remove ${it.label}`}
+                    title="remove"
+                    onClick={() => removeItem(s.key, it.id)}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           ))}

@@ -40,6 +40,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
 
   const [selected, setSelected] = useState('');
   const [renderer, setRenderer] = useState<'plain' | 'shadcn'>('shadcn');
+  const [ruleName, setRuleName] = useState('');
   const choice = choices.find((c) => c.key === selected) ?? choices[0];
 
   const analysis = useMemo(() => {
@@ -93,6 +94,22 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
           />
           <Button variant="ghost" onClick={() => patch({ rule: { all: [] } })}>
             Reset rule
+          </Button>
+          <input
+            value={ruleName}
+            onChange={(e) => setRuleName(e.target.value)}
+            placeholder="rule name"
+            style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}`, fontSize: 13 }}
+          />
+          <Button
+            variant="primary"
+            disabled={!ruleName.trim()}
+            onClick={() => {
+              patch({ rules: { ...ws.rules, [ruleName.trim()]: ws.rule } });
+              setRuleName('');
+            }}
+          >
+            Save rule
           </Button>
         </Row>
         <Row>

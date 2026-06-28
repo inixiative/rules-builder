@@ -15,7 +15,8 @@ export type Workspace = {
   bridges: Bridge[];
   narrowings: Record<string, SavedLens>;
   sources: WorkspaceSource[]; // field option sets — DISTINCT(column) under a `where`
-  rule: Condition;
+  rule: Condition; // the working draft in the builder
+  rules: Record<string, Condition>; // saved, named rules
 };
 
 export const emptyWorkspace = (): Workspace => ({
@@ -24,6 +25,7 @@ export const emptyWorkspace = (): Workspace => ({
   narrowings: {},
   sources: [],
   rule: { all: [] },
+  rules: {},
 });
 
 export const exportWorkspace = (ws: Workspace): string => JSON.stringify(ws, null, 2);
@@ -56,6 +58,9 @@ export const importWorkspace = (json: string): Workspace => {
   }
   if ('rule' in parsed && parsed.rule !== undefined) {
     ws.rule = parsed.rule as Condition;
+  }
+  if ('rules' in parsed && isPlainObject(parsed.rules)) {
+    ws.rules = parsed.rules as Record<string, Condition>;
   }
   return ws;
 };
