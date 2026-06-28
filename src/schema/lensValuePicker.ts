@@ -17,6 +17,10 @@ export type LensValueOption = {
   label: string;
   isList: boolean;
   values?: readonly string[];
+  /** A `Json` column has no declared sub-fields, but the kernel resolves a dotted
+   *  sub-path into it (`check`/`toPrisma`/`toSql`). When set, a renderer may let the
+   *  user append a freeform sub-path to `path` (e.g. `metadata` → `metadata.theme`). */
+  acceptsSubPath?: boolean;
 };
 
 export type LensValuePickerOptions = {
@@ -61,13 +65,15 @@ export const lensValuePicker = (
         continue;
       }
       const isEnum = entry.kind === 'enum';
+      const kind = isEnum ? 'Enum' : toFieldKind(entry.type);
       out.push({
         path,
         field: name,
-        kind: isEnum ? 'Enum' : toFieldKind(entry.type),
+        kind,
         label: opts.labels?.[path] ?? name,
         isList: entry.isList === true,
         values: isEnum ? (entry.values ?? lens.maps[mapName]?.enums?.[entry.type]) : entry.values,
+        acceptsSubPath: kind === 'Json',
       });
     }
   };

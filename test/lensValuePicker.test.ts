@@ -9,6 +9,7 @@ const map: FieldMap = {
         id: { kind: 'scalar', type: 'Int' },
         tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
         role: { kind: 'enum', type: 'UserRole' },
+        metadata: { kind: 'scalar', type: 'Json' },
         account: { kind: 'object', type: 'Account' },
       },
     },
@@ -30,7 +31,7 @@ const byPath = (lensArg = lens, opts = {}) =>
 describe('lensValuePicker', () => {
   test('depth 0 lists the anchor model leaf values, not relations', () => {
     const opts = byPath();
-    expect(Object.keys(opts).sort()).toEqual(['id', 'role', 'tier']);
+    expect(Object.keys(opts).sort()).toEqual(['id', 'metadata', 'role', 'tier']);
     expect(opts.account).toBeUndefined(); // relation is not a value
   });
 
@@ -51,5 +52,11 @@ describe('lensValuePicker', () => {
   test('respects an explicit start model', () => {
     const opts = byPath(lens, { model: 'Account' });
     expect(Object.keys(opts).sort()).toEqual(['id', 'industry']);
+  });
+
+  test('flags a JSON field as sub-path-extendable (freeform descent); scalars are not', () => {
+    const opts = byPath();
+    expect(opts.metadata).toMatchObject({ field: 'metadata', kind: 'Json', acceptsSubPath: true });
+    expect(opts.tier.acceptsSubPath).toBeFalsy();
   });
 });
