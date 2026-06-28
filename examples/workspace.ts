@@ -1,10 +1,12 @@
 import type { Bridge, Condition, FieldMap, LensNarrowing } from '@inixiative/json-rules';
 import type { WorkspaceSource } from './sourceExec';
 
-/** A saved lens bundles its anchor with the narrowing so it loads standalone. */
+/** A saved lens bundles its anchor + attached bridges with the narrowing so it loads standalone. */
 export type SavedLens = {
   mapName: string;
   model: string;
+  /** Bridges this lens activates — the cross-map edges reachable through it. */
+  bridges?: Bridge[];
   narrowing?: Omit<LensNarrowing, 'parent'>;
 };
 

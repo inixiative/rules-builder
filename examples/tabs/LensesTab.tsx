@@ -2,13 +2,14 @@ import {
   createLens,
   exposedSurface,
   type ModelNarrowing,
+  stitchFieldMaps,
   validateNarrowing,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { describeModelFields } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
 import { computeAllSources } from '../sourceExec';
-import { Badge, Button, Code, Empty, Panel, Row, tokens } from '../ui';
+import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import type { SavedLens } from '../workspace';
 import { NarrowingNode, type NodeCtx } from './NarrowingNode';
 import type { TabProps } from './types';
@@ -20,7 +21,7 @@ const firstAnchor = (maps: Record<string, { models: Record<string, unknown> }>) 
 };
 
 export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
-  const [draft, setDraft] = useState<SavedLens>(() => ({ ...firstAnchor(ws.maps), narrowing: {} }));
+  const [draft, setDraft] = useState<SavedLens>(() => ({ ...firstAnchor(ws.maps), bridges: ws.bridges, narrowing: {} }));
   const [name, setName] = useState(selected ?? '');
   const [addMap, setAddMap] = useState('');
   const [addModel, setAddModel] = useState('');
@@ -33,10 +34,15 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
   }, [selected, ws.narrowings]);
 
   const sourceValues = useMemo(
-    () => computeAllSources(ws.maps, ws.bridges, ws.sources, sampleRows),
-    [ws.maps, ws.bridges, ws.sources],
+    () => computeAllSources(ws.maps, draft.bridges ?? [], ws.sources, sampleRows),
+    [ws.maps, draft.bridges, ws.sources],
   );
-  const ctx: NodeCtx = { maps: ws.maps, bridges: ws.bridges, sourceValues };
+  // Stitch the lens's attached bridges so the narrowing editor surfaces bridge relations.
+  const stitchedMaps = useMemo(
+    () => stitchFieldMaps({ maps: ws.maps, bridges: draft.bridges ?? [] }).maps,
+    [ws.maps, draft.bridges],
+  );
+  const ctx: NodeCtx = { maps: stitchedMaps, bridges: [], sourceValues };
   const narrowing = draft.narrowing ?? {};
   const defaults = narrowing.mapDefaults ?? {};
 
@@ -60,7 +66,7 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
   const analysis = useMemo(() => {
     if (!draft.mapName || !draft.model) return { error: 'No anchor.', fields: [] as ReturnType<typeof describeModelFields> };
     try {
-      const parent = createLens({ maps: ws.maps, bridges: ws.bridges, mapName: draft.mapName, model: draft.model });
+      const parent = createLens({ maps: ws.maps, bridges: draft.bridges ?? [], mapName: draft.mapName, model: draft.model });
       const full = { parent, ...(draft.narrowing ?? {}) };
       validateNarrowing(full);
       const surface = exposedSurface(full, { sourceValues });
@@ -86,34 +92,53 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
     <div style={{ display: 'grid', gap: 16 }}>
       <Panel title="Anchor">
         <Row>
-          <select
+          <Select
+            ariaLabel="anchor map"
             style={sel}
             value={draft.mapName}
-            onChange={(e) => {
-              const mapName = e.target.value;
+            onChange={(mapName) => {
               const model = Object.keys(ws.maps[mapName]?.models ?? {})[0] ?? '';
-              setDraft({ mapName, model, narrowing: {} });
+              setDraft({ mapName, model, bridges: draft.bridges, narrowing: {} });
             }}
-          >
-            {Object.keys(ws.maps).map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select
+            options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))}
+          />
+          <Select
+            ariaLabel="anchor model"
             style={sel}
             value={draft.model}
-            onChange={(e) => setDraft({ mapName: draft.mapName, model: e.target.value, narrowing: {} })}
-          >
-            {anchorModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+            onChange={(model) => setDraft({ mapName: draft.mapName, model, bridges: draft.bridges, narrowing: {} })}
+            options={anchorModels.map((m) => ({ value: m, label: m }))}
+          />
         </Row>
       </Panel>
+
+      {ws.bridges.length > 0 && (
+        <Panel title="Bridges (attach to this lens)">
+          <Row>
+            {ws.bridges.map((b, i) => {
+              const key = JSON.stringify(b);
+              const attached = (draft.bridges ?? []).some((x) => JSON.stringify(x) === key);
+              return (
+                <label key={`${key}-${i}`} style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                  <input
+                    type="checkbox"
+                    checked={attached}
+                    onChange={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        bridges: attached
+                          ? (d.bridges ?? []).filter((x) => JSON.stringify(x) !== key)
+                          : [...(d.bridges ?? []), b],
+                      }))
+                    }
+                  />{' '}
+                  {b.endpoints[0].fieldMap}:{b.endpoints[0].model} ↔ {b.endpoints[1].fieldMap}:{b.endpoints[1].model}
+                </label>
+              );
+            })}
+          </Row>
+        </Panel>
+      )}
 
       <Panel title="Root narrowing (path-specific)">
         <NarrowingNode
@@ -129,22 +154,26 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
 
       <Panel title="mapDefaults (applies everywhere)">
         <Row>
-          <select style={sel} value={addMap} onChange={(e) => { setAddMap(e.target.value); setAddModel(''); }}>
-            <option value="">map…</option>
-            {Object.keys(ws.maps).map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select style={sel} value={addModel} onChange={(e) => setAddModel(e.target.value)} disabled={!addMap}>
-            <option value="">model…</option>
-            {addModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <Select
+            ariaLabel="default map"
+            style={sel}
+            value={addMap}
+            placeholder="map…"
+            onChange={(v) => {
+              setAddMap(v);
+              setAddModel('');
+            }}
+            options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))}
+          />
+          <Select
+            ariaLabel="default model"
+            style={sel}
+            value={addModel}
+            placeholder="model…"
+            disabled={!addMap}
+            onChange={(v) => setAddModel(v)}
+            options={addModels.map((m) => ({ value: m, label: m }))}
+          />
           <Button
             disabled={!addMap || !addModel || !!defaults[addMap]?.models?.[addModel]}
             onClick={() => { setDefaultModel(addMap, addModel, {}); setAddModel(''); }}

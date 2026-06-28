@@ -5,10 +5,17 @@ import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
 import { sampleRows } from '../samples';
 import { injectSources, runSources } from '../sourceExec';
-import { Badge, Button, Code, Empty, Panel, Row, tokens } from '../ui';
+import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import type { TabProps } from './types';
 
-type SourceChoice = { key: string; label: string; mapName: string; model: string; narrowing?: RuleBuilderSource['narrowing'] };
+type SourceChoice = {
+  key: string;
+  label: string;
+  mapName: string;
+  model: string;
+  narrowing?: RuleBuilderSource['narrowing'];
+  bridges?: RuleBuilderSource['bridges'];
+};
 
 export const BuilderTab = ({ ws, patch }: TabProps) => {
   const choices = useMemo<SourceChoice[]>(() => {
@@ -20,6 +27,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
         mapName: lens.mapName,
         model: lens.model,
         narrowing: lens.narrowing,
+        bridges: lens.bridges,
       });
     }
     for (const [mapName, map] of Object.entries(ws.maps)) {
@@ -41,11 +49,12 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
       // sample rows → fetched values are passed to resolve (folded in the projection),
       // so the option sets are narrowed by the selected lens, not the raw column.
       const narrowing = injectSources(choice.narrowing ?? {}, ws.sources);
-      const base = createLens({ maps: ws.maps, bridges: ws.bridges, mapName: choice.mapName, model: choice.model });
+      const bridges = choice.bridges ?? ws.bridges;
+      const base = createLens({ maps: ws.maps, bridges, mapName: choice.mapName, model: choice.model });
       const sourceValues = runSources({ parent: base, ...narrowing }, sampleRows);
       const source: RuleBuilderSource = {
         maps: ws.maps,
-        bridges: ws.bridges,
+        bridges,
         mapName: choice.mapName,
         model: choice.model,
         narrowing,
@@ -76,31 +85,28 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
       <Panel title="Source">
         <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Load lens / anchor:</label>
-          <select
+          <Select
+            ariaLabel="source"
             value={choice.key}
-            onChange={(e) => setSelected(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}`, fontSize: 13 }}
-          >
-            {choices.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+            onChange={setSelected}
+            options={choices.map((c) => ({ value: c.key, label: c.label }))}
+          />
           <Button variant="ghost" onClick={() => patch({ rule: { all: [] } })}>
             Reset rule
           </Button>
         </Row>
         <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Renderer:</label>
-          {(['shadcn', 'plain'] as const).map((r) => (
-            <label key={r} style={{ fontSize: 13 }}>
-              <input type="radio" checked={renderer === r} onChange={() => setRenderer(r)} /> {r}
-            </label>
-          ))}
-          <span style={{ fontSize: 12, color: tokens.textMuted }}>
-            same headless hook, different renderer
-          </span>
+          <Select
+            ariaLabel="renderer"
+            value={renderer}
+            onChange={(v) => setRenderer(v as 'plain' | 'shadcn')}
+            options={[
+              { value: 'shadcn', label: 'shadcn' },
+              { value: 'plain', label: 'plain' },
+            ]}
+          />
+          <span style={{ fontSize: 12, color: tokens.textMuted }}>same headless hook, different renderer</span>
         </Row>
       </Panel>
 

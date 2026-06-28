@@ -8,7 +8,7 @@ import type {
 } from '@inixiative/json-rules';
 import { useState } from 'react';
 import { RuleEditor } from '../RuleTree';
-import { Badge, Button, Row, tokens } from '../ui';
+import { Badge, Button, Row, Select, tokens } from '../ui';
 
 // sourceValues are folded into the where-editor's surface so it renders pseudo-enum selects.
 export type NodeCtx = {
@@ -56,15 +56,17 @@ const FieldVisibility = ({
     <div style={{ display: 'grid', gap: 6 }}>
       <Row>
         <strong style={{ fontSize: 12 }}>field visibility</strong>
-        <select
+        <Select
+          ariaLabel="field visibility"
           value={mode}
-          onChange={(e) => setMode(e.target.value as 'none' | 'picks' | 'omits')}
-          style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}` }}
-        >
-          <option value="none">none</option>
-          <option value="picks">picks</option>
-          <option value="omits">omits</option>
-        </select>
+          onChange={(v) => setMode(v as 'none' | 'picks' | 'omits')}
+          options={[
+            { value: 'none', label: 'none' },
+            { value: 'picks', label: 'picks' },
+            { value: 'omits', label: 'omits' },
+          ]}
+          style={{ fontSize: 12, padding: '3px 6px' }}
+        />
       </Row>
       {mode !== 'none' && (
         <Row>
@@ -126,15 +128,17 @@ const EnumNarrowingEditor = ({
         return (
           <Row key={name}>
             <span style={{ fontFamily: 'monospace', fontSize: 12, minWidth: 90 }}>{name}</span>
-            <select
+            <Select
+              ariaLabel={`${name} enum mode`}
               value={mode}
-              onChange={(e) => setFor(name, e.target.value as 'enumPicks' | 'enumOmits' | 'none', [])}
-              style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}` }}
-            >
-              <option value="none">—</option>
-              <option value="enumPicks">pick</option>
-              <option value="enumOmits">omit</option>
-            </select>
+              onChange={(v) => setFor(name, v as 'enumPicks' | 'enumOmits' | 'none', [])}
+              options={[
+                { value: 'none', label: '—' },
+                { value: 'enumPicks', label: 'pick' },
+                { value: 'enumOmits', label: 'omit' },
+              ]}
+              style={{ fontSize: 12, padding: '3px 6px' }}
+            />
             {mode !== 'none' &&
               valuesFor(entry).map((v) => (
                 <label key={v} style={{ fontSize: 12 }}>
@@ -234,8 +238,8 @@ export const NarrowingNode = ({
                       remove
                     </Button>
                   ) : (
-                    <Button onClick={() => setRelation(rel, {})} disabled={depth >= 3}>
-                      narrow
+                    <Button onClick={() => setRelation(rel, {})} disabled={depth >= 3} title="add a narrowing scoped to this relation">
+                      extend →
                     </Button>
                   )}
                 </Row>
