@@ -1,37 +1,44 @@
 import { describe, expect, test } from 'bun:test';
-import { actionNamesByModel, removeSchemaAction, setSchemaAction } from '../src/permissions/schema';
+import { actionNamesByResource, removeSchemaAction, setSchemaAction } from '../src/permissions/schema';
 import type { RebacSchema } from '../src/permissions/types';
 
 const base = (): RebacSchema => ({
-  User: { actions: { own: null, read: 'own' } },
-  Organization: { actions: { manage: 'own' } },
+  permissions: {
+    'db:User': { actions: { own: null, read: 'own' } },
+    'db:Organization': { actions: { manage: 'own' } },
+  },
 });
 
-describe('actionNamesByModel', () => {
-  test('lists every model’s action names', () => {
-    expect(actionNamesByModel(base())).toEqual({ User: ['own', 'read'], Organization: ['manage'] });
+describe('actionNamesByResource', () => {
+  test('lists every resource’s action names', () => {
+    expect(actionNamesByResource(base())).toEqual({
+      'db:User': ['own', 'read'],
+      'db:Organization': ['manage'],
+    });
   });
 });
 
 describe('setSchemaAction', () => {
-  test('adds an action to an existing model immutably', () => {
+  test('adds an action to an existing resource immutably', () => {
     const s = base();
-    const next = setSchemaAction(s, 'User', 'manage', { self: 'id' });
-    expect(next.User.actions).toEqual({ own: null, read: 'own', manage: { self: 'id' } });
-    expect(s.User.actions).toEqual({ own: null, read: 'own' });
+    const next = setSchemaAction(s, 'db:User', 'manage', { self: 'id' });
+    expect(next.permissions['db:User'].actions).toEqual({ own: null, read: 'own', manage: { self: 'id' } });
+    expect(s.permissions['db:User'].actions).toEqual({ own: null, read: 'own' });
   });
 
-  test('creates the model entry when absent', () => {
-    expect(setSchemaAction({}, 'Space', 'read', 'own')).toEqual({ Space: { actions: { read: 'own' } } });
+  test('creates the resource entry when absent', () => {
+    expect(setSchemaAction({ permissions: {} }, 'db:Space', 'read', 'own')).toEqual({
+      permissions: { 'db:Space': { actions: { read: 'own' } } },
+    });
   });
 });
 
 describe('removeSchemaAction', () => {
-  test('drops one action, keeping the model', () => {
-    expect(removeSchemaAction(base(), 'User', 'read').User.actions).toEqual({ own: null });
+  test('drops one action, keeping the resource', () => {
+    expect(removeSchemaAction(base(), 'db:User', 'read').permissions['db:User'].actions).toEqual({ own: null });
   });
 
-  test('drops the whole model entry when its last action is removed', () => {
-    expect(removeSchemaAction(base(), 'Organization', 'manage').Organization).toBeUndefined();
+  test('drops the whole resource entry when its last action is removed', () => {
+    expect(removeSchemaAction(base(), 'db:Organization', 'manage').permissions['db:Organization']).toBeUndefined();
   });
 });

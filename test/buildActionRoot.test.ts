@@ -21,7 +21,7 @@ const map: FieldMap = {
 
 const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
 const fields = describeModelFields(lens, 'app', 'User');
-const actionsByModel = { User: ['own', 'manage', 'read'], Organization: ['own', 'manage', 'read'] };
+const actionsByResource = { 'app:User': ['own', 'manage', 'read'], 'app:Organization': ['own', 'manage', 'read'] };
 
 let committed: ActionRule | undefined;
 const build = (rule: ActionRule) => {
@@ -30,7 +30,7 @@ const build = (rule: ActionRule) => {
     lens,
     fields,
     siblingActions: ['manage', 'read'],
-    actionsByModel,
+    actionsByResource,
     maxDepth: 4,
     commit: (next) => {
       committed = next;
@@ -57,7 +57,7 @@ describe('buildActionRoot — model-aware leaves', () => {
     const n = build({ rel: 'organization', action: 'own' }) as ActionLeafNode;
     expect(n.kind.value).toBe('rel');
     expect(n.rel?.relation.options.map((o) => o.value)).toEqual(['organization']);
-    expect(n.rel?.target).toBe('Organization');
+    expect(n.rel?.target).toBe('app:Organization');
     expect(n.rel?.action.options.map((o) => o.value)).toEqual(['own', 'manage', 'read']);
     expect(n.rel?.action.value).toBe('own');
   });

@@ -6,7 +6,7 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type { RebacSchema, SavedRule } from '../src';
+import type { ResourcePermission, SavedRule } from '../src';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -39,7 +39,7 @@ export type Workspace = {
   narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
   rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
-  permissions: RebacSchema; // the whole rebac schema: model → { actions: name → ActionRule }
+  permissions: Record<string, ResourcePermission>; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
   maxDepth: number; // builder nesting depth — applies to every rule field
 };
 
@@ -131,7 +131,7 @@ export const importWorkspace = (json: string): Workspace => {
     ws.rules = parsed.rules as Record<string, SavedWsRule>;
   }
   if ('permissions' in parsed && isPlainObject(parsed.permissions)) {
-    ws.permissions = parsed.permissions as RebacSchema;
+    ws.permissions = parsed.permissions as Record<string, ResourcePermission>;
   }
   if ('maxDepth' in parsed && typeof parsed.maxDepth === 'number') {
     ws.maxDepth = parsed.maxDepth;

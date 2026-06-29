@@ -1,29 +1,33 @@
 import type { ActionRule, RebacSchema } from './types';
 
-/** Every model's action names, keyed by model — the awareness `useActionRuleBuilder`
- *  needs for `delegate` (same-model actions) and `rel` (a target model's actions). */
-export const actionNamesByModel = (schema: RebacSchema): Record<string, string[]> =>
-  Object.fromEntries(Object.entries(schema).map(([model, mp]) => [model, Object.keys(mp?.actions ?? {})]));
+/** Every resource's action names, keyed by resource (`map:model`) — the awareness
+ *  `useActionRuleBuilder` needs for `delegate` (same-resource) and `rel` (a target's actions). */
+export const actionNamesByResource = (schema: RebacSchema): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(schema.permissions).map(([resource, mp]) => [resource, Object.keys(mp?.actions ?? {})]),
+  );
 
-/** Immutably set one model.action's rule, creating the model entry if absent. */
+/** Immutably set one resource.action's rule, creating the resource entry if absent. */
 export const setSchemaAction = (
   schema: RebacSchema,
-  model: string,
+  resource: string,
   action: string,
   rule: ActionRule,
 ): RebacSchema => ({
   ...schema,
-  [model]: { actions: { ...(schema[model]?.actions ?? {}), [action]: rule } },
+  permissions: {
+    ...schema.permissions,
+    [resource]: { actions: { ...(schema.permissions[resource]?.actions ?? {}), [action]: rule } },
+  },
 });
 
-/** Immutably drop one model.action (and the model entry if it becomes empty). */
-export const removeSchemaAction = (schema: RebacSchema, model: string, action: string): RebacSchema => {
-  const entry = schema[model];
+/** Immutably drop one resource.action (and the resource entry if it becomes empty). */
+export const removeSchemaAction = (schema: RebacSchema, resource: string, action: string): RebacSchema => {
+  const entry = schema.permissions[resource];
   if (!entry) return schema;
   const { [action]: _drop, ...actions } = entry.actions;
-  if (Object.keys(actions).length === 0) {
-    const { [model]: _m, ...rest } = schema;
-    return rest;
-  }
-  return { ...schema, [model]: { actions } };
+  const permissions = { ...schema.permissions };
+  if (Object.keys(actions).length === 0) delete permissions[resource];
+  else permissions[resource] = { actions };
+  return { ...schema, permissions };
 };

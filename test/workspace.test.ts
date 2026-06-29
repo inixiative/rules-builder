@@ -39,7 +39,7 @@ const sample = (): Workspace => ({
     },
   },
   permissions: {
-    User: { actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } } },
+    'app:User': { actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } } },
   },
   maxDepth: 4,
 });

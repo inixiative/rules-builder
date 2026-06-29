@@ -11,17 +11,17 @@ export type UseActionRuleBuilderOptions = {
   sourceValues?: SourceValues[];
   value?: ActionRule;
   onChange?: (rule: ActionRule) => void;
-  /** Other action names on this model → delegate targets. */
+  /** Other action names on this resource → delegate targets. */
   siblingActions?: string[];
-  /** Action names per model → the `rel` walk's target actions. */
-  actionsByModel?: Record<string, string[]>;
+  /** Action names per resource (`map:model`) → the `rel` walk's target actions. */
+  actionsByResource?: Record<string, string[]>;
   maxDepth?: number;
 };
 
 /**
  * Headless builder for the recursive permission algebra (`ActionRule`) over a
  * lens/narrowing base. Owns the rule; exposes a `root` descriptor tree. The `rule`
- * (abac) leaf embeds the json-rules builder; `self`/`rel`/`delegate` are model-aware.
+ * (abac) leaf embeds the json-rules builder; `self`/`rel`/`delegate` are resource-aware.
  */
 export type UseActionRuleBuilder = {
   value: ActionRule;
@@ -56,11 +56,11 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
         lens,
         fields,
         siblingActions: opts.siblingActions ?? [],
-        actionsByModel: opts.actionsByModel ?? {},
+        actionsByResource: opts.actionsByResource ?? {},
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, lens, fields, opts.siblingActions, opts.actionsByModel, opts.maxDepth, commit],
+    [tree, lens, fields, opts.siblingActions, opts.actionsByResource, opts.maxDepth, commit],
   );
 
   return { value: tree, root, setRule: setTree };

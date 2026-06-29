@@ -22,27 +22,27 @@ const removeBtn = (label: string, onClick: () => void) => (
   </button>
 );
 
-/** The rebac SCHEMA editor: the whole `model → { actions }` object across every model. A permission
- *  gates the raw record, so each model's editing surface is the full fieldMap model (relations via
- *  bridges) — built inside usePermissionBuilder from the maps. */
+/** The rebac SCHEMA editor: the whole `{ bridges, permissions }` object. Resources are map-qualified
+ *  (`app:User`); a permission gates the RAW record, so each resource's editing surface is the full
+ *  fieldMap model (relations via bridges) — built inside usePermissionBuilder from the maps. */
 export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const pb = usePermissionBuilder({
-    value: ws.permissions,
-    onChange: (permissions) => patch({ permissions }),
+    value: { bridges: ws.bridges, permissions: ws.permissions },
+    onChange: (schema) => patch({ permissions: schema.permissions }),
     maps: ws.maps,
     bridges: ws.bridges,
     maxDepth: ws.maxDepth,
   });
 
-  const [selectedModel, setSelectedModel] = useState(selected ?? pb.models[0] ?? '');
+  const [selectedResource, setSelectedResource] = useState(selected ?? pb.resources[0] ?? '');
   const [selectedAction, setSelectedAction] = useState('');
-  const [addModelKey, setAddModelKey] = useState('');
+  const [addResourceKey, setAddResourceKey] = useState('');
   const [newAction, setNewAction] = useState('');
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the sidebar selection
   useEffect(() => {
     if (selected) {
-      setSelectedModel(selected);
+      setSelectedResource(selected);
       setSelectedAction('');
     }
   }, [selected]);
@@ -58,48 +58,49 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const available: { key: string; label: string }[] = [];
   for (const [mapName, m] of Object.entries(ws.maps)) {
     for (const model of Object.keys(m.models)) {
-      if (!pb.value[model]) available.push({ key: model, label: `${mapName}.${model}` });
+      const resource = `${mapName}:${model}`;
+      if (!pb.value.permissions[resource]) available.push({ key: resource, label: resource });
     }
   }
 
-  const actions = selectedModel ? pb.actionsOf(selectedModel) : [];
-  const root = selectedModel && selectedAction ? pb.actionRoot(selectedModel, selectedAction) : null;
+  const actions = selectedResource ? pb.actionsOf(selectedResource) : [];
+  const root = selectedResource && selectedAction ? pb.actionRoot(selectedResource, selectedAction) : null;
 
-  const addModel = () => {
-    if (!addModelKey) return;
-    pb.addModel(addModelKey);
-    setSelectedModel(addModelKey);
+  const addResource = () => {
+    if (!addResourceKey) return;
+    pb.addResource(addResourceKey);
+    setSelectedResource(addResourceKey);
     setSelectedAction('');
-    setAddModelKey('');
+    setAddResourceKey('');
   };
   const addAction = () => {
     const a = newAction.trim();
-    if (!a || !selectedModel) return;
-    pb.addAction(selectedModel, a);
+    if (!a || !selectedResource) return;
+    pb.addAction(selectedResource, a);
     setSelectedAction(a);
     setNewAction('');
   };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <Panel title="Models (rebac schema)">
+      <Panel title="Resources (rebac schema)">
         <Row>
-          {pb.models.length === 0 && <Empty>No models governed yet — add one below.</Empty>}
-          {pb.models.map((m) => (
-            <span key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          {pb.resources.length === 0 && <Empty>No resources governed yet — add one below.</Empty>}
+          {pb.resources.map((r) => (
+            <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
               <Button
-                variant={m === selectedModel ? 'primary' : 'default'}
+                variant={r === selectedResource ? 'primary' : 'default'}
                 onClick={() => {
-                  setSelectedModel(m);
+                  setSelectedResource(r);
                   setSelectedAction('');
                 }}
               >
-                {m}
+                {r}
               </Button>
-              {removeBtn(m, () => {
-                pb.removeModel(m);
-                if (selectedModel === m) {
-                  setSelectedModel('');
+              {removeBtn(r, () => {
+                pb.removeResource(r);
+                if (selectedResource === r) {
+                  setSelectedResource('');
                   setSelectedAction('');
                 }
               })}
@@ -108,20 +109,20 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
         </Row>
         <Row>
           <Select
-            ariaLabel="add model"
-            value={addModelKey}
-            placeholder="add model…"
-            onChange={setAddModelKey}
+            ariaLabel="add resource"
+            value={addResourceKey}
+            placeholder="add resource…"
+            onChange={setAddResourceKey}
             options={available.map((a) => ({ value: a.key, label: a.label }))}
           />
-          <Button variant="primary" disabled={!addModelKey} onClick={addModel}>
-            Add model
+          <Button variant="primary" disabled={!addResourceKey} onClick={addResource}>
+            Add resource
           </Button>
         </Row>
       </Panel>
 
-      {selectedModel && (
-        <Panel title={`Actions on ${selectedModel}`}>
+      {selectedResource && (
+        <Panel title={`Actions on ${selectedResource}`}>
           <Row>
             {actions.length === 0 && <Empty>No actions yet — add one (e.g. read, manage, own).</Empty>}
             {actions.map((a) => (
@@ -130,7 +131,7 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
                   {a}
                 </Button>
                 {removeBtn(a, () => {
-                  pb.removeAction(selectedModel, a);
+                  pb.removeAction(selectedResource, a);
                   if (selectedAction === a) setSelectedAction('');
                 })}
               </span>
@@ -151,13 +152,13 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
       )}
 
       {root && (
-        <Panel title={`${selectedModel}.${selectedAction}`}>
+        <Panel title={`${selectedResource}.${selectedAction}`}>
           <ActionRuleTree root={root} />
         </Panel>
       )}
 
       <Panel title="rebac schema (JSON)">
-        <Empty>The whole serializable schema — model → {'{ actions: name → ActionRule }'}.</Empty>
+        <Empty>The whole serializable schema — {'{ bridges, permissions: resource → { actions } }'}.</Empty>
         <Code>{JSON.stringify(pb.value, null, 2)}</Code>
       </Panel>
     </div>

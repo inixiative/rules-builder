@@ -56,10 +56,10 @@ export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
 export type BuildActionOptions = {
   lens: Lens;
   fields: BuilderField[];
-  /** Other action names on this model — delegate targets. */
+  /** Other action names on this resource — delegate targets. */
   siblingActions: string[];
-  /** Action names per model — the `rel` walk's target actions. */
-  actionsByModel: Record<string, string[]>;
+  /** Action names per resource (`map:model`) — the `rel` walk's target actions. */
+  actionsByResource: Record<string, string[]>;
   maxDepth?: number;
   commit: (next: ActionRule) => void;
 };
@@ -114,7 +114,8 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
 
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
-    const target = ctx.fields.find((f) => f.name === rel.rel)?.relation?.modelName;
+    const relTarget = ctx.fields.find((f) => f.name === rel.rel)?.relation;
+    const target = relTarget ? `${relTarget.mapName}:${relTarget.modelName}` : undefined;
     return {
       ...base,
       rel: {
@@ -125,7 +126,7 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
         },
         action: {
           value: rel.action,
-          options: ((target && ctx.actionsByModel[target]) || []).map(opt),
+          options: ((target && ctx.actionsByResource[target]) || []).map(opt),
           set: (a) => ctx.commit(setActionNode(ctx.root, path, { rel: rel.rel, action: a })),
         },
         target,

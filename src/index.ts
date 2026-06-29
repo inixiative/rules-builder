@@ -57,8 +57,8 @@ export type {
   ActionRuleKind,
   ActionRuleNode,
   BuildActionOptions,
-  ModelPermission,
   RebacSchema,
+  ResourcePermission,
   UseActionRuleBuilder,
   UseActionRuleBuilderOptions,
   UsePermissionBuilder,
@@ -66,7 +66,7 @@ export type {
 } from './permissions';
 export {
   actionKind,
-  actionNamesByModel,
+  actionNamesByResource,
   addActionChild,
   buildActionRoot,
   childrenOfAction,

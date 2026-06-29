@@ -1,4 +1,4 @@
-export type { ActionRule, ActionRuleKind, ModelPermission, RebacSchema } from './types';
+export type { ActionRule, ActionRuleKind, RebacSchema, ResourcePermission } from './types';
 export {
   actionKind,
   addActionChild,
@@ -12,7 +12,7 @@ export {
 } from './actionTree';
 export type { ActionGroupNode, ActionLeafNode, ActionRuleNode, BuildActionOptions } from './buildActionRoot';
 export { buildActionRoot } from './buildActionRoot';
-export { actionNamesByModel, removeSchemaAction, setSchemaAction } from './schema';
+export { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
 export type { UseActionRuleBuilder, UseActionRuleBuilderOptions } from './useActionRuleBuilder';
 export { useActionRuleBuilder } from './useActionRuleBuilder';
 export type { UsePermissionBuilder, UsePermissionBuilderOptions } from './usePermissionBuilder';

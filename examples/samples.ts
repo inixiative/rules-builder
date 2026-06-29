@@ -121,7 +121,7 @@ export const sampleNarrowings: Record<string, SavedNarrowing> = {
 
 /** A rebac entry on User: a terminal deny, an rbac delegation, and an any[self, abac]. */
 export const samplePermissions: Workspace['permissions'] = {
-  User: {
+  'app:User': {
     actions: {
       own: null,
       manage: 'own',
