@@ -133,6 +133,8 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
     };
   }
 
+  if (kind === 'deny') return base; // terminal null — kind picker only, no operands
+
   // rule (abac) — embed the condition builder; its commits fold back as { rule }.
   const cond = (node as { rule: Condition }).rule;
   return {

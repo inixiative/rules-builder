@@ -81,6 +81,20 @@ describe('buildActionRoot — model-aware leaves', () => {
     n.kind.set('self');
     expect(committed).toEqual({ self: '' });
   });
+
+  test('deny (null) builds a kind-only node — no variant controls, no crash', () => {
+    const n = build(null) as ActionLeafNode;
+    expect(n.kind.value).toBe('deny');
+    expect(n.delegate).toBeUndefined();
+    expect(n.self).toBeUndefined();
+    expect(n.rel).toBeUndefined();
+    expect(n.rule).toBeUndefined();
+  });
+
+  test('a group with a null (deny) child builds without crashing', () => {
+    const g = build({ any: ['manage', null] }) as ActionGroupNode;
+    expect((g.children[1] as ActionLeafNode).kind.value).toBe('deny');
+  });
 });
 
 describe('buildActionRoot — any/all groups', () => {

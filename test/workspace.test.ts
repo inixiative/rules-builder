@@ -40,7 +40,7 @@ const sample = (): Workspace => ({
   },
   permissions: {
     User: {
-      source: { kind: 'lens', name: 'app-users' },
+      source: { mapName: 'app', model: 'User' },
       actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } },
     },
   },

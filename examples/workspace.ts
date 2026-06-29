@@ -30,9 +30,13 @@ export type SavedNarrowing = {
 /** A saved rule keeps its source binding by reference + its captured sourced option-sets. */
 export type SavedWsRule = SavedRule<ParentRef>;
 
-/** One model's permission entry: the lens/narrowing it was authored against + its named action rules.
- *  Keyed by model in the workspace, mirroring a rebac schema (`model → { actions }`). */
-export type SavedPermission = { source: ParentRef; actions: Record<string, ActionRule> };
+/** A permission is authored against the RAW model record (full surface), not a narrowed view —
+ *  authz gates records, so it needs every field/relation, not a projection. */
+export type PermissionSource = { mapName: string; model: string };
+
+/** One model's permission entry: the raw model it gates + its named action rules. Keyed by
+ *  model in the workspace, mirroring a rebac schema (`model → { actions }`). */
+export type SavedPermission = { source: PermissionSource; actions: Record<string, ActionRule> };
 
 export const DEFAULT_MAX_DEPTH = 4;
 
