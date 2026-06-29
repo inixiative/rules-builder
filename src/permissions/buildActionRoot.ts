@@ -142,7 +142,9 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
       fieldsAt(resource)
         .filter((f) => f.relation && !f.isList)
         .map((f) => opt(f.name));
-    const setRel = (next: string) => ctx.commit(setActionNode(ctx.root, path, { rel: next, action: rel.action }));
+    // Editing the relation path can move the target resource, so the previously-picked action
+    // (an action on the OLD target) no longer applies — reset it. Only `action.set` keeps it.
+    const setRel = (next: string) => ctx.commit(setActionNode(ctx.root, path, { rel: next, action: '' }));
 
     const segs = rel.rel ? rel.rel.split('.') : [];
     let resource = currentResource;

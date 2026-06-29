@@ -119,20 +119,45 @@ export const sampleNarrowings: Record<string, SavedNarrowing> = {
   },
 };
 
-/** A rebac entry on User: a terminal deny, an rbac delegation, and an any[self, abac]. */
+/**
+ * A rebac schema spanning two resources so a `rel` walk has somewhere to land:
+ * `app:User.read` walks the bridge to `crm:Account` and delegates to its `read`. The action
+ * picker on that hop is populated from `crm:Account`'s own defined actions.
+ */
 export const samplePermissions: Workspace['permissions'] = {
   'app:User': {
     actions: {
-      own: null,
-      manage: 'own',
+      own: null, // terminal deny
+      manage: 'own', // delegate
       read: {
-        any: [{ self: 'id' }, { rule: { all: [{ field: 'active', operator: 'equals', value: true }] } }, 'manage'],
+        any: [
+          { self: 'id' },
+          { rule: { all: [{ field: 'active', operator: 'equals', value: true }] } },
+          'manage',
+          { rel: 'crm:Account', action: 'read' }, // walk the bridge → use Account's read
+        ],
       },
+    },
+  },
+  'crm:Account': {
+    actions: {
+      own: { self: 'ownerEmail' },
+      read: 'own',
+    },
+  },
+  'app:Order': {
+    actions: {
+      own: { self: 'userId' },
+      manage: 'own',
     },
   },
 };
 
-/** A lifecycle transition on app:Order: pending → paid, guarded by a positive total. */
+/**
+ * A lifecycle transition on app:Order: pending → paid, guarded by a positive total. The `from`
+ * side carries a `permission` that delegates to the `manage` action defined on `app:Order` in the
+ * permission schema — the transition's authz is aware of the permissions object.
+ */
 export const sampleTransitions: Workspace['transitions'] = {
   'app:Order': {
     capturePayment: {
@@ -145,6 +170,7 @@ export const sampleTransitions: Workspace['transitions'] = {
                 { field: 'total', operator: 'greaterThan', value: 0 },
               ],
             },
+            permission: 'manage',
           },
           to: { predicate: { all: [{ field: 'status', operator: 'equals', value: 'paid' }] } },
         },

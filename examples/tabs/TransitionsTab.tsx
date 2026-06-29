@@ -125,7 +125,7 @@ const SideEditor = ({
   );
 };
 
-/** Transition schema editor: resource (`map:model`) → action → edges (from → to), each side a
+/** Transition schema editor: resource (`map:model`) → action → paths (from → to), each side a
  *  predicate (legality, via the rule builder) + optional permission (authz, via the ActionRule
  *  builder); `to` carries a serializable merge. */
 export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
@@ -258,7 +258,7 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
 
       {resource && action && (
         <Panel
-          title={`${resource}.${action} — edges`}
+          title={`${resource}.${action} — paths`}
           actions={
             <Button variant="primary" onClick={() => tb.addPath(resource, action)}>
               + path
@@ -269,10 +269,10 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
             // biome-ignore lint/suspicious/noArrayIndexKey: paths are positional + count-stable
             <div key={i} style={{ display: 'grid', gap: 8, border: `1px dashed ${tokens.borderStrong}`, borderRadius: 8, padding: 10 }}>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Badge tone="accent">edge {i + 1}</Badge>
+                <Badge tone="accent">path {i + 1}</Badge>
                 {pathCount > 1 && (
                   <Button variant="danger" onClick={() => tb.removePath(resource, action, i)}>
-                    remove edge
+                    remove path
                   </Button>
                 )}
               </Row>

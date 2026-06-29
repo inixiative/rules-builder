@@ -88,6 +88,32 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect((committed as { rel: string }).rel).toBe('organization.parent.parent');
   });
 
+  test('changing the relation path resets the action — a stale action would belong to the old target', () => {
+    // organization → Organization; picking action 'manage' is valid there.
+    const n = build({ rel: 'organization', action: 'manage' }) as ActionLeafNode;
+    // appending a hop changes the target's actions; the prior pick must not survive stale.
+    n.rel?.addSegment('parent');
+    expect(committed).toEqual({ rel: 'organization.parent', action: '' });
+  });
+
+  test('editing a segment resets the action', () => {
+    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    n.rel?.segments[0].set('organization');
+    expect(committed).toEqual({ rel: 'organization', action: '' });
+  });
+
+  test('removing the last hop resets the action', () => {
+    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    n.rel?.removeLast?.();
+    expect(committed).toEqual({ rel: 'organization', action: '' });
+  });
+
+  test('picking the action keeps the relation path', () => {
+    const n = build({ rel: 'organization', action: '' }) as ActionLeafNode;
+    n.rel?.action.set('manage');
+    expect(committed).toEqual({ rel: 'organization', action: 'manage' });
+  });
+
   test('rule embeds a condition builder (a group node)', () => {
     const n = build({ rule: { all: [{ field: 'role', operator: 'equals', value: 'admin' }] } }) as ActionLeafNode;
     expect(n.kind.value).toBe('rule');
