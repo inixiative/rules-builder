@@ -23,10 +23,8 @@ const Link = ({ href, children }: { href: string; children: React.ReactNode }) =
 );
 
 const RELATED: { name: string; what: string; href: string }[] = [
-  { name: '@inixiative/rules-builder', what: 'this headless builder — hook, descriptor tree, renderers', href: 'https://github.com/inixiative/rules-builder' },
-  { name: 'npm: rules-builder', what: 'install the package', href: 'https://www.npmjs.com/package/@inixiative/rules-builder' },
+  { name: '@inixiative/rules-builder', what: 'this headless builder — hooks, descriptor tree, renderers', href: 'https://github.com/inixiative/rules-builder' },
   { name: '@inixiative/json-rules', what: 'the engine — Condition, lenses, check / toSql / toPrisma', href: 'https://github.com/inixiative/json-rules' },
-  { name: '@inixiative/conditional-form', what: 'render forms driven by rules', href: 'https://github.com/inixiative/conditional-form' },
   { name: 'inixiative.com', what: 'the platform + shared vocabulary', href: 'https://www.inixiative.com' },
 ];
 
