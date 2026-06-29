@@ -16,6 +16,19 @@ const Mono = ({ children }: { children: React.ReactNode }) => (
     {children}
   </code>
 );
+const Link = ({ href, children }: { href: string; children: React.ReactNode }) => (
+  <a href={href} target="_blank" rel="noreferrer" style={{ color: tokens.accent, textDecoration: 'none' }}>
+    {children}
+  </a>
+);
+
+const RELATED: { name: string; what: string; href: string }[] = [
+  { name: '@inixiative/rules-builder', what: 'this headless builder — hook, descriptor tree, renderers', href: 'https://github.com/inixiative/rules-builder' },
+  { name: 'npm: rules-builder', what: 'install the package', href: 'https://www.npmjs.com/package/@inixiative/rules-builder' },
+  { name: '@inixiative/json-rules', what: 'the engine — Condition, lenses, check / toSql / toPrisma', href: 'https://github.com/inixiative/json-rules' },
+  { name: '@inixiative/conditional-form', what: 'render forms driven by rules', href: 'https://github.com/inixiative/conditional-form' },
+  { name: 'inixiative.com', what: 'the platform + shared vocabulary', href: 'https://www.inixiative.com' },
+];
 
 const HOOK = `import { useRuleBuilder } from '@inixiative/rules-builder';
 
@@ -110,18 +123,16 @@ export const DocsTab = () => (
       <Code>{SAVE}</Code>
     </Panel>
 
-    <Panel title="More">
-      <P>
-        Full API + architecture in the{' '}
-        <a href="https://github.com/inixiative/rules-builder" style={{ color: tokens.accent }}>
-          README
-        </a>
-        . Engine docs:{' '}
-        <a href="https://github.com/inixiative/json-rules" style={{ color: tokens.accent }}>
-          @inixiative/json-rules
-        </a>
-        .
-      </P>
+    <Panel title="Related">
+      <P>Full API + architecture in the rules-builder README; the engine and the rest of the ecosystem:</P>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {RELATED.map((r) => (
+          <Row key={r.href}>
+            <Link href={r.href}>{r.name}</Link>
+            <span style={{ fontSize: 12, color: tokens.textMuted }}>— {r.what}</span>
+          </Row>
+        ))}
+      </div>
     </Panel>
   </div>
 );
