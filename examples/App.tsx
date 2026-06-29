@@ -4,30 +4,30 @@ import { defaultWorkspace } from './samples';
 import { BridgesTab } from './tabs/BridgesTab';
 import { BuilderTab } from './tabs/BuilderTab';
 import { FieldmapsTab } from './tabs/FieldmapsTab';
-import { LensesTab } from './tabs/LensesTab';
+import { LensEditor } from './tabs/LensEditor';
+import { NarrowingEditor } from './tabs/NarrowingEditor';
 import { PathPickerTab } from './tabs/PathPickerTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { tokens } from './ui';
-import type { SavedLens, Workspace } from './workspace';
+import type { SavedNarrowing, Workspace } from './workspace';
 
-type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'rules' | 'valuepicker' | 'settings';
+type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'narrowings' | 'rules' | 'valuepicker' | 'settings';
 type Selection = { section: Section; item?: string };
 type InvItem = { id: string; label: string; children?: InvItem[] };
 
 const bridgeLabel = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
 
-/** A lens's sources live in its narrowing (root + mapDefaults + relations) — collect them for the tree. */
-const collectLensSources = (lens: SavedLens): InvItem[] => {
+/** Sources live in a narrowing (root + mapDefaults + relations) — collect them for the tree. */
+const collectSources = (n: SavedNarrowing['narrowing']): InvItem[] => {
   const out: InvItem[] = [];
-  const fromModel = (m: ModelNarrowing | undefined, modelLabel: string) => {
+  const fromModel = (m: ModelNarrowing | undefined, label: string) => {
     if (!m) return;
-    for (const f of Object.keys(m.sources ?? {})) out.push({ id: `${modelLabel}.${f}`, label: `${modelLabel}.${f}` });
+    for (const f of Object.keys(m.sources ?? {})) out.push({ id: `${label}.${f}`, label: `${label}.${f}` });
     for (const [rel, sub] of Object.entries(m.relations ?? {})) fromModel(sub, rel);
   };
-  const n = lens.narrowing;
-  if (n?.root) fromModel(n.root, lens.model);
-  for (const md of Object.values(n?.mapDefaults ?? {})) {
+  if (n.root) fromModel(n.root, 'root');
+  for (const md of Object.values(n.mapDefaults ?? {})) {
     for (const [model, mm] of Object.entries(md.models ?? {})) fromModel(mm as ModelNarrowing, model);
   }
   return out;
@@ -36,10 +36,15 @@ const collectLensSources = (lens: SavedLens): InvItem[] => {
 const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem[] }[] => [
   { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
   { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
+  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.lenses).map((n) => ({ id: n, label: n })) },
   {
-    key: 'lenses',
-    label: 'Lenses',
-    items: Object.entries(ws.narrowings).map(([n, lens]) => ({ id: n, label: n, children: collectLensSources(lens) })),
+    key: 'narrowings',
+    label: 'Narrowings',
+    items: Object.entries(ws.narrowings).map(([n, sn]) => ({
+      id: n,
+      label: `${n} ← ${sn.parent.name}`,
+      children: collectSources(sn.narrowing),
+    })),
   },
   { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
 ];
@@ -62,6 +67,9 @@ export const App = () => {
     } else if (section === 'bridges') {
       patch({ bridges: ws.bridges.filter((_, i) => String(i) !== id) });
     } else if (section === 'lenses') {
+      const { [id]: _, ...rest } = ws.lenses;
+      patch({ lenses: rest });
+    } else if (section === 'narrowings') {
       const { [id]: _, ...rest } = ws.narrowings;
       patch({ narrowings: rest });
     } else if (section === 'rules') {
@@ -78,7 +86,9 @@ export const App = () => {
       case 'bridges':
         return <BridgesTab ws={ws} patch={patch} />;
       case 'lenses':
-        return <LensesTab ws={ws} patch={patch} selected={sel.item} />;
+        return <LensEditor ws={ws} patch={patch} selected={sel.item} />;
+      case 'narrowings':
+        return <NarrowingEditor ws={ws} patch={patch} selected={sel.item} />;
       case 'rules':
         return <BuilderTab ws={ws} patch={patch} />;
       case 'valuepicker':
@@ -136,7 +146,7 @@ export const App = () => {
       >
         <strong style={{ fontSize: 16 }}>Rules Builder</strong>
         <span style={{ fontSize: 12, color: tokens.textMuted }}>
-          fieldMaps → bridges → lenses (+ sources) → builder → value picker
+          fieldMaps → bridges → lenses → narrowings (+ sources) → builder → value picker
         </span>
       </header>
 
@@ -182,7 +192,7 @@ export const App = () => {
                     <button
                       key={c.id}
                       type="button"
-                      title="source — edit in the lens"
+                      title="source — edit in the narrowing"
                       onClick={() => setSel({ section: s.key, item: it.id })}
                       style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted }}
                     >

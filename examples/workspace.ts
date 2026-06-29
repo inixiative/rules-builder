@@ -1,19 +1,27 @@
-import type { Bridge, Condition, FieldMap, LensNarrowing } from '@inixiative/json-rules';
+import {
+  type Bridge,
+  type Condition,
+  createLens,
+  type FieldMap,
+  type Lens,
+  type LensNarrowing,
+} from '@inixiative/json-rules';
 
-/** A saved lens bundles its anchor + attached bridges with the narrowing so it loads standalone.
- *  Data-backed option sets live in the narrowing (`narrowing.sources`), not as a separate list. */
-export type SavedLens = {
-  mapName: string;
-  model: string;
-  /** Bridges this lens activates — the cross-map edges reachable through it. */
-  bridges?: Bridge[];
-  narrowing?: Omit<LensNarrowing, 'parent'>;
-};
+/** A narrowing's parent — a lens or another narrowing, by name. */
+export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
+
+/** A lens: an anchor (map.model) + attached bridges. The base reference view — no restrictions. */
+export type SavedLens = { mapName: string; model: string; bridges?: Bridge[] };
+
+/** A narrowing: picks a parent (lens or narrowing) + a restriction chain (picks/omits/where/enum/sources/relations).
+ *  Restricts the parent's exposed surface — never widens. Chains. */
+export type SavedNarrowing = { parent: ParentRef; narrowing: Omit<LensNarrowing, 'parent'> };
 
 export type Workspace = {
   maps: Record<string, FieldMap>;
   bridges: Bridge[];
-  narrowings: Record<string, SavedLens>;
+  lenses: Record<string, SavedLens>;
+  narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
   rules: Record<string, Condition>; // saved, named rules
 };
@@ -21,10 +29,32 @@ export type Workspace = {
 export const emptyWorkspace = (): Workspace => ({
   maps: {},
   bridges: [],
+  lenses: {},
   narrowings: {},
   rule: { all: [] },
   rules: {},
 });
+
+/** Resolve a parent ref to a usable Lens | LensNarrowing, recursively through the chain. */
+export const resolveRef = (
+  ws: Workspace,
+  ref: ParentRef,
+  seen: Set<string> = new Set(),
+): Lens | LensNarrowing | null => {
+  const key = `${ref.kind}:${ref.name}`;
+  if (seen.has(key)) return null; // cycle guard
+  const next = new Set(seen).add(key);
+  if (ref.kind === 'lens') {
+    const l = ws.lenses[ref.name];
+    if (!l) return null;
+    return createLens({ maps: ws.maps, bridges: l.bridges ?? [], mapName: l.mapName, model: l.model });
+  }
+  const n = ws.narrowings[ref.name];
+  if (!n) return null;
+  const parent = resolveRef(ws, n.parent, next);
+  if (!parent) return null;
+  return { parent, ...n.narrowing };
+};
 
 export const exportWorkspace = (ws: Workspace): string => JSON.stringify(ws, null, 2);
 
@@ -44,10 +74,13 @@ export const importWorkspace = (json: string): Workspace => {
     if (!Array.isArray(parsed.bridges)) throw new Error('importWorkspace: bridges must be an array');
     ws.bridges = parsed.bridges as Bridge[];
   }
+  if ('lenses' in parsed) {
+    if (!isPlainObject(parsed.lenses)) throw new Error('importWorkspace: lenses must be an object');
+    ws.lenses = parsed.lenses as Record<string, SavedLens>;
+  }
   if ('narrowings' in parsed) {
-    if (!isPlainObject(parsed.narrowings))
-      throw new Error('importWorkspace: narrowings must be an object');
-    ws.narrowings = parsed.narrowings as Record<string, SavedLens>;
+    if (!isPlainObject(parsed.narrowings)) throw new Error('importWorkspace: narrowings must be an object');
+    ws.narrowings = parsed.narrowings as Record<string, SavedNarrowing>;
   }
   if ('rule' in parsed && parsed.rule !== undefined) {
     ws.rule = parsed.rule as Condition;

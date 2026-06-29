@@ -9,10 +9,10 @@ const sampleMap: FieldMap = {
 const sample = (): Workspace => ({
   maps: { app: sampleMap },
   bridges: [],
+  lenses: { 'app-users': { mapName: 'app', model: 'User' } },
   narrowings: {
     vip: {
-      mapName: 'app',
-      model: 'User',
+      parent: { kind: 'lens', name: 'app-users' },
       narrowing: {
         root: { picks: ['tier'], sources: { tier: { all: [{ field: 'active', operator: 'equals', value: true }] } } },
       },
@@ -27,6 +27,7 @@ describe('workspace', () => {
     expect(emptyWorkspace()).toEqual({
       maps: {},
       bridges: [],
+      lenses: {},
       narrowings: {},
       rule: { all: [] },
       rules: {},
@@ -41,6 +42,7 @@ describe('workspace', () => {
   test('import fills defaults for missing keys', () => {
     const ws = importWorkspace(JSON.stringify({ maps: { app: sampleMap } }));
     expect(ws.bridges).toEqual([]);
+    expect(ws.lenses).toEqual({});
     expect(ws.narrowings).toEqual({});
     expect(ws.rules).toEqual({});
     expect(ws.rule).toEqual({ all: [] });

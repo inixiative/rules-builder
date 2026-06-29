@@ -1,42 +1,28 @@
-import { checkRuleAgainstLens, createLens, describeRule } from '@inixiative/json-rules';
+import { checkRuleAgainstLens, describeRule, exposedSurface } from '@inixiative/json-rules';
 import { useMemo, useState } from 'react';
-import { resolve, type RuleBuilderSource } from '../../src/schema/surface';
+import type { RuleBuilderSource } from '../../src/schema/surface';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
 import { sampleRows } from '../samples';
 import { runSources } from '../sourceExec';
 import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
+import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
 
-type SourceChoice = {
-  key: string;
-  label: string;
-  mapName: string;
-  model: string;
-  narrowing?: RuleBuilderSource['narrowing'];
-  bridges?: RuleBuilderSource['bridges'];
-};
+type SourceChoice = { key: string; label: string; ref: ParentRef };
 
 export const BuilderTab = ({ ws, patch }: TabProps) => {
-  const choices = useMemo<SourceChoice[]>(() => {
-    const list: SourceChoice[] = [];
-    for (const [name, lens] of Object.entries(ws.narrowings)) {
-      list.push({
-        key: `lens:${name}`,
-        label: `lens · ${name} (${lens.mapName}.${lens.model})`,
-        mapName: lens.mapName,
-        model: lens.model,
-        narrowing: lens.narrowing,
-        bridges: lens.bridges,
-      });
-    }
-    for (const [mapName, map] of Object.entries(ws.maps)) {
-      for (const model of Object.keys(map.models)) {
-        list.push({ key: `raw:${mapName}.${model}`, label: `raw · ${mapName}.${model}`, mapName, model });
-      }
-    }
-    return list;
-  }, [ws.maps, ws.narrowings]);
+  const choices = useMemo<SourceChoice[]>(
+    () => [
+      ...Object.keys(ws.lenses).map((n) => ({ key: `lens:${n}`, label: `lens · ${n}`, ref: { kind: 'lens' as const, name: n } })),
+      ...Object.keys(ws.narrowings).map((n) => ({
+        key: `narrowing:${n}`,
+        label: `narrowing · ${n}`,
+        ref: { kind: 'narrowing' as const, name: n },
+      })),
+    ],
+    [ws.lenses, ws.narrowings],
+  );
 
   const [selected, setSelected] = useState('');
   const [renderer, setRenderer] = useState<'plain' | 'shadcn'>('shadcn');
@@ -46,21 +32,13 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
   const analysis = useMemo(() => {
     if (!choice) return null;
     try {
-      // Compose source eligibility with this lens's narrowing and run it over the
-      // sample rows → fetched values are passed to resolve (folded in the projection),
-      // so the option sets are narrowed by the selected lens, not the raw column.
-      const narrowing = choice.narrowing ?? {};
-      const bridges = choice.bridges ?? ws.bridges;
-      const base = createLens({ maps: ws.maps, bridges, mapName: choice.mapName, model: choice.model });
-      const sourceValues = runSources({ parent: base, ...narrowing }, sampleRows);
-      const source: RuleBuilderSource = {
-        maps: ws.maps,
-        bridges,
-        mapName: choice.mapName,
-        model: choice.model,
-        narrowing,
-      };
-      const surface = resolve(source, { sourceValues });
+      const resolved = resolveRef(ws, choice.ref);
+      if (!resolved) throw new Error('surface not resolvable');
+      // engine compiles the source queries; app runs them over sample rows → fetched values
+      // fold into the projection so option sets reflect the lens/narrowing, not the raw column.
+      const sourceValues = runSources(resolved, sampleRows);
+      const surface = exposedSurface(resolved, { sourceValues });
+      const source: RuleBuilderSource = { maps: surface.maps, mapName: surface.mapName, model: surface.model };
       return {
         error: null as string | null,
         source,
@@ -71,12 +49,12 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
     } catch (err) {
       return { error: String(err), source: null, sourceValues: [], description: null, check: null };
     }
-  }, [choice, ws.maps, ws.bridges, ws.rule]);
+  }, [choice, ws]);
 
   if (!choice) {
     return (
       <Panel title="Builder">
-        <Empty>Load fieldmaps first (tab 1).</Empty>
+        <Empty>Create a lens or narrowing first — the builder authors against one.</Empty>
       </Panel>
     );
   }
@@ -85,7 +63,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
     <div style={{ display: 'grid', gap: 16 }}>
       <Panel title="Source">
         <Row>
-          <label style={{ fontSize: 13, color: tokens.textMuted }}>Load lens / anchor:</label>
+          <label style={{ fontSize: 13, color: tokens.textMuted }}>Author against:</label>
           <Select
             ariaLabel="source"
             value={choice.key}

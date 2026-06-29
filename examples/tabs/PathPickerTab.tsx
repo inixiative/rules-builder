@@ -1,7 +1,8 @@
-import { createLens } from '@inixiative/json-rules';
+import { createLens, exposedSurface } from '@inixiative/json-rules';
 import { useMemo, useState } from 'react';
 import { lensValuePicker } from '../../src/schema/lensValuePicker';
 import { Badge, Code, Empty, Panel, Row, Select, tokens } from '../ui';
+import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
 
 const sel: React.CSSProperties = {
@@ -11,32 +12,48 @@ const sel: React.CSSProperties = {
   fontSize: 13,
 };
 
+const parseRef = (v: string): ParentRef => {
+  const i = v.indexOf(':');
+  return { kind: v.slice(0, i) as 'lens' | 'narrowing', name: v.slice(i + 1) };
+};
+
 /**
  * The lens value picker (`lensValuePicker`) — the shared atom behind a rule's `field`
- * (LHS) and `path` (RHS reference). Pick a lens → fieldMap → model, then any value
- * reachable through it. The lens's narrowing + attached bridges scope what's offered;
- * a `Json` column is flagged `acceptsSubPath`, so a freeform sub-path input appears.
+ * (LHS) and `path` (RHS reference). Pick a lens/narrowing → fieldMap → model; the chosen
+ * narrowing scopes (reduces) what's offered. A `Json` column is flagged `acceptsSubPath`,
+ * so a freeform sub-path input appears.
  */
 export const PathPickerTab = ({ ws }: TabProps) => {
-  const lensNames = Object.keys(ws.narrowings);
   const firstMap = Object.keys(ws.maps)[0] ?? '';
   const firstModel = firstMap ? (Object.keys(ws.maps[firstMap]?.models ?? {})[0] ?? '') : '';
 
-  const [lensName, setLensName] = useState('');
+  const [sourceKey, setSourceKey] = useState('');
   const [mapName, setMapName] = useState(firstMap);
   const [model, setModel] = useState(firstModel);
   const [path, setPath] = useState('');
   const [sub, setSub] = useState('');
 
-  const lens = lensName ? ws.narrowings[lensName] : undefined;
+  const ref = sourceKey ? parseRef(sourceKey) : null;
 
-  const pickLens = (name: string) => {
-    const l = name ? ws.narrowings[name] : undefined;
-    setLensName(name);
-    setMapName(l?.mapName ?? firstMap);
-    setModel(l?.model ?? firstModel);
+  const pickSource = (key: string) => {
+    setSourceKey(key);
     setPath('');
     setSub('');
+    if (key) {
+      try {
+        const resolved = resolveRef(ws, parseRef(key));
+        if (resolved) {
+          const s = exposedSurface(resolved);
+          setMapName(s.mapName);
+          setModel(s.model);
+          return;
+        }
+      } catch {
+        /* fall through to raw */
+      }
+    }
+    setMapName(firstMap);
+    setModel(firstModel);
   };
   const pickMap = (m: string) => {
     setMapName(m);
@@ -47,11 +64,16 @@ export const PathPickerTab = ({ ws }: TabProps) => {
 
   const options = useMemo(() => {
     if (!mapName || !model || !ws.maps[mapName]?.models[model]) return [];
-    const bridges = lens?.bridges ?? ws.bridges;
-    const base = createLens({ maps: ws.maps, bridges, mapName: lens?.mapName ?? mapName, model: lens?.model ?? model });
-    const narrowed = lens?.narrowing ? { parent: base, ...lens.narrowing } : base;
-    return lensValuePicker(narrowed, { mapName, model, maxDepth: 1 });
-  }, [ws.maps, ws.bridges, lens, mapName, model]);
+    try {
+      const surface = ref
+        ? resolveRef(ws, ref)
+        : createLens({ maps: ws.maps, bridges: ws.bridges, mapName, model });
+      if (!surface) return [];
+      return lensValuePicker(surface, { mapName, model, maxDepth: 1 });
+    } catch {
+      return [];
+    }
+  }, [ws, ref, mapName, model]);
 
   const selected = options.find((o) => o.path === path);
   const composed = selected?.acceptsSubPath && sub ? `${selected.path}.${sub}` : selected?.path;
@@ -65,25 +87,20 @@ export const PathPickerTab = ({ ws }: TabProps) => {
   }
 
   const models = Object.keys(ws.maps[mapName]?.models ?? {});
+  const sourceOptions = [
+    { value: '', label: '(none — raw maps)' },
+    ...Object.keys(ws.lenses).map((n) => ({ value: `lens:${n}`, label: `lens · ${n}` })),
+    ...Object.keys(ws.narrowings).map((n) => ({ value: `narrowing:${n}`, label: `narrowing · ${n}` })),
+  ];
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <Panel title="Lens value picker">
         <Row>
-          <label style={{ fontSize: 13, color: tokens.textMuted }}>Lens:</label>
-          <Select
-            ariaLabel="lens"
-            value={lensName}
-            onChange={pickLens}
-            options={[{ value: '', label: '(none — raw maps)' }, ...lensNames.map((n) => ({ value: n, label: n }))]}
-          />
+          <label style={{ fontSize: 13, color: tokens.textMuted }}>Surface:</label>
+          <Select ariaLabel="surface" value={sourceKey} onChange={pickSource} options={sourceOptions} />
           <label style={{ fontSize: 13, color: tokens.textMuted }}>FieldMap:</label>
-          <Select
-            ariaLabel="fieldmap"
-            value={mapName}
-            onChange={pickMap}
-            options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))}
-          />
+          <Select ariaLabel="fieldmap" value={mapName} onChange={pickMap} options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))} />
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Model:</label>
           <Select
             ariaLabel="model"

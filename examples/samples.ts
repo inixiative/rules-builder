@@ -1,5 +1,5 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
-import type { SavedLens, Workspace } from './workspace';
+import type { SavedLens, SavedNarrowing, Workspace } from './workspace';
 import { emptyWorkspace } from './workspace';
 
 /** Two sources so bridges connect across maps and sources have somewhere to land. */
@@ -90,13 +90,15 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
   ],
 };
 
-/** A cross-map lens: anchored at app.User, attaches the bridge, narrows User (root)
- *  and the bridged crm.Account (mapDefaults) — so it touches both fieldMaps. */
-export const sampleNarrowings: Record<string, SavedLens> = {
+/** A cross-map lens: anchored at app.User with the bridge attached, so app + crm are both reachable. */
+export const sampleLenses: Record<string, SavedLens> = {
+  'app-users': { mapName: 'app', model: 'User', bridges: sampleBridges },
+};
+
+/** Two narrowings: one off the lens, one chained off that narrowing — each only restricts further. */
+export const sampleNarrowings: Record<string, SavedNarrowing> = {
   'vip-active': {
-    mapName: 'app',
-    model: 'User',
-    bridges: sampleBridges,
+    parent: { kind: 'lens', name: 'app-users' },
     narrowing: {
       root: {
         picks: ['id', 'email', 'tier', 'role', 'active', 'metadata'],
@@ -111,11 +113,16 @@ export const sampleNarrowings: Record<string, SavedLens> = {
       },
     },
   },
+  'admins-only': {
+    parent: { kind: 'narrowing', name: 'vip-active' },
+    narrowing: { root: { enumPicks: { role: ['admin'] } } },
+  },
 };
 
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
   bridges: sampleBridges,
+  lenses: sampleLenses,
   narrowings: sampleNarrowings,
 });
