@@ -26,12 +26,17 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
   const [addMap, setAddMap] = useState('');
   const [addModel, setAddModel] = useState('');
 
+  // The sidebar drives the draft: a lens item loads it; the section header (no item) starts a fresh lens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the selection
   useEffect(() => {
     if (selected && ws.narrowings[selected]) {
       setDraft(ws.narrowings[selected]);
       setName(selected);
+    } else if (!selected) {
+      setDraft({ ...firstAnchor(ws.maps), bridges: ws.bridges, narrowing: {} });
+      setName('');
     }
-  }, [selected, ws.narrowings]);
+  }, [selected]);
 
   const sourceValues = useMemo(() => {
     if (!draft.mapName || !draft.model || !ws.maps[draft.mapName]?.models[draft.model]) return [];
