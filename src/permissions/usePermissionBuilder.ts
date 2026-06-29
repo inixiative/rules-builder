@@ -1,91 +1,98 @@
-import type { SourceValues } from '@inixiative/json-rules';
-import { useMemo } from 'react';
-import { describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
+import type { Bridge, FieldMap } from '@inixiative/json-rules';
+import { describeModelFields, resolve } from '../schema/surface';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
 import { actionNamesByModel, removeSchemaAction, setSchemaAction } from './schema';
 import type { ActionRule, RebacSchema } from './types';
 
 export type UsePermissionBuilderOptions = {
-  /** The whole permission schema (model → actions). Controlled — edits flow out via onChange. */
+  /** The whole rebac schema (model → { actions }). Controlled — edits flow out via onChange. */
   value: RebacSchema;
   onChange: (schema: RebacSchema) => void;
-  /** The lens/narrowing surface for the model currently being edited (its fields/relations). */
-  source: RuleBuilderSource;
-  sourceValues?: SourceValues[];
+  /** The fieldMaps — each model's RAW record surface (full fields + relations) is built from these. */
+  maps: Record<string, FieldMap>;
+  /** Bridges, so `rel` walks can reach cross-map relations. */
+  bridges?: Bridge[];
   maxDepth?: number;
 };
 
 /**
- * Schema-level permission builder. Holds the full rebac schema (in/out via `value`/`onChange`
- * + `setSchema`), edits the action rules of the model `source` anchors, and hands each action's
- * recursive `ActionRule` editor as a descriptor (`actionRoot`) — the model-aware atom underneath.
+ * Schema-level permission builder: owns the entire rebac schema (in/out via value/onChange +
+ * setSchema) across every model. A permission gates the RAW record, so each model's editing
+ * surface is built straight from the fieldMaps (full fields/relations, no narrowing). Hands each
+ * model.action's recursive ActionRule editor as a descriptor (`actionRoot`).
  */
 export type UsePermissionBuilder = {
   value: RebacSchema;
   setSchema: (schema: RebacSchema) => void;
-  /** The model being edited (the source's anchor). */
-  model: string;
-  /** Action names on this model. */
-  actions: string[];
+  /** Models that have a permission entry. */
+  models: string[];
   /** Every model's action names — `delegate` / `rel` awareness. */
   actionsByModel: Record<string, string[]>;
-  addAction: (name: string) => void;
-  removeAction: (name: string) => void;
-  setAction: (name: string, rule: ActionRule) => void;
-  /** Drop the whole model entry from the schema. */
-  removeModel: () => void;
-  /** Build the descriptor tree for one action's rule (null if the action is unknown). */
-  actionRoot: (action: string) => ActionRuleNode | null;
+  actionsOf: (model: string) => string[];
+  addModel: (model: string) => void;
+  removeModel: (model: string) => void;
+  addAction: (model: string, action: string) => void;
+  removeAction: (model: string, action: string) => void;
+  setAction: (model: string, action: string, rule: ActionRule) => void;
+  /** The descriptor tree for one model.action's rule (null if unknown / model not in the maps). */
+  actionRoot: (model: string, action: string) => ActionRuleNode | null;
 };
 
 export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePermissionBuilder => {
-  const lens = useMemo(
-    () => resolve(opts.source, { sourceValues: opts.sourceValues }),
-    [opts.source, opts.sourceValues],
-  );
-  const fields = useMemo(() => describeModelFields(lens, lens.mapName, lens.model), [lens]);
-
-  const model = lens.model;
+  const { maps, bridges, maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
-  const actions = Object.keys(schema[model]?.actions ?? {});
   const actionsByModel = actionNamesByModel(schema);
 
-  const setAction = (name: string, rule: ActionRule) => setSchema(setSchemaAction(schema, model, name, rule));
-  const addAction = (name: string) => {
-    if (!name || schema[model]?.actions[name] !== undefined) return;
-    setAction(name, defaultActionRule());
+  const actionsOf = (model: string) => Object.keys(schema[model]?.actions ?? {});
+  const mapNameOf = (model: string) => Object.keys(maps).find((mn) => maps[mn]?.models[model]);
+
+  const setAction = (model: string, action: string, rule: ActionRule) =>
+    setSchema(setSchemaAction(schema, model, action, rule));
+  const addAction = (model: string, action: string) => {
+    if (!action || schema[model]?.actions[action] !== undefined) return;
+    setAction(model, action, defaultActionRule());
   };
-  const removeAction = (name: string) => setSchema(removeSchemaAction(schema, model, name));
-  const removeModel = () => {
+  const removeAction = (model: string, action: string) => setSchema(removeSchemaAction(schema, model, action));
+
+  const addModel = (model: string) => {
+    if (schema[model] !== undefined) return;
+    setSchema({ ...schema, [model]: { actions: {} } });
+  };
+  const removeModel = (model: string) => {
     const { [model]: _drop, ...rest } = schema;
     setSchema(rest);
   };
 
-  const actionRoot = (action: string): ActionRuleNode | null => {
+  const actionRoot = (model: string, action: string): ActionRuleNode | null => {
     const rule = schema[model]?.actions[action];
     if (rule === undefined) return null;
+    const mapName = mapNameOf(model);
+    if (!mapName) return null;
+    const lens = resolve({ maps, bridges, mapName, model });
+    const fields = describeModelFields(lens, mapName, model);
     return buildActionRoot(rule, {
       lens,
       fields,
-      siblingActions: actions.filter((a) => a !== action),
+      siblingActions: actionsOf(model).filter((a) => a !== action),
       actionsByModel,
-      maxDepth: opts.maxDepth,
-      commit: (next) => setAction(action, next),
+      maxDepth,
+      commit: (next) => setAction(model, action, next),
     });
   };
 
   return {
     value: schema,
     setSchema,
-    model,
-    actions,
+    models: Object.keys(schema),
     actionsByModel,
+    actionsOf,
+    addModel,
+    removeModel,
     addAction,
     removeAction,
     setAction,
-    removeModel,
     actionRoot,
   };
 };

@@ -6,7 +6,7 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type { ActionRule, SavedRule } from '../src';
+import type { RebacSchema, SavedRule } from '../src';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -30,14 +30,6 @@ export type SavedNarrowing = {
 /** A saved rule keeps its source binding by reference + its captured sourced option-sets. */
 export type SavedWsRule = SavedRule<ParentRef>;
 
-/** A permission is authored against the RAW model record (full surface), not a narrowed view —
- *  authz gates records, so it needs every field/relation, not a projection. */
-export type PermissionSource = { mapName: string; model: string };
-
-/** One model's permission entry: the raw model it gates + its named action rules. Keyed by
- *  model in the workspace, mirroring a rebac schema (`model → { actions }`). */
-export type SavedPermission = { source: PermissionSource; actions: Record<string, ActionRule> };
-
 export const DEFAULT_MAX_DEPTH = 4;
 
 export type Workspace = {
@@ -47,7 +39,7 @@ export type Workspace = {
   narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
   rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
-  permissions: Record<string, SavedPermission>; // model → permission entry (the rebac schema)
+  permissions: RebacSchema; // the whole rebac schema: model → { actions: name → ActionRule }
   maxDepth: number; // builder nesting depth — applies to every rule field
 };
 
@@ -139,7 +131,7 @@ export const importWorkspace = (json: string): Workspace => {
     ws.rules = parsed.rules as Record<string, SavedWsRule>;
   }
   if ('permissions' in parsed && isPlainObject(parsed.permissions)) {
-    ws.permissions = parsed.permissions as Record<string, SavedPermission>;
+    ws.permissions = parsed.permissions as RebacSchema;
   }
   if ('maxDepth' in parsed && typeof parsed.maxDepth === 'number') {
     ws.maxDepth = parsed.maxDepth;
