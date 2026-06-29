@@ -1,7 +1,9 @@
 import { type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
 import { useEffect, useState } from 'react';
-import { Badge, EditorHeader, Empty, Panel, Row, tokens } from '../ui';
+import { Badge, EditorHeader, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
+
+const EMPTY_MAP = JSON.stringify({ models: {} }, null, 2);
 
 const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
   <div
@@ -15,9 +17,9 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
   >
     <Row style={{ justifyContent: 'space-between' }}>
       <strong style={{ fontSize: 13 }}>{name}</strong>
-      <Badge>{Object.keys(map.models).length} models</Badge>
+      <Badge>{Object.keys(map.models ?? {}).length} models</Badge>
     </Row>
-    {Object.entries(map.models).map(([modelName, model]) => (
+    {Object.entries(map.models ?? {}).map(([modelName, model]) => (
       <div key={modelName} style={{ display: 'grid', gap: 4 }}>
         <div style={{ fontWeight: 600, fontSize: 12, color: tokens.textMuted }}>{modelName}</div>
         {Object.entries(model.fields).map(([fieldName, e]) => (
@@ -46,111 +48,77 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
   </div>
 );
 
+/** A fieldMap = a name + its JSON. Single form (like Lens/Narrowing): the name field is
+ *  the identity — Save creates a new map or updates/renames the selected one. */
 export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
-  const mapNames = Object.keys(ws.maps);
-  const [editing, setEditing] = useState('');
-  const [name, setName] = useState('');
-  const [draft, setDraft] = useState('');
+  const [name, setName] = useState(selected ?? '');
+  const [draft, setDraft] = useState(selected && ws.maps[selected] ? JSON.stringify(ws.maps[selected], null, 2) : EMPTY_MAP);
   const [error, setError] = useState<string | null>(null);
 
-  const open = (m: string) => {
-    setEditing(m);
-    setName(m);
-    setDraft(ws.maps[m] ? JSON.stringify(ws.maps[m], null, 2) : '');
-    setError(null);
-  };
-  const clear = () => {
-    setEditing('');
-    setName('');
-    setDraft('');
-    setError(null);
-  };
-
-  // The sidebar drives editing: a map item opens it; the section header (no item) clears it.
+  // The sidebar drives it: a map item loads it; the section header (no item) → a fresh map.
   // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the selection
   useEffect(() => {
-    if (selected && ws.maps[selected]) open(selected);
-    else if (!selected) clear();
+    if (selected && ws.maps[selected]) {
+      setName(selected);
+      setDraft(JSON.stringify(ws.maps[selected], null, 2));
+    } else if (!selected) {
+      setName('');
+      setDraft(EMPTY_MAP);
+    }
+    setError(null);
   }, [selected]);
 
-  const isEditing = !!editing && !!ws.maps[editing];
-
   const save = () => {
+    const newName = name.trim();
+    if (!newName) return;
     try {
       const parsed = JSON.parse(draft) as FieldMap;
-      const newName = name.trim() || editing;
       const maps = { ...ws.maps };
-      if (newName !== editing) delete maps[editing];
+      if (selected && selected !== newName) delete maps[selected]; // rename
       maps[newName] = parsed;
       validateFieldMapSet({ maps });
       patch({ maps });
-      setEditing(newName);
       setError(null);
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const addMap = () => {
-    const n = name.trim();
-    if (!n || ws.maps[n]) return;
-    const empty: FieldMap = { models: {} };
-    patch({ maps: { ...ws.maps, [n]: empty } });
-    open(n);
-    setDraft(JSON.stringify(empty, null, 2));
-  };
-
-  if (isEditing) {
-    return (
-      <div style={{ display: 'grid', gap: 16 }}>
-        <EditorHeader
-          title="Edit fieldMap"
-          name={name}
-          onName={setName}
-          namePlaceholder="map name"
-          onSave={save}
-          onClose={clear}
-        />
-        <Panel title="JSON">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            spellCheck={false}
-            style={{
-              width: '100%',
-              minHeight: 220,
-              fontFamily: 'monospace',
-              fontSize: 12,
-              padding: 10,
-              borderRadius: 6,
-              border: `1px solid ${tokens.borderStrong}`,
-              resize: 'vertical',
-            }}
-          />
-          {error && <Badge tone="danger">{error}</Badge>}
-          <MapView name={editing} map={ws.maps[editing]} />
-        </Panel>
-      </div>
-    );
+  let preview: FieldMap | null = null;
+  try {
+    preview = JSON.parse(draft) as FieldMap;
+  } catch {
+    preview = null;
   }
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <EditorHeader
-        title="New fieldMap"
+        title="FieldMap"
         name={name}
         onName={setName}
-        namePlaceholder="new map name"
-        saveLabel="Add fieldMap"
-        saveDisabled={!name.trim() || !!ws.maps[name.trim()]}
-        onSave={addMap}
+        namePlaceholder="map name (e.g. app)"
+        saveDisabled={!name.trim()}
+        onSave={save}
       />
-      <Panel title="FieldMaps">
-        {mapNames.length === 0 ? (
-          <Empty>No fieldMaps yet. Add one above, or import JSON from Settings.</Empty>
-        ) : (
-          <Empty>Pick a fieldMap from the inventory on the left to edit it, or add a new one above.</Empty>
-        )}
+      <Panel title="JSON">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          spellCheck={false}
+          style={{
+            width: '100%',
+            minHeight: 220,
+            fontFamily: 'monospace',
+            fontSize: 12,
+            padding: 10,
+            borderRadius: 6,
+            border: `1px solid ${tokens.borderStrong}`,
+            resize: 'vertical',
+          }}
+        />
+        {error && <Badge tone="danger">{error}</Badge>}
+        {preview && <MapView name={name || '(unnamed)'} map={preview} />}
       </Panel>
     </div>
   );
