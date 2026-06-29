@@ -52,8 +52,7 @@ const Picker = ({
   </select>
 );
 
-const ValueField = ({ value }: { value: ValueControl }) => {
-  if (value.shape === 'none') return null;
+const LiteralValue = ({ value }: { value: ValueControl }) => {
   if (value.options) {
     const multi = value.shape === 'array' || value.shape === 'dayList';
     if (multi) {
@@ -118,6 +117,34 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)
       }
     />
+  );
+};
+
+const ValueField = ({ value }: { value: ValueControl }) => {
+  if (value.shape === 'none') return null;
+  return (
+    <>
+      <Picker
+        ariaLabel="value mode"
+        value={value.mode}
+        options={[
+          { value: 'value', label: '= value' },
+          { value: 'path', label: '→ field' },
+        ]}
+        onChange={(m) => value.setMode(m as 'value' | 'path')}
+      />
+      {value.mode === 'path' ? (
+        <input
+          aria-label="path"
+          placeholder="field.path"
+          style={sel}
+          value={value.path?.value ?? ''}
+          onChange={(e) => value.path?.set(e.target.value)}
+        />
+      ) : (
+        <LiteralValue value={value} />
+      )}
+    </>
   );
 };
 

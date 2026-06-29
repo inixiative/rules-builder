@@ -43,6 +43,11 @@ export type ValueControl = {
   /** False when the value falls outside the field's allowed (enum/sourced) set. */
   valid: boolean;
   set: (value: unknown) => void;
+  /** 'value' = a literal; 'path' = compare against another field's value by dotted path. */
+  mode: 'value' | 'path';
+  setMode: (mode: 'value' | 'path') => void;
+  /** Present in 'path' mode — the RHS field-reference path (e.g. `user.email`). */
+  path?: { value?: string; set: (p: string) => void };
 };
 
 export type LeafNode = {
@@ -166,6 +171,7 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
     const vals = Array.isArray(v) ? v : [v];
     return vals.every((x) => x == null || typeof x !== 'string' || allowed.includes(x));
   })();
+  const valueMode: 'value' | 'path' = rec.path !== undefined ? 'path' : 'value';
 
   return {
     kind: 'leaf',
@@ -216,6 +222,23 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
       options: valueOptions,
       valid: valueValid,
       set: (value) => ctx.commit(setNode(ctx.root, path, { ...rec, value } as Condition)),
+      mode: valueMode,
+      setMode: (m) => {
+        if (m === valueMode) return;
+        const { value: _v, path: _p, ...rest } = rec;
+        const next = m === 'path' ? { ...rest, path: (rec.path as string) ?? '' } : { ...rest, value: rec.value ?? '' };
+        ctx.commit(setNode(ctx.root, path, next as Condition));
+      },
+      path:
+        valueMode === 'path'
+          ? {
+              value: rec.path as string | undefined,
+              set: (p) => {
+                const { value: _v, ...rest } = rec;
+                ctx.commit(setNode(ctx.root, path, { ...rest, path: p } as Condition));
+              },
+            }
+          : undefined,
     },
     valid: checkRuleAgainstLens(node, scope.lens).ok,
     remove: () => ctx.commit(removeNode(ctx.root, path)),

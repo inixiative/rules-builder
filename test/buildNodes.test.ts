@@ -69,6 +69,32 @@ describe('buildRoot — descriptor tree', () => {
     expect(committed).toEqual({ all: [{ field: 'tier', operator: 'equals', value: 'silver', _id: 'a' }] });
   });
 
+  test('value.setMode switches a literal value to a path reference (value dropped)', () => {
+    const leaf = build(cond()).children[0] as LeafNode;
+    expect(leaf.value.mode).toBe('value');
+    expect(leaf.value.path).toBeUndefined();
+    leaf.value.setMode('path');
+    const child = (committed as { all: Condition[] }).all[0] as Record<string, unknown>;
+    expect(child.path).toBe('');
+    expect('value' in child).toBe(false);
+    expect(child.operator).toBe('equals'); // operator preserved
+  });
+
+  test('a path-mode leaf exposes path.value + path.set; setMode back restores a literal value', () => {
+    const ref: Condition = { all: [{ field: 'tier', operator: 'equals', path: 'age', _id: 'a' }] };
+    const leaf = build(ref).children[0] as LeafNode;
+    expect(leaf.value.mode).toBe('path');
+    expect(leaf.value.path?.value).toBe('age');
+    leaf.value.path?.set('metadata');
+    expect(((committed as { all: Condition[] }).all[0] as Record<string, unknown>).path).toBe('metadata');
+
+    const leaf2 = build(ref).children[0] as LeafNode;
+    leaf2.value.setMode('value');
+    const child = (committed as { all: Condition[] }).all[0] as Record<string, unknown>;
+    expect('path' in child).toBe(false);
+    expect('value' in child).toBe(true);
+  });
+
   test('field.set rebuilds the leaf for the new field', () => {
     const leaf = build(cond()).children[0] as LeafNode;
     leaf.field.set('age');

@@ -17,8 +17,7 @@ import { Badge, Button, Input, MultiSelect, Select } from './shadcn';
  * @template/ui). Copy this, point the imports at your own `@/components/ui`, done.
  */
 
-const ValueField = ({ value }: { value: ValueControl }) => {
-  if (value.shape === 'none') return null;
+const LiteralValue = ({ value }: { value: ValueControl }) => {
   if (value.options) {
     if (value.shape === 'array' || value.shape === 'dayList') {
       const current = Array.isArray(value.current) ? (value.current as string[]) : [];
@@ -68,6 +67,33 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)
       }
     />
+  );
+};
+
+const ValueField = ({ value }: { value: ValueControl }) => {
+  if (value.shape === 'none') return null;
+  return (
+    <>
+      <Select
+        aria-label="value mode"
+        options={[
+          { value: 'value', label: '= value' },
+          { value: 'path', label: '→ field' },
+        ]}
+        value={value.mode}
+        onChange={(m) => value.setMode(m as 'value' | 'path')}
+      />
+      {value.mode === 'path' ? (
+        <Input
+          aria-label="path"
+          placeholder="field.path"
+          value={value.path?.value ?? ''}
+          onChange={(e) => value.path?.set(e.target.value)}
+        />
+      ) : (
+        <LiteralValue value={value} />
+      )}
+    </>
   );
 };
 
