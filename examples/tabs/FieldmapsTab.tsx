@@ -1,6 +1,6 @@
 import { type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';
+import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
 
 const box: React.CSSProperties = {
@@ -47,29 +47,43 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
 
 export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const mapNames = Object.keys(ws.maps);
-  const [editing, setEditing] = useState<string>(selected ?? mapNames[0] ?? '');
+  const [editing, setEditing] = useState('');
+  const [name, setName] = useState('');
   const [draft, setDraft] = useState('');
-  const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const open = (name: string) => {
-    setEditing(name);
-    setDraft(ws.maps[name] ? JSON.stringify(ws.maps[name], null, 2) : '');
+  const open = (m: string) => {
+    setEditing(m);
+    setName(m);
+    setDraft(ws.maps[m] ? JSON.stringify(ws.maps[m], null, 2) : '');
+    setError(null);
+  };
+  const clear = () => {
+    setEditing('');
+    setName('');
+    setDraft('');
     setError(null);
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: open the map the sidebar selected
+  // The sidebar drives editing: a map item opens it; the section header (no item) clears it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the selection
   useEffect(() => {
     if (selected && ws.maps[selected]) open(selected);
+    else if (!selected) clear();
   }, [selected]);
 
+  const isEditing = !!editing && !!ws.maps[editing];
+
   const save = () => {
-    if (!editing) return;
     try {
       const parsed = JSON.parse(draft) as FieldMap;
-      const maps = { ...ws.maps, [editing]: parsed };
+      const newName = name.trim() || editing;
+      const maps = { ...ws.maps };
+      if (newName !== editing) delete maps[editing];
+      maps[newName] = parsed;
       validateFieldMapSet({ maps });
       patch({ maps });
+      setEditing(newName);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -77,40 +91,34 @@ export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: st
   };
 
   const addMap = () => {
-    const name = newName.trim();
-    if (!name || ws.maps[name]) return;
+    const n = name.trim();
+    if (!n || ws.maps[n]) return;
     const empty: FieldMap = { models: {} };
-    patch({ maps: { ...ws.maps, [name]: empty } });
-    setNewName('');
-    open(name);
+    patch({ maps: { ...ws.maps, [n]: empty } });
+    open(n);
     setDraft(JSON.stringify(empty, null, 2));
   };
 
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Panel
-        title="FieldMaps"
-        actions={
+  if (isEditing) {
+    return (
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Panel
+          title="Edit fieldMap"
+          actions={
+            <Row>
+              <Button variant="ghost" onClick={clear}>
+                Close
+              </Button>
+              <Button variant="primary" onClick={save}>
+                Save
+              </Button>
+            </Row>
+          }
+        >
           <Row>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="new map name" style={box} />
-            <Button variant="primary" disabled={!newName.trim() || !!ws.maps[newName.trim()]} onClick={addMap}>
-              Add fieldMap
-            </Button>
+            <label style={{ fontSize: 13, color: tokens.textMuted }}>name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="map name" style={{ ...box, flex: 1 }} />
           </Row>
-        }
-      >
-        {mapNames.length === 0 ? (
-          <Empty>No fieldMaps. Add one above, or import JSON from Settings.</Empty>
-        ) : (
-          <Row>
-            <span style={{ fontSize: 13, color: tokens.textMuted }}>Edit:</span>
-            <Select ariaLabel="edit map" value={editing} onChange={open} options={mapNames.map((n) => ({ value: n, label: n }))} />
-          </Row>
-        )}
-      </Panel>
-
-      {editing && ws.maps[editing] && (
-        <Panel title={`Edit ${editing}`} actions={<Button variant="primary" onClick={save}>Save</Button>}>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -129,7 +137,36 @@ export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: st
           {error && <Badge tone="danger">{error}</Badge>}
           <MapView name={editing} map={ws.maps[editing]} />
         </Panel>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <Panel
+        title="FieldMaps"
+        actions={
+          <Row>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="new map name" style={box} />
+            <Button variant="primary" disabled={!name.trim() || !!ws.maps[name.trim()]} onClick={addMap}>
+              Add fieldMap
+            </Button>
+          </Row>
+        }
+      >
+        {mapNames.length === 0 ? (
+          <Empty>No fieldMaps. Add one above, or import JSON from Settings.</Empty>
+        ) : (
+          <Row>
+            <span style={{ fontSize: 13, color: tokens.textMuted }}>Open:</span>
+            {mapNames.map((m) => (
+              <Button key={m} variant="ghost" onClick={() => open(m)}>
+                {m}
+              </Button>
+            ))}
+          </Row>
+        )}
+      </Panel>
     </div>
   );
 };
