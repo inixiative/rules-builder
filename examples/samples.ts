@@ -132,6 +132,27 @@ export const samplePermissions: Workspace['permissions'] = {
   },
 };
 
+/** A lifecycle transition on app:Order: pending → paid, guarded by a positive total. */
+export const sampleTransitions: Workspace['transitions'] = {
+  'app:Order': {
+    capturePayment: {
+      paths: [
+        {
+          from: {
+            predicate: {
+              all: [
+                { field: 'status', operator: 'equals', value: 'pending' },
+                { field: 'total', operator: 'greaterThan', value: 0 },
+              ],
+            },
+          },
+          to: { predicate: { all: [{ field: 'status', operator: 'equals', value: 'paid' }] } },
+        },
+      ],
+    },
+  },
+};
+
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
@@ -139,4 +160,5 @@ export const defaultWorkspace = (): Workspace => ({
   lenses: sampleLenses,
   narrowings: sampleNarrowings,
   permissions: samplePermissions,
+  transitions: sampleTransitions,
 });

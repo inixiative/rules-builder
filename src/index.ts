@@ -80,3 +80,16 @@ export {
   useActionRuleBuilder,
   usePermissionBuilder,
 } from './permissions';
+
+export type {
+  Action,
+  MergeStrategy,
+  Side,
+  SideKey,
+  ToSide,
+  Transition,
+  TransitionMap,
+  UseTransitionBuilder,
+  UseTransitionBuilderOptions,
+} from './transitions';
+export { emptyAction, useTransitionBuilder } from './transitions';

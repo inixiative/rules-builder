@@ -1,4 +1,3 @@
-import type { ModelNarrowing } from '@inixiative/json-rules';
 import { useState } from 'react';
 import { defaultWorkspace } from './samples';
 import { BridgesTab } from './tabs/BridgesTab';
@@ -10,8 +9,9 @@ import { NarrowingEditor } from './tabs/NarrowingEditor';
 import { PathPickerTab } from './tabs/PathPickerTab';
 import { PermissionsTab } from './tabs/PermissionsTab';
 import { SettingsTab } from './tabs/SettingsTab';
+import { TransitionsTab } from './tabs/TransitionsTab';
 import { tokens } from './ui';
-import type { SavedNarrowing, Workspace } from './workspace';
+import type { Workspace } from './workspace';
 
 type Section =
   | 'fieldmaps'
@@ -20,30 +20,16 @@ type Section =
   | 'narrowings'
   | 'rules'
   | 'permissions'
+  | 'transitions'
   | 'valuepicker'
   | 'docs'
   | 'settings';
 type Selection = { section: Section; item?: string };
-type InvItem = { id: string; label: string; children?: InvItem[] };
+type InvItem = { id: string; label: string };
 type SectionDef = { key: Section; label: string; items: InvItem[] };
 
 const bridgeLabel = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
-
-/** Sources live in a narrowing (root + mapDefaults + relations) — collect them for the tree. */
-const collectSources = (n: SavedNarrowing['narrowing']): InvItem[] => {
-  const out: InvItem[] = [];
-  const fromModel = (m: ModelNarrowing | undefined, label: string) => {
-    if (!m) return;
-    for (const f of Object.keys(m.sources ?? {})) out.push({ id: `${label}.${f}`, label: `${label}.${f}` });
-    for (const [rel, sub] of Object.entries(m.relations ?? {})) fromModel(sub, rel);
-  };
-  if (n.root) fromModel(n.root, 'root');
-  for (const md of Object.values(n.mapDefaults ?? {})) {
-    for (const [model, mm] of Object.entries(md.models ?? {})) fromModel(mm as ModelNarrowing, model);
-  }
-  return out;
-};
 
 const inventorySections = (ws: Workspace): SectionDef[] => [
   { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
@@ -52,25 +38,14 @@ const inventorySections = (ws: Workspace): SectionDef[] => [
   {
     key: 'narrowings',
     label: 'Narrowings',
-    items: Object.entries(ws.narrowings).map(([n, sn]) => ({
-      id: n,
-      label: `${n} ← ${sn.parent.name}`,
-      children: collectSources(sn.narrowing),
-    })),
+    items: Object.entries(ws.narrowings).map(([n, sn]) => ({ id: n, label: `${n} ← ${sn.parent.name}` })),
   },
 ];
 
 const builderSections = (ws: Workspace): SectionDef[] => [
   { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
-  {
-    key: 'permissions',
-    label: 'Permissions',
-    items: Object.entries(ws.permissions).map(([model, p]) => ({
-      id: model,
-      label: model,
-      children: Object.keys(p.actions).map((a) => ({ id: `${model}.${a}`, label: a })),
-    })),
-  },
+  { key: 'permissions', label: 'Permissions', items: Object.keys(ws.permissions).map((r) => ({ id: r, label: r })) },
+  { key: 'transitions', label: 'Transitions', items: Object.keys(ws.transitions).map((r) => ({ id: r, label: r })) },
 ];
 
 export const App = () => {
@@ -102,6 +77,9 @@ export const App = () => {
     } else if (section === 'permissions') {
       const { [id]: _, ...rest } = ws.permissions;
       patch({ permissions: rest });
+    } else if (section === 'transitions') {
+      const { [id]: _, ...rest } = ws.transitions;
+      patch({ transitions: rest });
     }
     setSel((s) => (s.section === section && s.item === id ? { section } : s));
   };
@@ -120,6 +98,8 @@ export const App = () => {
         return <BuilderTab ws={ws} patch={patch} selected={sel.item} />;
       case 'permissions':
         return <PermissionsTab ws={ws} patch={patch} selected={sel.item} />;
+      case 'transitions':
+        return <TransitionsTab ws={ws} patch={patch} selected={sel.item} />;
       case 'valuepicker':
         return <PathPickerTab ws={ws} patch={patch} />;
       case 'docs':
@@ -175,33 +155,19 @@ export const App = () => {
         <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
       </button>
       {s.items.map((it) => (
-        <div key={it.id} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-          <div style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12, minWidth: 0 }}>
-            <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
-              {it.label}
-            </button>
-            <button
-              type="button"
-              aria-label={`remove ${it.label}`}
-              title="remove"
-              onClick={() => removeItem(s.key, it.id)}
-              style={{ flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
-            >
-              ✕
-            </button>
-          </div>
-          {it.children?.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => selectItem(s.key, it.id)}
-              style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted, minWidth: 0 }}
-            >
-              <span style={{ minWidth: 0, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                ↳ {c.label}
-              </span>
-            </button>
-          ))}
+        <div key={it.id} style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12, minWidth: 0 }}>
+          <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
+            {it.label}
+          </button>
+          <button
+            type="button"
+            aria-label={`remove ${it.label}`}
+            title="remove"
+            onClick={() => removeItem(s.key, it.id)}
+            style={{ flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+          >
+            ✕
+          </button>
         </div>
       ))}
     </div>

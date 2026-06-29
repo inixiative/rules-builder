@@ -41,6 +41,18 @@ const sample = (): Workspace => ({
   permissions: {
     'app:User': { actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } } },
   },
+  transitions: {
+    'app:User': {
+      activate: {
+        paths: [
+          {
+            from: { predicate: { all: [{ field: 'active', operator: 'equals', value: false }] } },
+            to: { predicate: { all: [{ field: 'active', operator: 'equals', value: true }] } },
+          },
+        ],
+      },
+    },
+  },
   maxDepth: 4,
 });
 
@@ -54,6 +66,7 @@ describe('workspace', () => {
       rule: { all: [] },
       rules: {},
       permissions: {},
+      transitions: {},
       maxDepth: 4,
     });
   });

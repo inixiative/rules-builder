@@ -6,7 +6,7 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type { ResourcePermission, SavedRule } from '../src';
+import type { ResourcePermission, SavedRule, TransitionMap } from '../src';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -40,6 +40,7 @@ export type Workspace = {
   rule: Condition; // the working draft in the builder
   rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
   permissions: Record<string, ResourcePermission>; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
+  transitions: TransitionMap; // resource (`map:model`) → action → Action (from/to edges)
   maxDepth: number; // builder nesting depth — applies to every rule field
 };
 
@@ -51,6 +52,7 @@ export const emptyWorkspace = (): Workspace => ({
   rule: { all: [] },
   rules: {},
   permissions: {},
+  transitions: {},
   maxDepth: DEFAULT_MAX_DEPTH,
 });
 
@@ -132,6 +134,9 @@ export const importWorkspace = (json: string): Workspace => {
   }
   if ('permissions' in parsed && isPlainObject(parsed.permissions)) {
     ws.permissions = parsed.permissions as Record<string, ResourcePermission>;
+  }
+  if ('transitions' in parsed && isPlainObject(parsed.transitions)) {
+    ws.transitions = parsed.transitions as TransitionMap;
   }
   if ('maxDepth' in parsed && typeof parsed.maxDepth === 'number') {
     ws.maxDepth = parsed.maxDepth;
