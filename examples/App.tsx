@@ -153,12 +153,13 @@ export const App = () => {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: 20, maxWidth: 1200, margin: '0 auto' }}>
         <nav
           style={{
-            width: 220,
+            width: 240,
             flexShrink: 0,
             position: 'sticky',
             top: 20,
             display: 'grid',
             gap: 10,
+            overflow: 'hidden',
             background: tokens.bg,
             border: `1px solid ${tokens.border}`,
             borderRadius: tokens.radius,
@@ -167,14 +168,14 @@ export const App = () => {
         >
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: tokens.textMuted }}>INVENTORY</div>
           {sections.map((s) => (
-            <div key={s.key} style={{ display: 'grid', gap: 2 }}>
+            <div key={s.key} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
               <button type="button" style={navItem(sel.section === s.key && !sel.item)} onClick={() => setSel({ section: s.key })}>
                 <span>{s.label}</span>
                 <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
               </button>
               {s.items.map((it) => (
-                <div key={it.id} style={{ display: 'grid', gap: 2 }}>
-                  <div style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12 }}>
+                <div key={it.id} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                  <div style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12, minWidth: 0 }}>
                     <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
                       {it.label}
                     </button>
@@ -183,7 +184,7 @@ export const App = () => {
                       aria-label={`remove ${it.label}`}
                       title="remove"
                       onClick={() => removeItem(s.key, it.id)}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+                      style={{ flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
                     >
                       ✕
                     </button>
@@ -194,9 +195,9 @@ export const App = () => {
                       type="button"
                       title="source — edit in the narrowing"
                       onClick={() => setSel({ section: s.key, item: it.id })}
-                      style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted }}
+                      style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted, minWidth: 0 }}
                     >
-                      <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ minWidth: 0, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         ↳ {c.label}
                       </span>
                     </button>
@@ -205,7 +206,7 @@ export const App = () => {
               ))}
             </div>
           ))}
-          <div style={{ borderTop: `1px solid ${tokens.border}`, paddingTop: 8, display: 'grid', gap: 2 }}>
+          <div style={{ borderTop: `1px solid ${tokens.border}`, paddingTop: 8, display: 'grid', gap: 2, minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: tokens.textMuted }}>TOOLS</div>
             <button type="button" style={navItem(sel.section === 'valuepicker')} onClick={() => setSel({ section: 'valuepicker' })}>
               <span>Value Picker</span>
