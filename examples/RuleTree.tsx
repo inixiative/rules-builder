@@ -132,18 +132,21 @@ const Group = ({ node }: { node: GroupNode }) => {
   return (
     <div
       style={{
-        border: `1px solid ${node.depth ? '#e2e8f0' : '#cbd5e1'}`,
+        border: '1px solid #e2e8f0',
+        borderLeft: `3px solid ${node.depth ? '#94a3b8' : '#3b5bdb'}`,
         borderRadius: 8,
         padding: 12,
         display: 'grid',
         gap: 8,
         marginLeft: node.depth ? 16 : 0,
+        background: node.depth % 2 === 1 ? '#f8fafc' : '#fff',
       }}
     >
       <div style={row}>
         <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer' }} onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? '▸' : '▾'}
         </button>
+        <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '0.08em' }}>CONDITIONS — match</span>
         <Picker
           ariaLabel="match type"
           value={node.operator.value}

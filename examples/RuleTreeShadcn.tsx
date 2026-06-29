@@ -95,11 +95,14 @@ const Leaf = ({ node }: { node: LeafNode }) => (
 const Group = ({ node }: { node: GroupNode }) => {
   const [collapsed, setCollapsed] = useState(false);
   return (
-    <div className={node.depth ? 'ml-4 rounded-lg border border-border bg-muted/30 p-3' : 'rounded-lg border border-border p-3'}>
+    <div
+      className={`rounded-lg border border-border border-l-2 p-3 ${node.depth ? 'ml-4 border-l-muted-foreground/40 bg-muted/30' : 'border-l-primary'}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="icon" aria-label="collapse" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? '▸' : '▾'}
         </Button>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">conditions — match</span>
         <Select
           aria-label="match type"
           options={[
