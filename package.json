@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/rules-builder",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Visual rule builder for @inixiative/json-rules",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -15,9 +15,10 @@
     "build": "tsup",
     "test": "NODE_ENV=development bun test",
     "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit -p tsconfig.examples.json",
     "check": "bun run typecheck",
     "example": "vite",
-    "example:build": "vite build",
+    "example:build": "tsc --noEmit -p tsconfig.examples.json && vite build",
     "prepublishOnly": "bun run check && bun run test && bun run build"
   },
   "keywords": [

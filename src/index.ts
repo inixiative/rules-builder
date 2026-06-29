@@ -36,6 +36,7 @@ export {
 } from './core';
 
 export type {
+  ArrayNode,
   BuilderNode,
   FieldControl,
   GroupNode,

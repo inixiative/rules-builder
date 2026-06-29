@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { runSources } from '../../src';
 import { describeModelFields } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
-import { Badge, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
+import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { narrowingAncestors, type ParentRef, resolveRef, type SavedNarrowing } from '../workspace';
 import { NarrowingNode, type NodeCtx } from './NarrowingNode';
 import type { TabProps } from './types';
