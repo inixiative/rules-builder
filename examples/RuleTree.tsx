@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  type ArrayNode,
   type BuilderNode,
   type GroupNode,
   type LeafNode,
@@ -21,7 +22,12 @@ const sel: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   fontSize: 13,
 };
-const row: React.CSSProperties = { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' };
+const row: React.CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+};
 
 const Picker = ({
   ariaLabel,
@@ -68,7 +74,14 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         </select>
       );
     }
-    return <Picker ariaLabel="value" value={value.current == null ? '' : String(value.current)} options={value.options} onChange={value.set} />;
+    return (
+      <Picker
+        ariaLabel="value"
+        value={value.current == null ? '' : String(value.current)}
+        options={value.options}
+        onChange={value.set}
+      />
+    );
   }
   if (value.kind === 'Boolean') {
     return (
@@ -101,7 +114,9 @@ const ValueField = ({ value }: { value: ValueControl }) => {
       type={numeric ? 'number' : 'text'}
       style={sel}
       value={value.current == null ? '' : String(value.current)}
-      onChange={(e) => value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)}
+      onChange={(e) =>
+        value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)
+      }
     />
   );
 };
@@ -118,12 +133,118 @@ const Leaf = ({ node }: { node: LeafNode }) => (
         onChange={(e) => node.field.setSubPath?.(e.target.value)}
       />
     )}
-    <Picker ariaLabel="operator" value={node.operator.value} options={node.operator.options} onChange={node.operator.set} />
+    <Picker
+      ariaLabel="operator"
+      value={node.operator.value}
+      options={node.operator.options}
+      onChange={node.operator.set}
+    />
     <ValueField value={node.value} />
     {!node.valid && <span style={{ color: '#c00', fontSize: 12 }}>✗</span>}
-    <button type="button" aria-label="remove" style={{ border: 'none', background: 'none', cursor: 'pointer' }} onClick={node.remove}>
+    <button
+      type="button"
+      aria-label="remove"
+      style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+      onClick={node.remove}
+    >
       ✕
     </button>
+  </div>
+);
+
+const subLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: '#64748b',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+};
+
+/** A list/relation rule: field + arrayOperator (+ count) with nested filter/condition
+ *  sub-builders scoped to the related model. */
+const ArrayRule = ({ node }: { node: ArrayNode }) => (
+  <div
+    data-depth={node.depth}
+    aria-invalid={!node.valid}
+    style={{
+      border: '1px solid #e2e8f0',
+      borderLeft: '3px solid #7048e8',
+      borderRadius: 8,
+      padding: 10,
+      display: 'grid',
+      gap: 8,
+      background: '#faf9ff',
+    }}
+  >
+    <div style={row}>
+      <Picker ariaLabel="field" value={node.field.value} options={node.field.options} onChange={node.field.set} />
+      <Picker
+        ariaLabel="array operator"
+        value={node.arrayOperator.value}
+        options={node.arrayOperator.options}
+        onChange={node.arrayOperator.set}
+      />
+      {node.count && (
+        <input
+          aria-label="count"
+          type="number"
+          style={{ ...sel, width: 80 }}
+          value={node.count.value ?? ''}
+          onChange={(e) => node.count?.set(e.target.value === '' ? undefined : Number(e.target.value))}
+        />
+      )}
+      {node.relation && <span style={{ fontSize: 11, color: '#7048e8' }}>↪ {node.relation.modelName}</span>}
+      {!node.valid && <span style={{ color: '#c00', fontSize: 12 }}>✗</span>}
+      <button
+        type="button"
+        aria-label="remove"
+        style={{
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          marginLeft: 'auto',
+        }}
+        onClick={node.remove}
+      >
+        ✕
+      </button>
+    </div>
+
+    {node.condition && (
+      <div style={{ display: 'grid', gap: 4 }}>
+        <span style={subLabel}>{node.arrayOperator.value} element matches</span>
+        <Node node={node.condition} />
+      </div>
+    )}
+
+    {node.filter &&
+      (node.filter.children.length > 0 ? (
+        <div style={{ display: 'grid', gap: 4 }}>
+          <div style={row}>
+            <span style={subLabel}>filter — only elements where</span>
+            {node.removeFilter && (
+              <button
+                type="button"
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  color: '#64748b',
+                }}
+                onClick={node.removeFilter}
+              >
+                clear filter
+              </button>
+            )}
+          </div>
+          <Node node={node.filter} />
+        </div>
+      ) : (
+        <button type="button" style={{ ...sel, justifySelf: 'start', color: '#64748b' }} onClick={node.filter.addRule}>
+          + element filter
+        </button>
+      ))}
   </div>
 );
 
@@ -143,10 +264,23 @@ const Group = ({ node }: { node: GroupNode }) => {
       }}
     >
       <div style={row}>
-        <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer' }} onClick={() => setCollapsed((c) => !c)}>
+        <button
+          type="button"
+          style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+          onClick={() => setCollapsed((c) => !c)}
+        >
           {collapsed ? '▸' : '▾'}
         </button>
-        <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '0.08em' }}>CONDITIONS — match</span>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#64748b',
+            letterSpacing: '0.08em',
+          }}
+        >
+          CONDITIONS — match
+        </span>
         <Picker
           ariaLabel="match type"
           value={node.operator.value}
@@ -157,7 +291,12 @@ const Group = ({ node }: { node: GroupNode }) => {
           onChange={(v) => node.operator.set(v === 'any' ? 'any' : 'all')}
         />
         {node.remove && (
-          <button type="button" aria-label="remove group" style={{ border: 'none', background: 'none', cursor: 'pointer' }} onClick={node.remove}>
+          <button
+            type="button"
+            aria-label="remove group"
+            style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+            onClick={node.remove}
+          >
             ✕
           </button>
         )}
@@ -184,7 +323,13 @@ const Group = ({ node }: { node: GroupNode }) => {
 };
 
 const Node = ({ node }: { node: BuilderNode }) =>
-  node.kind === 'group' ? <Group node={node} /> : <Leaf node={node} />;
+  node.kind === 'group' ? (
+    <Group node={node} />
+  ) : node.kind === 'array' ? (
+    <ArrayRule node={node} />
+  ) : (
+    <Leaf node={node} />
+  );
 
 /** Render a descriptor tree. Pass `root` from useRuleBuilder. */
 export const RuleTree = ({ root }: { root: GroupNode }) => <Node node={root} />;
@@ -195,12 +340,20 @@ export const RuleEditor = ({
   sourceValues,
   rule,
   onChange,
+  maxDepth,
 }: {
   source: RuleBuilderSource;
   sourceValues?: import('@inixiative/json-rules').SourceValues[];
   rule?: import('@inixiative/json-rules').Condition;
   onChange?: (rule: import('@inixiative/json-rules').Condition) => void;
+  maxDepth?: number;
 }) => {
-  const { root } = useRuleBuilder({ source, sourceValues, value: rule, onChange });
+  const { root } = useRuleBuilder({
+    source,
+    sourceValues,
+    value: rule,
+    onChange,
+    maxDepth,
+  });
   return <RuleTree root={root} />;
 };

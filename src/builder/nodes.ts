@@ -6,6 +6,9 @@ type Rec = Record<string, unknown>;
 export const isGroupNode = (n: Condition): boolean =>
   typeof n === 'object' && n !== null && ('all' in n || 'any' in n);
 
+export const isArrayNode = (n: Condition): boolean =>
+  typeof n === 'object' && n !== null && 'arrayOperator' in n;
+
 export const groupOperatorOf = (n: Condition): 'all' | 'any' =>
   typeof n === 'object' && n !== null && 'any' in n ? 'any' : 'all';
 
@@ -26,15 +29,18 @@ const firstOperator = (field: BuilderField): { key: 'operator' | 'dateOperator';
 };
 
 export const ruleForField = (field: BuilderField, keepId?: string): Condition => {
-  const first = firstOperator(field);
   const id = keepId ? { _id: keepId } : {};
+  // A list/relation field is an array rule: a predicate/count/presence over its elements.
+  if (field.isList) return { field: field.name, arrayOperator: 'notEmpty', ...id } as Condition;
+  const first = firstOperator(field);
   if (!first) return { field: field.name, operator: 'equals', value: '', ...id } as Condition;
   return { field: field.name, [first.key]: first.op, value: '', ...id } as Condition;
 };
 
 export const defaultRule = (fields: BuilderField[]): Condition => {
-  const usable = fields.find((f) => firstOperator(f) !== null) ?? fields[0];
-  return usable
-    ? ruleForField(usable)
-    : ({ field: '', operator: 'equals', value: '' } as Condition);
+  const scalar = fields.find((f) => firstOperator(f) !== null);
+  if (scalar) return ruleForField(scalar);
+  const list = fields.find((f) => f.isList);
+  if (list) return ruleForField(list);
+  return fields[0] ? ruleForField(fields[0]) : ({ field: '', operator: 'equals', value: '' } as Condition);
 };

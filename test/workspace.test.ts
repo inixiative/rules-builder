@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '@inixiative/json-rules';
-import { emptyWorkspace, exportWorkspace, importWorkspace, type Workspace } from '../examples/workspace';
+import {
+  emptyWorkspace,
+  exportWorkspace,
+  importWorkspace,
+  narrowingAncestors,
+  type Workspace,
+} from '../examples/workspace';
 
 const sampleMap: FieldMap = {
   models: { User: { fields: { tier: { kind: 'scalar', type: 'String' } } } },
@@ -14,12 +20,25 @@ const sample = (): Workspace => ({
     vip: {
       parent: { kind: 'lens', name: 'app-users' },
       narrowing: {
-        root: { picks: ['tier'], sources: { tier: { all: [{ field: 'active', operator: 'equals', value: true }] } } },
+        root: {
+          picks: ['tier'],
+          sources: {
+            tier: {
+              all: [{ field: 'active', operator: 'equals', value: true }],
+            },
+          },
+        },
       },
     },
   },
   rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] },
-  rules: { 'g-tier': { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } },
+  rules: {
+    'g-tier': {
+      source: { kind: 'lens', name: 'app-users' },
+      rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] },
+    },
+  },
+  maxDepth: 4,
 });
 
 describe('workspace', () => {
@@ -31,6 +50,7 @@ describe('workspace', () => {
       narrowings: {},
       rule: { all: [] },
       rules: {},
+      maxDepth: 4,
     });
   });
 
@@ -59,5 +79,29 @@ describe('workspace', () => {
 
   test('import throws when a present key has the wrong type', () => {
     expect(() => importWorkspace(JSON.stringify({ bridges: 'nope' }))).toThrow(/bridges/);
+  });
+});
+
+describe('narrowingAncestors (cycle guard for the parent picker)', () => {
+  const ws = (): Workspace => ({
+    ...emptyWorkspace(),
+    lenses: { base: { mapName: 'app', model: 'User' } },
+    narrowings: {
+      a: { parent: { kind: 'lens', name: 'base' }, narrowing: {} },
+      b: { parent: { kind: 'narrowing', name: 'a' }, narrowing: {} },
+      c: { parent: { kind: 'narrowing', name: 'b' }, narrowing: {} },
+    },
+  });
+
+  test('collects the full ancestor chain (not descendants)', () => {
+    expect(narrowingAncestors(ws(), 'c')).toEqual(new Set(['b', 'a']));
+    expect(narrowingAncestors(ws(), 'a')).toEqual(new Set());
+  });
+
+  test('a narrowing may parent only non-descendants — c is a descendant of a, so a can’t pick c', () => {
+    const w = ws();
+    // editing 'a': candidates whose ancestors include 'a' are descendants → excluded.
+    const candidates = Object.keys(w.narrowings).filter((n) => n !== 'a' && !narrowingAncestors(w, n).has('a'));
+    expect(candidates).toEqual([]); // b and c both descend from a
   });
 });

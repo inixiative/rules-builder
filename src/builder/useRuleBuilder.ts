@@ -21,6 +21,8 @@ export type UseRuleBuilderOptions = {
   value?: Condition;
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
+  valueLabels?: Record<string, Record<string, string>>;
+  /** Max group nesting depth — a group at this depth hides "add group" (`canAddGroup`). Default 4. */
   maxDepth?: number;
 };
 
@@ -44,8 +46,13 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     [opts.source, opts.sourceValues],
   );
   const fields = useMemo(
-    () => describeModelFields(lens, lens.mapName, lens.model, { targets: opts.targets, labels: opts.labels }),
-    [lens, opts.targets, opts.labels],
+    () =>
+      describeModelFields(lens, lens.mapName, lens.model, {
+        targets: opts.targets,
+        labels: opts.labels,
+        valueLabels: opts.valueLabels,
+      }),
+    [lens, opts.targets, opts.labels, opts.valueLabels],
   );
   const maxDepth = opts.maxDepth ?? 4;
 

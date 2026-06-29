@@ -26,6 +26,17 @@ export const SettingsTab = ({
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [openJson, setOpenJson] = useState(() => exportWorkspace(ws));
+  const [openErr, setOpenErr] = useState<string | null>(null);
+
+  const applyOpen = () => {
+    try {
+      replace(importWorkspace(openJson));
+      setOpenErr(null);
+    } catch (err) {
+      setOpenErr(String(err));
+    }
+  };
 
   const onExport = () => {
     const blob = new Blob([exportWorkspace(ws)], { type: 'application/json' });
@@ -95,13 +106,33 @@ export const SettingsTab = ({
           <Button variant="primary" onClick={() => replace(defaultWorkspace())} title="Bundled samples">
             Load sample
           </Button>
-          <input ref={fileRef} type="file" accept="application/json" onChange={onImportFile} style={{ display: 'none' }} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            onChange={onImportFile}
+            style={{ display: 'none' }}
+          />
         </Row>
         <Row>
           <Badge>{Object.keys(ws.maps).length} maps</Badge>
           <Badge>{ws.bridges.length} bridges</Badge>
-          <Badge>{Object.keys(ws.narrowings).length} lenses</Badge>
+          <Badge>{Object.keys(ws.lenses).length} lenses</Badge>
+          <Badge>{Object.keys(ws.narrowings).length} narrowings</Badge>
           <Badge>{Object.keys(ws.rules).length} rules</Badge>
+        </Row>
+        <Row>
+          <label style={{ fontSize: 13, color: tokens.textMuted }}>Rule depth</label>
+          <Select
+            ariaLabel="rule depth"
+            value={String(ws.maxDepth)}
+            onChange={(v) => patch({ maxDepth: Number(v) })}
+            options={[1, 2, 3, 4, 5, 6, 8].map((n) => ({
+              value: String(n),
+              label: String(n),
+            }))}
+          />
+          <span style={{ fontSize: 12, color: tokens.textMuted }}>max group nesting — applies to every rule field</span>
         </Row>
       </Panel>
 
@@ -109,14 +140,21 @@ export const SettingsTab = ({
         title="Import from JSON"
         actions={
           <Row>
-            <Select ariaLabel="import type" value={type} options={IMPORT_TYPES} onChange={(v) => setType(v as ImportType)} />
+            <Select
+              ariaLabel="import type"
+              value={type}
+              options={IMPORT_TYPES}
+              onChange={(v) => setType(v as ImportType)}
+            />
             <Button onClick={loadRaw} disabled={!draft.trim()}>
               Load
             </Button>
           </Row>
         }
       >
-        <Empty>Paste JSON and pick its type. Full workspace replaces everything; the others replace just that slice.</Empty>
+        <Empty>
+          Paste JSON and pick its type. Full workspace replaces everything; the others replace just that slice.
+        </Empty>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -135,6 +173,39 @@ export const SettingsTab = ({
         />
         {error && <Badge tone="danger">{error}</Badge>}
         {ok && <Badge tone="ok">{ok}</Badge>}
+      </Panel>
+
+      <Panel
+        title="Workspace JSON (open editor)"
+        actions={
+          <Row>
+            <Button onClick={() => setOpenJson(exportWorkspace(ws))}>Reload</Button>
+            <Button variant="primary" onClick={applyOpen}>
+              Apply
+            </Button>
+          </Row>
+        }
+      >
+        <Empty>
+          The entire workspace as editable JSON — tweak and Apply to replace everything (Reload re-reads the current
+          state).
+        </Empty>
+        <textarea
+          value={openJson}
+          onChange={(e) => setOpenJson(e.target.value)}
+          spellCheck={false}
+          style={{
+            width: '100%',
+            minHeight: 280,
+            fontFamily: 'monospace',
+            fontSize: 12,
+            padding: 10,
+            borderRadius: 6,
+            border: `1px solid ${tokens.borderStrong}`,
+            resize: 'vertical',
+          }}
+        />
+        {openErr && <Badge tone="danger">{openErr}</Badge>}
       </Panel>
     </div>
   );

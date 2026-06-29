@@ -6,16 +6,31 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
+import type { SavedRule } from '../src';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
 
-/** A lens: an anchor (map.model) + attached bridges. The base reference view — no restrictions. */
-export type SavedLens = { mapName: string; model: string; bridges?: Bridge[] };
+/** A lens: which fieldMaps it spans (`maps`), an anchor (map.model), + attached bridges.
+ *  The base reference view — no restrictions. `maps` omitted = every workspace map. */
+export type SavedLens = {
+  mapName: string;
+  model: string;
+  maps?: string[];
+  bridges?: Bridge[];
+};
 
 /** A narrowing: picks a parent (lens or narrowing) + a restriction chain (picks/omits/where/enum/sources/relations).
  *  Restricts the parent's exposed surface — never widens. Chains. */
-export type SavedNarrowing = { parent: ParentRef; narrowing: Omit<LensNarrowing, 'parent'> };
+export type SavedNarrowing = {
+  parent: ParentRef;
+  narrowing: Omit<LensNarrowing, 'parent'>;
+};
+
+/** A saved rule keeps its source binding by reference + its captured sourced option-sets. */
+export type SavedWsRule = SavedRule<ParentRef>;
+
+export const DEFAULT_MAX_DEPTH = 4;
 
 export type Workspace = {
   maps: Record<string, FieldMap>;
@@ -23,7 +38,8 @@ export type Workspace = {
   lenses: Record<string, SavedLens>;
   narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
-  rules: Record<string, Condition>; // saved, named rules
+  rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
+  maxDepth: number; // builder nesting depth — applies to every rule field
 };
 
 export const emptyWorkspace = (): Workspace => ({
@@ -33,7 +49,31 @@ export const emptyWorkspace = (): Workspace => ({
   narrowings: {},
   rule: { all: [] },
   rules: {},
+  maxDepth: DEFAULT_MAX_DEPTH,
 });
+
+/** Narrowing names in `name`'s parent chain (its ancestors). Used to keep the
+ *  parent picker from offering a narrowing's own descendants (cycle guard). */
+export const narrowingAncestors = (ws: Workspace, name: string, seen: Set<string> = new Set()): Set<string> => {
+  const out = new Set<string>();
+  const n = ws.narrowings[name];
+  if (!n || seen.has(name)) return out;
+  const next = new Set(seen).add(name);
+  if (n.parent.kind === 'narrowing') {
+    out.add(n.parent.name);
+    for (const a of narrowingAncestors(ws, n.parent.name, next)) out.add(a);
+  }
+  return out;
+};
+
+/** The createLens input for a saved lens: maps filtered to those it includes (always its
+ *  anchor), and bridges kept only when both endpoints' maps are included. */
+export const lensInput = (ws: Workspace, l: SavedLens) => {
+  const include = l.maps && l.maps.length ? new Set([...l.maps, l.mapName]) : null;
+  const maps = include ? Object.fromEntries(Object.entries(ws.maps).filter(([m]) => include.has(m))) : ws.maps;
+  const bridges = (l.bridges ?? []).filter((b) => b.endpoints.every((e) => !include || include.has(e.fieldMap)));
+  return { maps, bridges, mapName: l.mapName, model: l.model };
+};
 
 /** Resolve a parent ref to a usable Lens | LensNarrowing, recursively through the chain. */
 export const resolveRef = (
@@ -47,7 +87,7 @@ export const resolveRef = (
   if (ref.kind === 'lens') {
     const l = ws.lenses[ref.name];
     if (!l) return null;
-    return createLens({ maps: ws.maps, bridges: l.bridges ?? [], mapName: l.mapName, model: l.model });
+    return createLens(lensInput(ws, l));
   }
   const n = ws.narrowings[ref.name];
   if (!n) return null;
@@ -86,7 +126,10 @@ export const importWorkspace = (json: string): Workspace => {
     ws.rule = parsed.rule as Condition;
   }
   if ('rules' in parsed && isPlainObject(parsed.rules)) {
-    ws.rules = parsed.rules as Record<string, Condition>;
+    ws.rules = parsed.rules as Record<string, SavedWsRule>;
+  }
+  if ('maxDepth' in parsed && typeof parsed.maxDepth === 'number') {
+    ws.maxDepth = parsed.maxDepth;
   }
   return ws;
 };

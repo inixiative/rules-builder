@@ -6,20 +6,13 @@ import {
   validateNarrowing,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
+import { runSources } from '../../src';
 import { describeModelFields } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
-import { runSources } from '../sourceExec';
-import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
-import { type ParentRef, resolveRef, type SavedNarrowing } from '../workspace';
+import { Badge, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
+import { narrowingAncestors, type ParentRef, resolveRef, type SavedNarrowing } from '../workspace';
 import { NarrowingNode, type NodeCtx } from './NarrowingNode';
 import type { TabProps } from './types';
-
-const box: React.CSSProperties = {
-  padding: '5px 8px',
-  borderRadius: 6,
-  border: `1px solid ${tokens.borderStrong}`,
-  fontSize: 13,
-};
 
 const refValue = (r: ParentRef) => `${r.kind}:${r.name}`;
 const parseRef = (v: string): ParentRef => {
@@ -34,7 +27,10 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
     return { kind: 'narrowing', name: Object.keys(ws.narrowings)[0] ?? '' };
   };
 
-  const [draft, setDraft] = useState<SavedNarrowing>(() => ({ parent: firstParent(), narrowing: {} }));
+  const [draft, setDraft] = useState<SavedNarrowing>(() => ({
+    parent: firstParent(),
+    narrowing: {},
+  }));
   const [name, setName] = useState(selected ?? '');
   const [addMap, setAddMap] = useState('');
   const [addModel, setAddModel] = useState('');
@@ -74,13 +70,23 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
   }, [resolvedChain]);
 
   const analysis = useMemo(() => {
-    if (!resolvedChain || !parentSurface) return { error: 'Parent not resolvable.', fields: [] as ReturnType<typeof describeModelFields> };
+    if (!resolvedChain || !parentSurface)
+      return {
+        error: 'Parent not resolvable.',
+        fields: [] as ReturnType<typeof describeModelFields>,
+      };
     try {
       validateNarrowing(resolvedChain as LensNarrowing);
       const surface = exposedSurface(resolvedChain);
-      return { error: null as string | null, fields: describeModelFields(surface, parentSurface.mapName, parentSurface.model) };
+      return {
+        error: null as string | null,
+        fields: describeModelFields(surface, parentSurface.mapName, parentSurface.model),
+      };
     } catch (e) {
-      return { error: String(e), fields: [] as ReturnType<typeof describeModelFields> };
+      return {
+        error: String(e),
+        fields: [] as ReturnType<typeof describeModelFields>,
+      };
     }
   }, [resolvedChain, parentSurface]);
 
@@ -101,7 +107,12 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
 
   const narrowing = draft.narrowing;
   const defaults = narrowing.mapDefaults ?? {};
-  const ctx: NodeCtx = { maps: parentSurface.maps, bridges: [], sourceValues };
+  const ctx: NodeCtx = {
+    maps: parentSurface.maps,
+    bridges: [],
+    sourceValues,
+    maxDepth: ws.maxDepth,
+  };
 
   const setRoot = (root: ModelNarrowing) => setDraft((d) => ({ ...d, narrowing: { ...d.narrowing, root } }));
 
@@ -119,10 +130,15 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
       return { ...d, narrowing: { ...d.narrowing, mapDefaults } };
     });
 
+  // A narrowing can parent off a lens or another narrowing — but never itself or one
+  // of its own descendants (that would form a cycle).
   const parentOptions = [
-    ...Object.keys(ws.lenses).map((n) => ({ value: `lens:${n}`, label: `lens · ${n}` })),
+    ...Object.keys(ws.lenses).map((n) => ({
+      value: `lens:${n}`,
+      label: `lens · ${n}`,
+    })),
     ...Object.keys(ws.narrowings)
-      .filter((n) => n !== name)
+      .filter((n) => n !== name && !narrowingAncestors(ws, n).has(name))
       .map((n) => ({ value: `narrowing:${n}`, label: `narrowing · ${n}` })),
   ];
   const surfaceMaps = Object.keys(parentSurface.maps);
@@ -130,6 +146,15 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <EditorHeader
+        title="Narrowing"
+        name={name}
+        onName={setName}
+        namePlaceholder="narrowing name (e.g. admins-only)"
+        saveDisabled={!name.trim() || !!analysis.error}
+        onSave={() => patch({ narrowings: { ...ws.narrowings, [name.trim()]: draft } })}
+      />
+
       <Panel title="Parent">
         <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Restrict:</label>
@@ -177,7 +202,13 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
             onChange={(v) => setAddModel(v)}
             options={addModels.map((m) => ({ value: m, label: m }))}
           />
-          <Button disabled={!addMap || !addModel || !!defaults[addMap]?.models?.[addModel]} onClick={() => { setDefaultModel(addMap, addModel, {}); setAddModel(''); }}>
+          <Button
+            disabled={!addMap || !addModel || !!defaults[addMap]?.models?.[addModel]}
+            onClick={() => {
+              setDefaultModel(addMap, addModel, {});
+              setAddModel('');
+            }}
+          >
             Add default
           </Button>
         </Row>
@@ -213,7 +244,13 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
           <>
             <Badge tone="ok">valid — validateNarrowing passed</Badge>
             <div style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, color: tokens.textMuted, marginBottom: 4 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  color: tokens.textMuted,
+                  marginBottom: 4,
+                }}
+              >
                 visible fields on {parentSurface.mapName}.{parentSurface.model}
               </div>
               <Row>
@@ -227,23 +264,6 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
             </div>
           </>
         )}
-      </Panel>
-
-      <Panel
-        title="Save narrowing"
-        actions={
-          <Button
-            variant="primary"
-            disabled={!name.trim() || !!analysis.error}
-            onClick={() => patch({ narrowings: { ...ws.narrowings, [name.trim()]: draft } })}
-          >
-            Save
-          </Button>
-        }
-      >
-        <Row>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="narrowing name (e.g. admins-only)" style={{ ...box, flex: 1 }} />
-        </Row>
       </Panel>
 
       <Panel title="Narrowing (reference JSON)">

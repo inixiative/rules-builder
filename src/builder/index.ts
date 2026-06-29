@@ -1,4 +1,5 @@
 export type {
+  ArrayNode,
   BuilderNode,
   FieldControl,
   GroupNode,

@@ -1,20 +1,24 @@
 import { checkRuleAgainstLens, describeRule, exposedSurface } from '@inixiative/json-rules';
-import { useMemo, useState } from 'react';
-import type { RuleBuilderSource } from '../../src/schema/surface';
+import { useEffect, useMemo, useState } from 'react';
+import { type RuleBuilderSource, runSources } from '../../src';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
 import { sampleRows } from '../samples';
-import { runSources } from '../sourceExec';
-import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
+import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
 
 type SourceChoice = { key: string; label: string; ref: ParentRef };
+const refKey = (r: ParentRef) => `${r.kind}:${r.name}`;
 
-export const BuilderTab = ({ ws, patch }: TabProps) => {
+export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const choices = useMemo<SourceChoice[]>(
     () => [
-      ...Object.keys(ws.lenses).map((n) => ({ key: `lens:${n}`, label: `lens · ${n}`, ref: { kind: 'lens' as const, name: n } })),
+      ...Object.keys(ws.lenses).map((n) => ({
+        key: `lens:${n}`,
+        label: `lens · ${n}`,
+        ref: { kind: 'lens' as const, name: n },
+      })),
       ...Object.keys(ws.narrowings).map((n) => ({
         key: `narrowing:${n}`,
         label: `narrowing · ${n}`,
@@ -24,10 +28,21 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
     [ws.lenses, ws.narrowings],
   );
 
-  const [selected, setSelected] = useState('');
+  const [sourceKey, setSourceKey] = useState('');
   const [renderer, setRenderer] = useState<'plain' | 'shadcn'>('shadcn');
   const [ruleName, setRuleName] = useState('');
-  const choice = choices.find((c) => c.key === selected) ?? choices[0];
+  const choice = choices.find((c) => c.key === sourceKey) ?? choices[0];
+
+  // Selecting a saved rule from the inventory loads it: its draft + its bound source.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the selection
+  useEffect(() => {
+    if (selected && ws.rules[selected]) {
+      const saved = ws.rules[selected];
+      patch({ rule: saved.rule });
+      setSourceKey(refKey(saved.source));
+      setRuleName(selected);
+    }
+  }, [selected]);
 
   const analysis = useMemo(() => {
     if (!choice) return null;
@@ -38,7 +53,11 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
       // fold into the projection so option sets reflect the lens/narrowing, not the raw column.
       const sourceValues = runSources(resolved, sampleRows);
       const surface = exposedSurface(resolved, { sourceValues });
-      const source: RuleBuilderSource = { maps: surface.maps, mapName: surface.mapName, model: surface.model };
+      const source: RuleBuilderSource = {
+        maps: surface.maps,
+        mapName: surface.mapName,
+        model: surface.model,
+      };
       return {
         error: null as string | null,
         source,
@@ -47,7 +66,13 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
         check: checkRuleAgainstLens(ws.rule, surface),
       };
     } catch (err) {
-      return { error: String(err), source: null, sourceValues: [], description: null, check: null };
+      return {
+        error: String(err),
+        source: null,
+        sourceValues: [],
+        description: null,
+        check: null,
+      };
     }
   }, [choice, ws]);
 
@@ -59,38 +84,47 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
     );
   }
 
+  const save = () => {
+    const name = ruleName.trim();
+    if (!name) return;
+    patch({
+      rules: {
+        ...ws.rules,
+        [name]: {
+          source: choice.ref,
+          rule: ws.rule,
+          sourceValues: analysis?.sourceValues,
+        },
+      },
+    });
+  };
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <EditorHeader
+        title="Rule"
+        name={ruleName}
+        onName={setRuleName}
+        namePlaceholder="rule name"
+        saveLabel="Save rule"
+        saveDisabled={!ruleName.trim()}
+        onSave={save}
+        extra={
+          <Button variant="ghost" onClick={() => patch({ rule: { all: [] } })}>
+            Reset
+          </Button>
+        }
+      />
+
       <Panel title="Source">
         <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Author against:</label>
           <Select
             ariaLabel="source"
             value={choice.key}
-            onChange={setSelected}
+            onChange={setSourceKey}
             options={choices.map((c) => ({ value: c.key, label: c.label }))}
           />
-          <Button variant="ghost" onClick={() => patch({ rule: { all: [] } })}>
-            Reset rule
-          </Button>
-          <input
-            value={ruleName}
-            onChange={(e) => setRuleName(e.target.value)}
-            placeholder="rule name"
-            style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}`, fontSize: 13 }}
-          />
-          <Button
-            variant="primary"
-            disabled={!ruleName.trim()}
-            onClick={() => {
-              patch({ rules: { ...ws.rules, [ruleName.trim()]: ws.rule } });
-              setRuleName('');
-            }}
-          >
-            Save rule
-          </Button>
-        </Row>
-        <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Renderer:</label>
           <Select
             ariaLabel="renderer"
@@ -101,7 +135,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
               { value: 'plain', label: 'plain' },
             ]}
           />
-          <span style={{ fontSize: 12, color: tokens.textMuted }}>same headless hook, different renderer</span>
+          <span style={{ fontSize: 12, color: tokens.textMuted }}>depth {ws.maxDepth} · set in Settings</span>
         </Row>
       </Panel>
 
@@ -113,6 +147,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
             key={choice.key}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
+            maxDepth={ws.maxDepth}
             rule={ws.rule}
             onChange={(rule) => patch({ rule })}
           />
@@ -121,6 +156,7 @@ export const BuilderTab = ({ ws, patch }: TabProps) => {
             key={choice.key}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
+            maxDepth={ws.maxDepth}
             rule={ws.rule}
             onChange={(rule) => patch({ rule })}
           />

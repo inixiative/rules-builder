@@ -19,11 +19,25 @@ export const switchGroupOperator = (node: Condition, kind: 'all' | 'any'): Condi
   return next as Condition;
 };
 
+const SUB_CONDITION_KEYS = ['condition', 'filter'] as const;
+
 export const trimEmptyGroups = (node: Condition): Condition | undefined => {
   if (!isObj(node)) return node;
   const rec = node as Rec;
   const key = groupKey(rec);
-  if (!key) return node;
+  if (!key) {
+    // Leaf / array / aggregate rule: trim its nested condition & filter sub-trees.
+    let next: Rec | undefined;
+    for (const sub of SUB_CONDITION_KEYS) {
+      if (!isObj(rec[sub])) continue;
+      const trimmed = trimEmptyGroups(rec[sub] as Condition);
+      if (trimmed === rec[sub]) continue;
+      next = next ?? { ...rec };
+      if (trimmed === undefined) delete next[sub];
+      else next[sub] = trimmed;
+    }
+    return (next ?? node) as Condition;
+  }
   const kept = groupChildren(rec, key)
     .map(trimEmptyGroups)
     .filter((c): c is Condition => c !== undefined);
@@ -62,6 +76,9 @@ export const withIds = (node: Condition, makeId: () => string = defaultMakeId): 
     return next as Condition;
   }
   const next: Rec = { ...rec };
+  for (const sub of SUB_CONDITION_KEYS) {
+    if (isObj(next[sub])) next[sub] = withIds(next[sub] as Condition, makeId);
+  }
   if (next._id === undefined) next._id = makeId();
   return next as Condition;
 };

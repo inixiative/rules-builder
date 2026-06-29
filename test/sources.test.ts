@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createLens, type FieldMap, Operator } from '@inixiative/json-rules';
-import { runSources } from '../examples/sourceExec';
+import { runSources } from '../src';
 
 const maps: Record<string, FieldMap> = {
   app: {
@@ -24,14 +24,25 @@ const rows = {
   ],
 };
 
-const tierSourceWhere = { all: [{ field: 'active', operator: Operator.equals, value: true }] };
+const tierSourceWhere = {
+  all: [{ field: 'active', operator: Operator.equals, value: true }],
+};
 
-describe('demo source executor', () => {
-  test('runSources returns DISTINCT column values under the source where (as SourceValues)', () => {
+describe('runSources (library helper)', () => {
+  test('returns DISTINCT column values under the source where (as SourceValues)', () => {
     const lens = createLens({ maps, mapName: 'app', model: 'User' });
-    const narrowed = { parent: lens, root: { sources: { tier: tierSourceWhere } } };
+    const narrowed = {
+      parent: lens,
+      root: { sources: { tier: tierSourceWhere } },
+    };
     expect(runSources(narrowed, rows)).toEqual([
-      { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: ['gold', 'silver'] },
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: ['gold', 'silver'],
+      },
     ]);
   });
 
@@ -40,13 +51,25 @@ describe('demo source executor', () => {
     const narrowed = {
       parent: lens,
       root: {
-        where: { all: [{ field: 'tier', operator: Operator.notEquals, value: 'gold' }] },
+        where: {
+          all: [{ field: 'tier', operator: Operator.notEquals, value: 'gold' }],
+        },
         sources: { tier: tierSourceWhere },
       },
     };
-    // active = true  AND  tier != gold  → only silver
     expect(runSources(narrowed, rows)).toEqual([
-      { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: ['silver'] },
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: ['silver'],
+      },
     ]);
+  });
+
+  test('a lens with no sources yields no option sets', () => {
+    const lens = createLens({ maps, mapName: 'app', model: 'User' });
+    expect(runSources(lens, rows)).toEqual([]);
   });
 });

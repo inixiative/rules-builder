@@ -4,15 +4,21 @@ export type {
   LensValuePickerOptions,
   ResolveOptions,
   RuleBuilderSource,
+  SourceRows,
+  SourceValues,
   SurfaceOptions,
 } from './schema';
 export {
   describeModelFields,
   lensValuePicker,
   resolve,
+  runSources,
   useLensValuePicker,
   valueShapeForOperator,
 } from './schema';
+
+export type { SavedRule } from './serialize';
+export { parseSavedRule, stringifySavedRule } from './serialize';
 
 export type { RulePath, RulePathSegment } from './core';
 export {

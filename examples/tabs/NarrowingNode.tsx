@@ -15,6 +15,7 @@ export type NodeCtx = {
   maps: Record<string, FieldMap>;
   bridges: Bridge[];
   sourceValues: SourceValues[];
+  maxDepth: number;
 };
 
 const relTarget = (entry: FieldMapEntry, currentMap: string): { map: string; model: string } | null => {
@@ -225,6 +226,7 @@ export const NarrowingNode = ({
           <RuleEditor
             source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
             sourceValues={ctx.sourceValues}
+            maxDepth={ctx.maxDepth}
             rule={value.where && typeof value.where === 'object' ? value.where : { all: [] }}
             onChange={(where) => onChange({ ...value, where: isEmptyCond(where) ? undefined : where })}
           />
@@ -257,6 +259,7 @@ export const NarrowingNode = ({
             <RuleEditor
               source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
               sourceValues={ctx.sourceValues}
+              maxDepth={ctx.maxDepth}
               rule={where && typeof where === 'object' ? where : { all: [] }}
               onChange={(w) => setSource(field, w)}
             />

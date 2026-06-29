@@ -1,6 +1,6 @@
 import type { Condition } from '@inixiative/json-rules';
 
-export type RulePathSegment = number | 'if' | 'then' | 'else' | 'condition';
+export type RulePathSegment = number | 'if' | 'then' | 'else' | 'condition' | 'filter';
 export type RulePath = RulePathSegment[];
 
 type CondObject = Exclude<Condition, boolean>;

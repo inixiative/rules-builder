@@ -60,6 +60,8 @@ export type BuilderField = {
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
+  /** Human-readable labels for enum/sourced option values (value → label). */
+  enumLabels?: Record<string, string>;
   /** A `Json` column: no declared sub-fields, but the kernel resolves a dotted JSON
    *  path on the operand — a renderer may let the user append a freeform sub-path. */
   acceptsSubPath?: boolean;
@@ -67,7 +69,10 @@ export type BuilderField = {
 
 export type SurfaceOptions = {
   targets?: RuleTarget[];
+  /** Field labels, keyed by `name` or `Model.name`. */
   labels?: Record<string, string>;
+  /** Enum/sourced value labels, keyed by `name` or `Model.name` → (value → label). */
+  valueLabels?: Record<string, Record<string, string>>;
 };
 
 const RELATION_KINDS = new Set(['object', 'bridge']);
@@ -147,6 +152,7 @@ export const describeModelFields = (
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
       enumValues: entry.values,
+      enumLabels: opts.valueLabels?.[`${modelName}.${name}`] ?? opts.valueLabels?.[name],
       acceptsSubPath: kind === 'Json',
     });
   }

@@ -92,7 +92,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
 
 /** A cross-map lens: anchored at app.User with the bridge attached, so app + crm are both reachable. */
 export const sampleLenses: Record<string, SavedLens> = {
-  'app-users': { mapName: 'app', model: 'User', bridges: sampleBridges },
+  'app-users': { mapName: 'app', model: 'User', maps: ['app', 'crm'], bridges: sampleBridges },
 };
 
 /** Two narrowings: one off the lens, one chained off that narrowing — each only restricts further. */

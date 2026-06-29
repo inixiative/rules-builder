@@ -1,17 +1,18 @@
 import { type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';
+import { Badge, EditorHeader, Empty, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
 
-const box: React.CSSProperties = {
-  padding: '5px 8px',
-  borderRadius: 6,
-  border: `1px solid ${tokens.borderStrong}`,
-  fontSize: 13,
-};
-
 const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
-  <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 6, padding: 12, display: 'grid', gap: 10 }}>
+  <div
+    style={{
+      border: `1px solid ${tokens.border}`,
+      borderRadius: 6,
+      padding: 12,
+      display: 'grid',
+      gap: 10,
+    }}
+  >
     <Row style={{ justifyContent: 'space-between' }}>
       <strong style={{ fontSize: 13 }}>{name}</strong>
       <Badge>{Object.keys(map.models).length} models</Badge>
@@ -102,23 +103,15 @@ export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: st
   if (isEditing) {
     return (
       <div style={{ display: 'grid', gap: 16 }}>
-        <Panel
+        <EditorHeader
           title="Edit fieldMap"
-          actions={
-            <Row>
-              <Button variant="ghost" onClick={clear}>
-                Close
-              </Button>
-              <Button variant="primary" onClick={save}>
-                Save
-              </Button>
-            </Row>
-          }
-        >
-          <Row>
-            <label style={{ fontSize: 13, color: tokens.textMuted }}>name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="map name" style={{ ...box, flex: 1 }} />
-          </Row>
+          name={name}
+          onName={setName}
+          namePlaceholder="map name"
+          onSave={save}
+          onClose={clear}
+        />
+        <Panel title="JSON">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -143,28 +136,20 @@ export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: st
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <Panel
-        title="FieldMaps"
-        actions={
-          <Row>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="new map name" style={box} />
-            <Button variant="primary" disabled={!name.trim() || !!ws.maps[name.trim()]} onClick={addMap}>
-              Add fieldMap
-            </Button>
-          </Row>
-        }
-      >
+      <EditorHeader
+        title="New fieldMap"
+        name={name}
+        onName={setName}
+        namePlaceholder="new map name"
+        saveLabel="Add fieldMap"
+        saveDisabled={!name.trim() || !!ws.maps[name.trim()]}
+        onSave={addMap}
+      />
+      <Panel title="FieldMaps">
         {mapNames.length === 0 ? (
-          <Empty>No fieldMaps. Add one above, or import JSON from Settings.</Empty>
+          <Empty>No fieldMaps yet. Add one above, or import JSON from Settings.</Empty>
         ) : (
-          <Row>
-            <span style={{ fontSize: 13, color: tokens.textMuted }}>Open:</span>
-            {mapNames.map((m) => (
-              <Button key={m} variant="ghost" onClick={() => open(m)}>
-                {m}
-              </Button>
-            ))}
-          </Row>
+          <Empty>Pick a fieldMap from the inventory on the left to edit it, or add a new one above.</Empty>
         )}
       </Panel>
     </div>

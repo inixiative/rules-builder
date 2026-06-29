@@ -35,7 +35,13 @@ export const Panel = ({
     }}
   >
     {(title || actions) && (
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
         {title ? <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{title}</h2> : <span />}
         {actions && <div style={{ display: 'flex', gap: 8 }}>{actions}</div>}
       </header>
@@ -45,7 +51,15 @@ export const Panel = ({
 );
 
 export const Row = ({ children, style }: { children: ReactNode; style?: CSSProperties }) => (
-  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', ...style }}>
+  <div
+    style={{
+      display: 'flex',
+      gap: 8,
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      ...style,
+    }}
+  >
     {children}
   </div>
 );
@@ -110,10 +124,26 @@ export const Button = ({
   title?: string;
 }) => {
   const styles: Record<string, CSSProperties> = {
-    default: { background: tokens.bg, color: tokens.text, border: `1px solid ${tokens.borderStrong}` },
-    primary: { background: tokens.accent, color: '#fff', border: `1px solid ${tokens.accent}` },
-    ghost: { background: 'transparent', color: tokens.textMuted, border: '1px solid transparent' },
-    danger: { background: tokens.bg, color: tokens.danger, border: `1px solid ${tokens.danger}` },
+    default: {
+      background: tokens.bg,
+      color: tokens.text,
+      border: `1px solid ${tokens.borderStrong}`,
+    },
+    primary: {
+      background: tokens.accent,
+      color: '#fff',
+      border: `1px solid ${tokens.accent}`,
+    },
+    ghost: {
+      background: 'transparent',
+      color: tokens.textMuted,
+      border: '1px solid transparent',
+    },
+    danger: {
+      background: tokens.bg,
+      color: tokens.danger,
+      border: `1px solid ${tokens.danger}`,
+    },
   };
   return (
     <button
@@ -134,6 +164,58 @@ export const Button = ({
     </button>
   );
 };
+
+/** The standard form header: a name field + Save (+ optional Close), pinned to
+ *  the top. Used by every editor so saving lives in one consistent place. */
+export const EditorHeader = ({
+  title,
+  name,
+  onName,
+  namePlaceholder,
+  onSave,
+  saveDisabled,
+  saveLabel = 'Save',
+  onClose,
+  extra,
+}: {
+  title: ReactNode;
+  name: string;
+  onName: (v: string) => void;
+  namePlaceholder?: string;
+  onSave: () => void;
+  saveDisabled?: boolean;
+  saveLabel?: string;
+  onClose?: () => void;
+  extra?: ReactNode;
+}) => (
+  <Panel title={title}>
+    <Row>
+      <input
+        value={name}
+        onChange={(e) => onName(e.target.value)}
+        placeholder={namePlaceholder}
+        aria-label="name"
+        style={{
+          flex: 1,
+          minWidth: 160,
+          padding: '6px 9px',
+          borderRadius: 6,
+          border: `1px solid ${tokens.borderStrong}`,
+          fontSize: 13,
+        }}
+      />
+      {extra}
+      {onClose && (
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      )}
+      <Button variant="primary" disabled={saveDisabled} onClick={onSave}>
+        {saveLabel}
+      </Button>
+    </Row>
+  </Panel>
+);
 
 export const Code = ({ children }: { children: ReactNode }) => (
   <pre
