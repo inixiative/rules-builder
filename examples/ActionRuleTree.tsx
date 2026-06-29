@@ -65,13 +65,37 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
 
         {leaf?.rel && (
           <>
-            <Select
-              ariaLabel="relation"
-              value={leaf.rel.relation.value ?? ''}
-              placeholder="relation…"
-              onChange={leaf.rel.relation.set}
-              options={leaf.rel.relation.options}
-            />
+            {leaf.rel.segments.map((seg, i) => (
+              <span key={`${i}-${seg.value}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {i > 0 && <span style={{ color: tokens.textMuted }}>.</span>}
+                <Select
+                  ariaLabel={`relation hop ${i + 1}`}
+                  value={seg.value ?? ''}
+                  placeholder="relation…"
+                  onChange={seg.set}
+                  options={seg.options}
+                />
+              </span>
+            ))}
+            {leaf.rel.addOptions.length > 0 && (
+              <Select
+                ariaLabel="add hop"
+                value=""
+                placeholder={leaf.rel.segments.length ? '+ hop…' : 'relation…'}
+                onChange={leaf.rel.addSegment}
+                options={leaf.rel.addOptions}
+              />
+            )}
+            {leaf.rel.removeLast && (
+              <button
+                type="button"
+                title="remove last hop"
+                onClick={leaf.rel.removeLast}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted }}
+              >
+                −
+              </button>
+            )}
             <span style={{ color: tokens.textMuted }}>→</span>
             <Select
               ariaLabel="relation action"

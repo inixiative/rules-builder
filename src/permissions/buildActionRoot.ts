@@ -44,9 +44,20 @@ type KindControl = { value: ActionRuleKind; options: PickOption[]; set: (k: Acti
 type Control = { value?: string; options: PickOption[]; set: (v: string) => void };
 
 type BaseNode = { id: string; path: ActionPath; depth: number; kind: KindControl; remove?: () => void };
+/** A `rel` walk as a path of hops: one segment per relation crossed, each scoped to the resource
+ *  reached so far (intra-map relations + bridges). `target` is the final resource. */
+export type RelControl = {
+  segments: Control[];
+  /** Relations available to append as the next hop (of the final resource). */
+  addOptions: PickOption[];
+  addSegment: (relation: string) => void;
+  removeLast?: () => void;
+  action: Control;
+  target?: string;
+};
 export type ActionLeafNode = BaseNode & {
   delegate?: Control;
-  rel?: { relation: Control; action: Control; target?: string };
+  rel?: RelControl;
   self?: Control;
   rule?: GroupNode;
 };
@@ -60,11 +71,17 @@ export type BuildActionOptions = {
   siblingActions: string[];
   /** Action names per resource (`map:model`) — the `rel` walk's target actions. */
   actionsByResource: Record<string, string[]>;
+  /** Fields of any resource (`map:model`) — needed to scope hops past the first. */
+  resourceFields?: (resource: string) => BuilderField[];
   maxDepth?: number;
   commit: (next: ActionRule) => void;
 };
 
-type Ctx = Required<Omit<BuildActionOptions, 'maxDepth'>> & { root: ActionRule; maxDepth: number };
+type Ctx = Required<Omit<BuildActionOptions, 'maxDepth' | 'resourceFields'>> & {
+  root: ActionRule;
+  maxDepth: number;
+  resourceFields?: (resource: string) => BuilderField[];
+};
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
@@ -114,16 +131,39 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
 
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
-    const relTarget = ctx.fields.find((f) => f.name === rel.rel)?.relation;
-    const target = relTarget ? `${relTarget.mapName}:${relTarget.modelName}` : undefined;
+    const currentResource = `${ctx.lens.mapName}:${ctx.lens.model}`;
+    const fieldsAt = (resource: string): BuilderField[] =>
+      resource === currentResource ? ctx.fields : (ctx.resourceFields?.(resource) ?? []);
+    const relTargetOf = (f: BuilderField | undefined): string | undefined =>
+      f?.relation ? `${f.relation.mapName}:${f.relation.modelName}` : undefined;
+    // Only to-one relations are walkable — a hop evaluates a single record, so the "many" side
+    // (a list relation / the one→many bridge direction) is never a valid rel target.
+    const relOptionsAt = (resource: string) =>
+      fieldsAt(resource)
+        .filter((f) => f.relation && !f.isList)
+        .map((f) => opt(f.name));
+    const setRel = (next: string) => ctx.commit(setActionNode(ctx.root, path, { rel: next, action: rel.action }));
+
+    const segs = rel.rel ? rel.rel.split('.') : [];
+    let resource = currentResource;
+    let resolved = true;
+    const segments: Control[] = segs.map((seg, i) => {
+      const optionsResource = resource;
+      const next = relTargetOf(fieldsAt(resource).find((x) => x.name === seg));
+      if (next) resource = next;
+      else resolved = false;
+      // Changing a hop truncates everything past it (deeper hops are scoped to it).
+      return { value: seg, options: relOptionsAt(optionsResource), set: (r) => setRel([...segs.slice(0, i), r].join('.')) };
+    });
+    const target = resolved ? resource : undefined;
+
     return {
       ...base,
       rel: {
-        relation: {
-          value: rel.rel,
-          options: ctx.fields.filter((f) => f.relation).map((f) => opt(f.name)),
-          set: (r) => ctx.commit(setActionNode(ctx.root, path, { rel: r, action: rel.action })),
-        },
+        segments,
+        addOptions: target ? relOptionsAt(target) : [],
+        addSegment: (r) => setRel([...segs, r].join('.')),
+        removeLast: segs.length ? () => setRel(segs.slice(0, -1).join('.')) : undefined,
         action: {
           value: rel.action,
           options: ((target && ctx.actionsByResource[target]) || []).map(opt),

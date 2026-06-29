@@ -1,6 +1,6 @@
 import type { SourceValues } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
+import { type BuilderField, describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
 import { defaultActionRule } from './actionTree';
 import type { ActionRule } from './types';
@@ -50,6 +50,18 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
   }, [tree]);
 
   const commit = useCallback((next: ActionRule) => setTree(next), []);
+  const maps = opts.source.maps;
+  const bridges = opts.source.bridges;
+  const resourceFields = useCallback(
+    (res: string): BuilderField[] => {
+      const i = res.indexOf(':');
+      const mapName = i === -1 ? '' : res.slice(0, i);
+      const model = i === -1 ? res : res.slice(i + 1);
+      if (!maps[mapName]?.models[model]) return [];
+      return describeModelFields(resolve({ maps, bridges, mapName, model }), mapName, model);
+    },
+    [maps, bridges],
+  );
   const root = useMemo(
     () =>
       buildActionRoot(tree, {
@@ -57,10 +69,11 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
         fields,
         siblingActions: opts.siblingActions ?? [],
         actionsByResource: opts.actionsByResource ?? {},
+        resourceFields,
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, lens, fields, opts.siblingActions, opts.actionsByResource, opts.maxDepth, commit],
+    [tree, lens, fields, opts.siblingActions, opts.actionsByResource, opts.maxDepth, commit, resourceFields],
   );
 
   return { value: tree, root, setRule: setTree };

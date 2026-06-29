@@ -11,10 +11,18 @@ const map: FieldMap = {
         id: { kind: 'scalar', type: 'String' },
         userId: { kind: 'scalar', type: 'String' },
         role: { kind: 'enum', type: 'Role' },
-        organization: { kind: 'object', type: 'Organization' },
+        organization: { kind: 'object', type: 'Organization' }, // to-one — walkable
+        posts: { kind: 'object', type: 'Post', isList: true }, // to-many — NOT walkable
       },
     },
-    Organization: { fields: { id: { kind: 'scalar', type: 'String' }, name: { kind: 'scalar', type: 'String' } } },
+    Organization: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        name: { kind: 'scalar', type: 'String' },
+        parent: { kind: 'object', type: 'Organization' }, // to-one self-ref — for multi-hop
+      },
+    },
+    Post: { fields: { id: { kind: 'scalar', type: 'String' } } },
   },
   enums: { Role: ['owner', 'admin', 'member'] },
 };
@@ -22,6 +30,10 @@ const map: FieldMap = {
 const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
 const fields = describeModelFields(lens, 'app', 'User');
 const actionsByResource = { 'app:User': ['own', 'manage', 'read'], 'app:Organization': ['own', 'manage', 'read'] };
+const resourceFields = (res: string) => {
+  const [m, mdl] = res.split(':');
+  return describeModelFields(resolve({ maps: { app: map }, mapName: m, model: mdl }), m, mdl);
+};
 
 let committed: ActionRule | undefined;
 const build = (rule: ActionRule) => {
@@ -31,6 +43,7 @@ const build = (rule: ActionRule) => {
     fields,
     siblingActions: ['manage', 'read'],
     actionsByResource,
+    resourceFields,
     maxDepth: 4,
     commit: (next) => {
       committed = next;
@@ -53,13 +66,26 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect(n.self?.options.map((o) => o.value).sort()).toEqual(['id', 'role', 'userId']);
   });
 
-  test('rel offers relation fields, and the target model’s actions', () => {
+  test('rel single hop offers only to-one relations (excludes the "many" side) + the target’s actions', () => {
     const n = build({ rel: 'organization', action: 'own' }) as ActionLeafNode;
     expect(n.kind.value).toBe('rel');
-    expect(n.rel?.relation.options.map((o) => o.value)).toEqual(['organization']);
+    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization']);
+    // `posts` (a list / "many" side) is excluded — only to-one relations are walkable
+    expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']);
     expect(n.rel?.target).toBe('app:Organization');
     expect(n.rel?.action.options.map((o) => o.value)).toEqual(['own', 'manage', 'read']);
     expect(n.rel?.action.value).toBe('own');
+  });
+
+  test('rel multi-hop scopes each segment to the resource reached', () => {
+    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization', 'parent']);
+    expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']); // User's to-one
+    expect(n.rel?.segments[1].options.map((o) => o.value)).toEqual(['parent']); // Organization's to-one
+    expect(n.rel?.target).toBe('app:Organization');
+    // appending a hop extends the dotted path
+    n.rel?.addSegment('parent');
+    expect((committed as { rel: string }).rel).toBe('organization.parent.parent');
   });
 
   test('rule embeds a condition builder (a group node)', () => {
