@@ -49,6 +49,13 @@ const SAVE = `import { stringifySavedRule, parseSavedRule } from '@inixiative/ru
 const json = stringifySavedRule({ source: ref, rule, sourceValues });
 const back = parseSavedRule(json); // validated; throws on malformed input`;
 
+const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder';
+
+const pb = usePermissionBuilder({ value: schema, onChange: setSchema, source });
+pb.addAction('read');                 // open action names — yours
+const root = pb.actionRoot('read');   // the ActionRule editor for one action
+// pb.value is the rebac schema: model → { actions: { name → ActionRule } }`;
+
 export const DocsTab = () => (
   <div style={{ display: 'grid', gap: 16 }}>
     <Panel title="What this is">
@@ -111,6 +118,19 @@ export const DocsTab = () => (
         <Mono>filter</Mono> are nested groups scoped to the <strong>related model</strong> — author them like the top
         level.
       </P>
+    </Panel>
+
+    <Panel title="Permissions (rebac / abac / rbac)">
+      <P>
+        <Mono>usePermissionBuilder</Mono> builds a rebac schema (<Mono>model → {'{ actions: name → ActionRule }'}</Mono>)
+        over a lens/narrowing base. An <Mono>ActionRule</Mono> is a recursive algebra:{' '}
+        <Mono>{'{ rule }'}</Mono> (abac predicate — embeds the json-rules builder), <Mono>{'{ self }'}</Mono>{' '}
+        (owner field), <Mono>{'{ rel, action }'}</Mono> (walk a relation, check an action on the target),{' '}
+        a <Mono>string</Mono> (delegate to another action), <Mono>{'{ any }'}</Mono>/<Mono>{'{ all }'}</Mono>, or{' '}
+        <Mono>null</Mono> (deny). The leaves are model-aware: <Mono>self</Mono> picks the model's fields,{' '}
+        <Mono>delegate</Mono> its other actions, <Mono>rel</Mono> a relation + the target model's actions.
+      </P>
+      <Code>{PERMS}</Code>
     </Panel>
 
     <Panel title="Serialization">

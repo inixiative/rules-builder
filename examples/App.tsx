@@ -8,13 +8,24 @@ import { FieldmapsTab } from './tabs/FieldmapsTab';
 import { LensEditor } from './tabs/LensEditor';
 import { NarrowingEditor } from './tabs/NarrowingEditor';
 import { PathPickerTab } from './tabs/PathPickerTab';
+import { PermissionsTab } from './tabs/PermissionsTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { tokens } from './ui';
 import type { SavedNarrowing, Workspace } from './workspace';
 
-type Section = 'fieldmaps' | 'bridges' | 'lenses' | 'narrowings' | 'rules' | 'valuepicker' | 'docs' | 'settings';
+type Section =
+  | 'fieldmaps'
+  | 'bridges'
+  | 'lenses'
+  | 'narrowings'
+  | 'rules'
+  | 'permissions'
+  | 'valuepicker'
+  | 'docs'
+  | 'settings';
 type Selection = { section: Section; item?: string };
 type InvItem = { id: string; label: string; children?: InvItem[] };
+type SectionDef = { key: Section; label: string; items: InvItem[] };
 
 const bridgeLabel = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
@@ -34,22 +45,10 @@ const collectSources = (n: SavedNarrowing['narrowing']): InvItem[] => {
   return out;
 };
 
-const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem[] }[] => [
-  {
-    key: 'fieldmaps',
-    label: 'FieldMaps',
-    items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })),
-  },
-  {
-    key: 'bridges',
-    label: 'Bridges',
-    items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })),
-  },
-  {
-    key: 'lenses',
-    label: 'Lenses',
-    items: Object.keys(ws.lenses).map((n) => ({ id: n, label: n })),
-  },
+const inventorySections = (ws: Workspace): SectionDef[] => [
+  { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
+  { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
+  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.lenses).map((n) => ({ id: n, label: n })) },
   {
     key: 'narrowings',
     label: 'Narrowings',
@@ -59,10 +58,18 @@ const inventory = (ws: Workspace): { key: Section; label: string; items: InvItem
       children: collectSources(sn.narrowing),
     })),
   },
+];
+
+const builderSections = (ws: Workspace): SectionDef[] => [
+  { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
   {
-    key: 'rules',
-    label: 'Rules',
-    items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })),
+    key: 'permissions',
+    label: 'Permissions',
+    items: Object.entries(ws.permissions).map(([model, p]) => ({
+      id: model,
+      label: model,
+      children: Object.keys(p.actions).map((a) => ({ id: `${model}.${a}`, label: a })),
+    })),
   },
 ];
 
@@ -73,7 +80,7 @@ export const App = () => {
   const patch = (partial: Partial<Workspace>) => setWs((prev) => ({ ...prev, ...partial }));
 
   const selectItem = (section: Section, id: string) => {
-    // Rules load (draft + bound source) is handled inside BuilderTab via its `selected` prop.
+    // Rules/Permissions load their selection inside their tab via the `selected` prop.
     setSel({ section, item: id });
   };
 
@@ -92,6 +99,9 @@ export const App = () => {
     } else if (section === 'rules') {
       const { [id]: _, ...rest } = ws.rules;
       patch({ rules: rest });
+    } else if (section === 'permissions') {
+      const { [id]: _, ...rest } = ws.permissions;
+      patch({ permissions: rest });
     }
     setSel((s) => (s.section === section && s.item === id ? { section } : s));
   };
@@ -108,6 +118,8 @@ export const App = () => {
         return <NarrowingEditor ws={ws} patch={patch} selected={sel.item} />;
       case 'rules':
         return <BuilderTab ws={ws} patch={patch} selected={sel.item} />;
+      case 'permissions':
+        return <PermissionsTab ws={ws} patch={patch} selected={sel.item} />;
       case 'valuepicker':
         return <PathPickerTab ws={ws} patch={patch} />;
       case 'docs':
@@ -116,8 +128,6 @@ export const App = () => {
         return <SettingsTab ws={ws} patch={patch} replace={setWs} />;
     }
   })();
-
-  const sections = inventory(ws);
 
   const navItem = (active: boolean): React.CSSProperties => ({
     display: 'flex',
@@ -151,15 +161,54 @@ export const App = () => {
     whiteSpace: 'nowrap',
   };
 
+  const groupLabel: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.08em',
+    color: tokens.textMuted,
+  };
+
+  const renderSection = (s: SectionDef) => (
+    <div key={s.key} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+      <button type="button" style={navItem(sel.section === s.key && !sel.item)} onClick={() => setSel({ section: s.key })}>
+        <span>{s.label}</span>
+        <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
+      </button>
+      {s.items.map((it) => (
+        <div key={it.id} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+          <div style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12, minWidth: 0 }}>
+            <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
+              {it.label}
+            </button>
+            <button
+              type="button"
+              aria-label={`remove ${it.label}`}
+              title="remove"
+              onClick={() => removeItem(s.key, it.id)}
+              style={{ flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+            >
+              ✕
+            </button>
+          </div>
+          {it.children?.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => selectItem(s.key, it.id)}
+              style={{ ...navItem(false), paddingLeft: 34, fontSize: 11, color: tokens.textMuted, minWidth: 0 }}
+            >
+              <span style={{ minWidth: 0, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                ↳ {c.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div
-      style={{
-        fontFamily: 'system-ui, sans-serif',
-        color: tokens.text,
-        background: tokens.bgMuted,
-        minHeight: '100vh',
-      }}
-    >
+    <div style={{ fontFamily: 'system-ui, sans-serif', color: tokens.text, background: tokens.bgMuted, minHeight: '100vh' }}>
       <header
         style={{
           display: 'flex',
@@ -172,28 +221,21 @@ export const App = () => {
       >
         <strong style={{ fontSize: 16 }}>Rules Builder</strong>
         <span style={{ fontSize: 12, color: tokens.textMuted }}>
-          fieldMaps → bridges → lenses → narrowings (+ sources) → builder → value picker
+          inventory (maps · bridges · lenses · narrowings) → builders (rules · permissions)
         </span>
       </header>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 16,
-          padding: 20,
-          maxWidth: 1200,
-          margin: '0 auto',
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: 20, maxWidth: 1200, margin: '0 auto' }}>
         <nav
           style={{
             width: 240,
             flexShrink: 0,
             position: 'sticky',
             top: 20,
-            display: 'grid',
-            gap: 10,
+            maxHeight: 'calc(100vh - 40px)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
             overflow: 'hidden',
             background: tokens.bg,
             border: `1px solid ${tokens.border}`,
@@ -201,121 +243,32 @@ export const App = () => {
             padding: 12,
           }}
         >
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              color: tokens.textMuted,
-            }}
-          >
-            INVENTORY
-          </div>
-          {sections.map((s) => (
-            <div key={s.key} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minHeight: 0 }}>
+            <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+              <div style={groupLabel}>INVENTORY</div>
+              {inventorySections(ws).map(renderSection)}
+            </div>
+            <div style={{ display: 'grid', gap: 4, minWidth: 0, borderTop: `1px solid ${tokens.border}`, paddingTop: 10 }}>
+              <div style={groupLabel}>BUILDERS</div>
+              {builderSections(ws).map(renderSection)}
+            </div>
+            <div style={{ display: 'grid', gap: 2, minWidth: 0, borderTop: `1px solid ${tokens.border}`, paddingTop: 10 }}>
+              <div style={groupLabel}>TOOLS</div>
               <button
                 type="button"
-                style={navItem(sel.section === s.key && !sel.item)}
-                onClick={() => setSel({ section: s.key })}
+                style={navItem(sel.section === 'valuepicker')}
+                onClick={() => setSel({ section: 'valuepicker' })}
               >
-                <span>{s.label}</span>
-                <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
+                <span>Value Picker</span>
               </button>
-              {s.items.map((it) => (
-                <div key={it.id} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                  <div
-                    style={{
-                      ...navItem(sel.section === s.key && sel.item === it.id),
-                      paddingLeft: 18,
-                      fontSize: 12,
-                      minWidth: 0,
-                    }}
-                  >
-                    <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
-                      {it.label}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`remove ${it.label}`}
-                      title="remove"
-                      onClick={() => removeItem(s.key, it.id)}
-                      style={{
-                        flexShrink: 0,
-                        border: 'none',
-                        background: 'none',
-                        cursor: 'pointer',
-                        color: tokens.textMuted,
-                        padding: '0 2px',
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {it.children?.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      title="source — edit in the narrowing"
-                      onClick={() => setSel({ section: s.key, item: it.id })}
-                      style={{
-                        ...navItem(false),
-                        paddingLeft: 34,
-                        fontSize: 11,
-                        color: tokens.textMuted,
-                        minWidth: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          minWidth: 0,
-                          fontFamily: 'monospace',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        ↳ {c.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ))}
             </div>
-          ))}
-          <div
-            style={{
-              borderTop: `1px solid ${tokens.border}`,
-              paddingTop: 8,
-              display: 'grid',
-              gap: 2,
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: '0.08em',
-                color: tokens.textMuted,
-              }}
-            >
-              TOOLS
-            </div>
-            <button
-              type="button"
-              style={navItem(sel.section === 'valuepicker')}
-              onClick={() => setSel({ section: 'valuepicker' })}
-            >
-              <span>Value Picker</span>
-            </button>
+          </div>
+
+          <div style={{ marginTop: 'auto', borderTop: `1px solid ${tokens.border}`, paddingTop: 8, display: 'grid', gap: 2, minWidth: 0 }}>
             <button type="button" style={navItem(sel.section === 'docs')} onClick={() => setSel({ section: 'docs' })}>
               <span>📖 Docs</span>
             </button>
-            <button
-              type="button"
-              style={navItem(sel.section === 'settings')}
-              onClick={() => setSel({ section: 'settings' })}
-            >
+            <button type="button" style={navItem(sel.section === 'settings')} onClick={() => setSel({ section: 'settings' })}>
               <span>⚙ Settings</span>
             </button>
           </div>

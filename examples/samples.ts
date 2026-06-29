@@ -119,10 +119,25 @@ export const sampleNarrowings: Record<string, SavedNarrowing> = {
   },
 };
 
+/** A rebac entry on User: a terminal deny, an rbac delegation, and an any[self, abac]. */
+export const samplePermissions: Workspace['permissions'] = {
+  User: {
+    source: { kind: 'lens', name: 'app-users' },
+    actions: {
+      own: null,
+      manage: 'own',
+      read: {
+        any: [{ self: 'id' }, { rule: { all: [{ field: 'active', operator: 'equals', value: true }] } }, 'manage'],
+      },
+    },
+  },
+};
+
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
   bridges: sampleBridges,
   lenses: sampleLenses,
   narrowings: sampleNarrowings,
+  permissions: samplePermissions,
 });

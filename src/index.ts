@@ -48,3 +48,35 @@ export type {
   ValueControl,
 } from './builder';
 export { asGroupRoot, buildRoot, useRuleBuilder } from './builder';
+
+export type {
+  ActionGroupNode,
+  ActionLeafNode,
+  ActionPath,
+  ActionRule,
+  ActionRuleKind,
+  ActionRuleNode,
+  BuildActionOptions,
+  ModelPermission,
+  RebacSchema,
+  UseActionRuleBuilder,
+  UseActionRuleBuilderOptions,
+  UsePermissionBuilder,
+  UsePermissionBuilderOptions,
+} from './permissions';
+export {
+  actionKind,
+  actionNamesByModel,
+  addActionChild,
+  buildActionRoot,
+  childrenOfAction,
+  defaultActionRule,
+  getActionNode,
+  isActionGroup,
+  removeActionNode,
+  removeSchemaAction,
+  setActionNode,
+  setSchemaAction,
+  useActionRuleBuilder,
+  usePermissionBuilder,
+} from './permissions';
