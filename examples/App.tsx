@@ -74,7 +74,7 @@ export const App = () => {
   const editor = (() => {
     switch (sel.section) {
       case 'fieldmaps':
-        return <FieldmapsTab ws={ws} patch={patch} />;
+        return <FieldmapsTab ws={ws} patch={patch} selected={sel.item} />;
       case 'bridges':
         return <BridgesTab ws={ws} patch={patch} />;
       case 'lenses':

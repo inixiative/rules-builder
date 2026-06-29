@@ -72,11 +72,14 @@ const ValueField = ({ value }: { value: ValueControl }) => {
   }
   if (value.kind === 'Boolean') {
     return (
-      <input
-        aria-label="value"
-        type="checkbox"
-        checked={value.current === true}
-        onChange={(e) => value.set(e.target.checked)}
+      <Picker
+        ariaLabel="value"
+        value={value.current === true ? 'true' : value.current === false ? 'false' : ''}
+        options={[
+          { value: 'true', label: 'true' },
+          { value: 'false', label: 'false' },
+        ]}
+        onChange={(v) => value.set(v === 'true')}
       />
     );
   }

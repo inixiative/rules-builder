@@ -35,12 +35,15 @@ const ValueField = ({ value }: { value: ValueControl }) => {
   }
   if (value.kind === 'Boolean') {
     return (
-      <input
+      <Select
         aria-label="value"
-        type="checkbox"
-        className="h-4 w-4"
-        checked={value.current === true}
-        onChange={(e) => value.set(e.target.checked)}
+        placeholder="value"
+        options={[
+          { value: 'true', label: 'true' },
+          { value: 'false', label: 'false' },
+        ]}
+        value={value.current === true ? 'true' : value.current === false ? 'false' : ''}
+        onChange={(v) => value.set(v === 'true')}
       />
     );
   }

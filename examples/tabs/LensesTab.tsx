@@ -282,7 +282,11 @@ export const LensesTab = ({ ws, patch, selected }: TabProps & { selected?: strin
         )}
       </Panel>
 
-      <Panel title="Narrowing JSON">
+      <Panel title="Narrowing (reference JSON)">
+        <Empty>
+          The serializable narrowing you author &amp; save — the lens's <strong>reference</strong> form. The{' '}
+          <strong>projected</strong> surface (what a consumer actually sees) is in "Validation &amp; exposed surface" above.
+        </Empty>
         <Code>{JSON.stringify(draft.narrowing ?? {}, null, 2)}</Code>
       </Panel>
     </div>
