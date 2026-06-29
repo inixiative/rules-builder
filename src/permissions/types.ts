@@ -12,7 +12,8 @@ export type ActionRule =
   | { rule: Condition } // ABAC predicate (json-rules) over the record
   | { any: ActionRule[] } // OR
   | { all: ActionRule[] } // AND
-  | null; // terminal deny
+  | boolean // terminal allow (true) / deny (false)
+  | null; // terminal deny (equivalent to false)
 
 /** One resource's permission entry: `actions: { name → ActionRule }`. */
 export type ResourcePermission = { actions: Record<string, ActionRule> };
@@ -27,4 +28,4 @@ export type RebacSchema = {
   permissions: Record<string, ResourcePermission>;
 };
 
-export type ActionRuleKind = 'delegate' | 'rel' | 'self' | 'rule' | 'any' | 'all' | 'deny';
+export type ActionRuleKind = 'delegate' | 'rel' | 'self' | 'rule' | 'any' | 'all' | 'allow' | 'deny';

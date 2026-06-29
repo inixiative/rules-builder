@@ -108,7 +108,8 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
           </>
         )}
 
-        {node.kind.value === 'deny' && <Badge tone="danger">deny</Badge>}
+        {node.kind.value === 'deny' && <Badge tone="danger">deny (false)</Badge>}
+        {node.kind.value === 'allow' && <Badge tone="accent">allow (true)</Badge>}
 
         {node.remove && (
           <button

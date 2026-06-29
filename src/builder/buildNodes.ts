@@ -55,9 +55,16 @@ export type LeafNode = {
   id: string;
   path: RulePath;
   depth: number;
-  field: FieldControl;
-  operator: OperatorControl;
-  value: ValueControl;
+  /** A field comparison (`field`) or a raw `true`/`false` literal (`boolean`). */
+  leafKind: 'field' | 'boolean';
+  /** Flip the leaf between a field comparison and a true/false literal. */
+  setLeafKind: (k: 'field' | 'boolean') => void;
+  /** Present when `leafKind === 'boolean'` — the literal value. */
+  literal?: { value: boolean; set: (v: boolean) => void };
+  /** Present when `leafKind === 'field'`. */
+  field?: FieldControl;
+  operator?: OperatorControl;
+  value?: ValueControl;
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
   valid: boolean;
   remove: () => void;
@@ -136,6 +143,26 @@ const idOf = (n: Condition, index: number): string => {
 };
 
 const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): LeafNode => {
+  const id = idOf(node, path.length ? (path[path.length - 1] as number) : 0);
+  // A root leaf has no parent array to splice out of — deleting it clears to a blank group.
+  const remove = () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] });
+  const setLeafKind = (k: 'field' | 'boolean') =>
+    ctx.commit(setNode(ctx.root, path, k === 'boolean' ? true : defaultRule(scope.fields)));
+
+  if (typeof node === 'boolean') {
+    return {
+      kind: 'leaf',
+      id,
+      path,
+      depth,
+      leafKind: 'boolean',
+      setLeafKind,
+      literal: { value: node, set: (v) => ctx.commit(setNode(ctx.root, path, v)) },
+      valid: true,
+      remove,
+    };
+  }
+
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
   // Resolve the base field: an exact match, or a Json column carrying a dotted sub-path.
@@ -175,9 +202,11 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
 
   return {
     kind: 'leaf',
-    id: idOf(node, path[path.length - 1] as number),
+    id,
     path,
     depth,
+    leafKind: 'field',
+    setLeafKind,
     field: {
       value: baseName,
       options: selectableFields(scope.fields).map((f) => ({
@@ -241,11 +270,11 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
           : undefined,
     },
     valid: checkRuleAgainstLens(node, scope.lens).ok,
-    remove: () => ctx.commit(removeNode(ctx.root, path)),
+    remove,
   };
 };
 
-const buildArray = (node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): ArrayNode => {
+const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): ArrayNode => {
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
   const field = scope.fields.find((f) => f.name === fieldName);
@@ -358,13 +387,20 @@ const buildNode = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
       ? buildArray(node, path, depth, ctx, scope)
       : buildLeaf(node, path, depth, ctx, scope);
 
-/** Normalize to a group root so the tree always has a compound to add into. */
+/** Normalize a (sub-)condition to a group so it has a compound to add into. Used for the array
+ *  node's nested condition/filter sub-trees, which are always groups over the related elements. */
 export const asGroupRoot = (cond: Condition | undefined): Condition =>
   cond !== undefined && isGroupNode(cond) ? cond : { all: cond !== undefined ? [cond] : [] };
 
+/** The root is the condition itself — never synthetically wrapped. Only an absent condition
+ *  becomes a blank group (a first-class, add-into-able container); a bare leaf or `true`/`false`
+ *  stays bare. */
+export const asRoot = (cond: Condition | undefined): Condition => (cond === undefined ? { all: [] } : cond);
+
 /**
- * Build the headless descriptor tree from a condition + composed lens. Pure: every
- * action computes the next condition and calls `commit`. The consumer renders.
+ * Build the headless descriptor tree from a condition + composed lens. The root is whatever the
+ * condition is — a group, a field leaf, an array rule, or a `true`/`false` literal leaf — never
+ * force-wrapped. Pure: every action computes the next condition and calls `commit`.
  */
 export const buildRoot = (
   root: Condition,
@@ -372,8 +408,8 @@ export const buildRoot = (
   fields: BuilderField[],
   maxDepth: number,
   commit: (next: Condition) => void,
-): GroupNode => {
-  const normalized = asGroupRoot(root);
+): BuilderNode => {
+  const normalized = asRoot(root);
   const ctx: Ctx = { root: normalized, maxDepth, commit };
-  return buildGroup(normalized, [], 0, ctx, { lens, fields });
+  return buildNode(normalized, [], 0, ctx, { lens, fields });
 };

@@ -9,7 +9,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
 import { describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
-import { asGroupRoot, buildRoot, type GroupNode } from './buildNodes';
+import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
 const EMPTY: Condition = { all: [] };
 
@@ -33,7 +33,7 @@ export type UseRuleBuilderOptions = {
  */
 export type UseRuleBuilder = {
   value: Condition;
-  root: GroupNode;
+  root: BuilderNode;
   lens: Lens;
   setCondition: (clean: Condition) => void;
   validate: (target: RuleTarget) => ReturnType<typeof validateRule>;
@@ -56,7 +56,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   );
   const maxDepth = opts.maxDepth ?? 4;
 
-  const [tree, setTree] = useState<Condition>(() => withIds(asGroupRoot(opts.value)));
+  const [tree, setTree] = useState<Condition>(() => withIds(asRoot(opts.value)));
 
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;
@@ -82,7 +82,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     value: clean(tree),
     root,
     lens,
-    setCondition: (c) => setTree(withIds(asGroupRoot(c))),
+    setCondition: (c) => setTree(withIds(asRoot(c))),
     validate: (target) => validateRule(clean(tree), { target }),
     describe: () => describeRule(clean(tree), lens),
   };

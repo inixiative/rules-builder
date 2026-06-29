@@ -1,5 +1,5 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
-import { buildRoot, type GroupNode } from '../builder/buildNodes';
+import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';
 import { type BuilderField, describeModelFields, resolve } from '../schema/surface';
@@ -47,7 +47,7 @@ export type UseTransitionBuilder = {
   pathCount: (resource: string, action: string) => number;
   addPath: (resource: string, action: string) => void;
   removePath: (resource: string, action: string, i: number) => void;
-  predicateRoot: (resource: string, action: string, i: number, side: SideKey) => GroupNode | null;
+  predicateRoot: (resource: string, action: string, i: number, side: SideKey) => BuilderNode | null;
   permissionHas: (resource: string, action: string, i: number, side: SideKey) => boolean;
   enablePermission: (resource: string, action: string, i: number, side: SideKey) => void;
   clearPermission: (resource: string, action: string, i: number, side: SideKey) => void;
@@ -91,7 +91,7 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
   };
   const removeAction = (resource: string, action: string) => setSchema(removeTransitionAction(schema, resource, action));
 
-  const predicateRoot = (resource: string, action: string, i: number, side: SideKey): GroupNode | null => {
+  const predicateRoot = (resource: string, action: string, i: number, side: SideKey): BuilderNode | null => {
     const sideObj = sideOf(resource, action, i, side);
     const s = surface(resource);
     if (!sideObj || !s) return null;

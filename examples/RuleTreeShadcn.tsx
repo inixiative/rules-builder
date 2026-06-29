@@ -100,28 +100,55 @@ const ValueField = ({ value }: { value: ValueControl }) => {
 const Leaf = ({ node }: { node: LeafNode }) => (
   <div className="flex flex-wrap items-center gap-2" aria-invalid={!node.valid}>
     <Select
-      aria-label="field"
-      placeholder="field"
-      options={node.field.options}
-      value={node.field.value ?? ''}
-      onChange={node.field.set}
+      aria-label="leaf kind"
+      options={[
+        { value: 'field', label: 'field' },
+        { value: 'boolean', label: 'true/false' },
+      ]}
+      value={node.leafKind}
+      onChange={(k) => node.setLeafKind(k as 'field' | 'boolean')}
     />
-    {node.field.acceptsSubPath && node.field.setSubPath && (
-      <Input
-        aria-label="json sub-path"
-        placeholder="json.path"
-        value={node.field.subPath ?? ''}
-        onChange={(e) => node.field.setSubPath?.(e.target.value)}
+    {node.leafKind === 'boolean' && node.literal ? (
+      <Select
+        aria-label="boolean value"
+        options={[
+          { value: 'true', label: 'true' },
+          { value: 'false', label: 'false' },
+        ]}
+        value={String(node.literal.value)}
+        onChange={(v) => node.literal?.set(v === 'true')}
       />
+    ) : (
+      node.field &&
+      node.operator &&
+      node.value && (
+        <>
+          <Select
+            aria-label="field"
+            placeholder="field"
+            options={node.field.options}
+            value={node.field.value ?? ''}
+            onChange={node.field.set}
+          />
+          {node.field.acceptsSubPath && node.field.setSubPath && (
+            <Input
+              aria-label="json sub-path"
+              placeholder="json.path"
+              value={node.field.subPath ?? ''}
+              onChange={(e) => node.field?.setSubPath?.(e.target.value)}
+            />
+          )}
+          <Select
+            aria-label="operator"
+            placeholder="operator"
+            options={node.operator.options}
+            value={node.operator.value ?? ''}
+            onChange={node.operator.set}
+          />
+          <ValueField value={node.value} />
+        </>
+      )
     )}
-    <Select
-      aria-label="operator"
-      placeholder="operator"
-      options={node.operator.options}
-      value={node.operator.value ?? ''}
-      onChange={node.operator.set}
-    />
-    <ValueField value={node.value} />
     {!node.valid && (
       <Badge tone="danger" title="value not in the allowed set">
         ✗
@@ -259,7 +286,7 @@ const Node = ({ node }: { node: BuilderNode }) =>
     <Leaf node={node} />
   );
 
-export const RuleTreeShadcn = ({ root }: { root: GroupNode }) => <Node node={root} />;
+export const RuleTreeShadcn = ({ root }: { root: BuilderNode }) => <Node node={root} />;
 
 export const RuleEditorShadcn = ({
   source,

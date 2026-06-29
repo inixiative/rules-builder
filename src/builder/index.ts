@@ -8,6 +8,6 @@ export type {
   PickOption,
   ValueControl,
 } from './buildNodes';
-export { asGroupRoot, buildRoot } from './buildNodes';
+export { asGroupRoot, asRoot, buildRoot } from './buildNodes';
 export type { UseRuleBuilder, UseRuleBuilderOptions } from './useRuleBuilder';
 export { useRuleBuilder } from './useRuleBuilder';

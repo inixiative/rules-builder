@@ -47,7 +47,7 @@ export type {
   UseRuleBuilderOptions,
   ValueControl,
 } from './builder';
-export { asGroupRoot, buildRoot, useRuleBuilder } from './builder';
+export { asGroupRoot, asRoot, buildRoot, useRuleBuilder } from './builder';
 
 export type {
   ActionGroupNode,

@@ -147,10 +147,60 @@ describe('buildRoot — descriptor tree', () => {
     expect(leaf.field.setSubPath).toBeUndefined();
   });
 
-  test('a non-group root is normalized into a group', () => {
+  test('a bare field-rule root is NOT wrapped — it builds a field leaf', () => {
     const leafRoot: Condition = { field: 'tier', operator: 'equals', value: 'gold' };
-    const root: GroupNode = build(leafRoot);
+    const root = build(leafRoot) as unknown as LeafNode;
+    expect(root.kind).toBe('leaf');
+    expect(root.leafKind).toBe('field');
+    expect(root.field?.value).toBe('tier');
+  });
+});
+
+describe('buildRoot — boolean leaves + bare root', () => {
+  beforeEach(() => {
+    committed = undefined;
+  });
+
+  test('a bare boolean root builds a true/false literal leaf, not a group', () => {
+    const root = build(true) as unknown as LeafNode;
+    expect(root.kind).toBe('leaf');
+    expect(root.leafKind).toBe('boolean');
+    expect(root.literal?.value).toBe(true);
+  });
+
+  test('toggling a boolean literal commits the opposite value', () => {
+    const root = build(false) as unknown as LeafNode;
+    root.literal?.set(true);
+    expect(committed).toBe(true);
+  });
+
+  test('setLeafKind flips field ⇄ boolean (true on enter; a default field rule on exit)', () => {
+    const fieldLeaf = build({ field: 'tier', operator: 'equals', value: 'gold' }) as unknown as LeafNode;
+    fieldLeaf.setLeafKind('boolean');
+    expect(committed).toBe(true);
+
+    const boolLeaf = build(true) as unknown as LeafNode;
+    boolLeaf.setLeafKind('field');
+    expect(committed).toMatchObject({ field: expect.any(String) });
+  });
+
+  test('a boolean inside a group renders as a literal-leaf child', () => {
+    const c: Condition = { all: [true, { field: 'tier', operator: 'equals', value: 'gold', _id: 'a' }] };
+    const root = build(c) as GroupNode;
     expect(root.kind).toBe('group');
-    expect(root.children).toHaveLength(1);
+    expect((root.children[0] as LeafNode).leafKind).toBe('boolean');
+    expect((root.children[1] as LeafNode).leafKind).toBe('field');
+  });
+
+  test('deleting a group deletes its contents — never splices children up', () => {
+    const c: Condition = {
+      all: [
+        { field: 'tier', operator: 'equals', value: 'gold' },
+        { any: [{ field: 'age', operator: 'equals', value: 1 }] },
+      ],
+    };
+    const root = build(c) as GroupNode;
+    root.children[1].remove();
+    expect(committed).toEqual({ all: [{ field: 'tier', operator: 'equals', value: 'gold' }] });
   });
 });

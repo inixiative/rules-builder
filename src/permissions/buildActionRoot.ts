@@ -1,5 +1,5 @@
 import type { Condition, Lens } from '@inixiative/json-rules';
-import { buildRoot, type GroupNode, type PickOption } from '../builder/buildNodes';
+import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
 import type { BuilderField } from '../schema/surface';
 import {
   type ActionPath,
@@ -18,7 +18,8 @@ const KIND_OPTIONS: PickOption[] = [
   { value: 'delegate', label: 'delegate' },
   { value: 'any', label: 'any (OR)' },
   { value: 'all', label: 'all (AND)' },
-  { value: 'deny', label: 'deny' },
+  { value: 'allow', label: 'allow (true)' },
+  { value: 'deny', label: 'deny (false)' },
 ];
 
 const defaultForKind = (kind: ActionRuleKind): ActionRule => {
@@ -35,8 +36,10 @@ const defaultForKind = (kind: ActionRuleKind): ActionRule => {
       return { any: [] };
     case 'all':
       return { all: [] };
+    case 'allow':
+      return true;
     case 'deny':
-      return null;
+      return false; // prefer `false` over `null` (both deny); `null` still reads as deny
   }
 };
 
@@ -59,7 +62,7 @@ export type ActionLeafNode = BaseNode & {
   delegate?: Control;
   rel?: RelControl;
   self?: Control;
-  rule?: GroupNode;
+  rule?: BuilderNode;
 };
 export type ActionGroupNode = BaseNode & { children: ActionRuleNode[]; addChild?: () => void };
 export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
@@ -176,7 +179,7 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
     };
   }
 
-  if (kind === 'deny') return base; // terminal null — kind picker only, no operands
+  if (kind === 'allow' || kind === 'deny') return base; // terminal true/false — kind picker only, no operands
 
   // rule (abac) — embed the condition builder; its commits fold back as { rule }.
   const cond = (node as { rule: Condition }).rule;

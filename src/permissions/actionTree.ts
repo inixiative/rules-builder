@@ -2,11 +2,12 @@ import type { ActionRule, ActionRuleKind } from './types';
 
 export type ActionPath = number[];
 
-const isObj = (r: ActionRule): r is Exclude<ActionRule, string | null> =>
+const isObj = (r: ActionRule): r is Exclude<ActionRule, string | boolean | null> =>
   typeof r === 'object' && r !== null;
 
 export const actionKind = (rule: ActionRule): ActionRuleKind => {
-  if (rule === null) return 'deny';
+  if (rule === null || rule === false) return 'deny';
+  if (rule === true) return 'allow';
   if (typeof rule === 'string') return 'delegate';
   if ('any' in rule) return 'any';
   if ('all' in rule) return 'all';
