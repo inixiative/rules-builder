@@ -79,9 +79,10 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         options={[
           { value: 'value', label: '= value' },
           { value: 'path', label: '→ field' },
+          { value: 'bind', label: '⟐ bind' },
         ]}
         value={value.mode}
-        onChange={(m) => value.setMode(m as 'value' | 'path')}
+        onChange={(m) => value.setMode(m as 'value' | 'path' | 'bind')}
       />
       {value.mode === 'path' ? (
         <Input
@@ -89,6 +90,13 @@ const ValueField = ({ value }: { value: ValueControl }) => {
           placeholder="field.path"
           value={value.path?.value ?? ''}
           onChange={(e) => value.path?.set(e.target.value)}
+        />
+      ) : value.mode === 'bind' ? (
+        <Input
+          aria-label="bind"
+          placeholder="bindName"
+          value={value.bind?.value ?? ''}
+          onChange={(e) => value.bind?.set(e.target.value)}
         />
       ) : (
         <LiteralValue value={value} />

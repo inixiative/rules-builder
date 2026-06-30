@@ -43,11 +43,14 @@ export type ValueControl = {
   /** False when the value falls outside the field's allowed (enum/sourced) set. */
   valid: boolean;
   set: (value: unknown) => void;
-  /** 'value' = a literal; 'path' = compare against another field's value by dotted path. */
-  mode: 'value' | 'path';
-  setMode: (mode: 'value' | 'path') => void;
+  /** 'value' = a literal; 'path' = compare against another field's value by dotted path;
+   *  'bind' = a named binding supplied at execution time (`{ bind }`). */
+  mode: 'value' | 'path' | 'bind';
+  setMode: (mode: 'value' | 'path' | 'bind') => void;
   /** Present in 'path' mode — the RHS field-reference path (e.g. `user.email`). */
   path?: { value?: string; set: (p: string) => void };
+  /** Present in 'bind' mode — the binding name resolved at execution time. */
+  bind?: { value?: string; set: (name: string) => void };
 };
 
 export type LeafNode = {
@@ -198,7 +201,8 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
     const vals = Array.isArray(v) ? v : [v];
     return vals.every((x) => x == null || typeof x !== 'string' || allowed.includes(x));
   })();
-  const valueMode: 'value' | 'path' = rec.path !== undefined ? 'path' : 'value';
+  const valueMode: 'value' | 'path' | 'bind' =
+    rec.bind !== undefined ? 'bind' : rec.path !== undefined ? 'path' : 'value';
 
   return {
     kind: 'leaf',
@@ -254,8 +258,13 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
       mode: valueMode,
       setMode: (m) => {
         if (m === valueMode) return;
-        const { value: _v, path: _p, ...rest } = rec;
-        const next = m === 'path' ? { ...rest, path: (rec.path as string) ?? '' } : { ...rest, value: rec.value ?? '' };
+        const { value: _v, path: _p, bind: _b, ...rest } = rec;
+        const next =
+          m === 'path'
+            ? { ...rest, path: (rec.path as string) ?? '' }
+            : m === 'bind'
+              ? { ...rest, bind: (rec.bind as string) ?? '' }
+              : { ...rest, value: rec.value ?? '' };
         ctx.commit(setNode(ctx.root, path, next as Condition));
       },
       path:
@@ -263,8 +272,18 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
           ? {
               value: rec.path as string | undefined,
               set: (p) => {
-                const { value: _v, ...rest } = rec;
+                const { value: _v, bind: _b, ...rest } = rec;
                 ctx.commit(setNode(ctx.root, path, { ...rest, path: p } as Condition));
+              },
+            }
+          : undefined,
+      bind:
+        valueMode === 'bind'
+          ? {
+              value: rec.bind as string | undefined,
+              set: (name) => {
+                const { value: _v, path: _p, ...rest } = rec;
+                ctx.commit(setNode(ctx.root, path, { ...rest, bind: name } as Condition));
               },
             }
           : undefined,
