@@ -30,7 +30,7 @@ const RELATED: { name: string; what: string; href: string }[] = [
 
 const HOOK = `import { useRuleBuilder } from '@inixiative/rules-builder';
 
-const { root, value } = useRuleBuilder({ source, value: { all: [] } });
+const { root, value } = useRuleBuilder({ source, defaultValue: { all: [] } });
 // walk \`root\` (a descriptor tree) and render it; \`value\` is the clean Condition`;
 
 const NODE = `function Node({ node }) {

@@ -406,7 +406,7 @@ export const RuleEditor = ({
   const { root } = useRuleBuilder({
     source,
     sourceValues,
-    value: rule,
+    defaultValue: rule,
     onChange,
     maxDepth,
   });

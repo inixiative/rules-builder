@@ -9,7 +9,8 @@ export type UseActionRuleBuilderOptions = {
   /** The lens/narrowing the rule is authored against — its fields, relations, and surface. */
   source: RuleBuilderSource;
   sourceValues?: SourceValues[];
-  value?: ActionRule;
+  /** Uncontrolled seed — read once at mount. Re-mount (`key`) or `setRule` to reseed. */
+  defaultValue?: ActionRule;
   onChange?: (rule: ActionRule) => void;
   /** Other action names on this resource → delegate targets. */
   siblingActions?: string[];
@@ -36,7 +37,7 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
   );
   const fields = useMemo(() => describeModelFields(lens, lens.mapName, lens.model), [lens]);
 
-  const [tree, setTree] = useState<ActionRule>(() => opts.value ?? defaultActionRule());
+  const [tree, setTree] = useState<ActionRule>(() => opts.defaultValue ?? defaultActionRule());
 
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;

@@ -45,7 +45,7 @@ const source = {
 };
 
 function RuleEditor() {
-  const { root, value } = useRuleBuilder({ source, value: { all: [] } });
+  const { root, value } = useRuleBuilder({ source, defaultValue: { all: [] } });
   return <Node node={root} />; // `value` is the clean, serializable Condition
 }
 

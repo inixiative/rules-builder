@@ -18,7 +18,8 @@ export type UseRuleBuilderOptions = {
   /** Fetched option sets for the source's sourced fields → folded onto field.values. */
   sourceValues?: import('@inixiative/json-rules').SourceValues[];
   targets?: RuleTarget[];
-  value?: Condition;
+  /** Uncontrolled seed — read once at mount. Re-mount (`key`) or `setCondition` to reseed. */
+  defaultValue?: Condition;
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
   valueLabels?: Record<string, Record<string, string>>;
@@ -56,7 +57,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   );
   const maxDepth = opts.maxDepth ?? 4;
 
-  const [tree, setTree] = useState<Condition>(() => withIds(asRoot(opts.value)));
+  const [tree, setTree] = useState<Condition>(() => withIds(asRoot(opts.defaultValue)));
 
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;

@@ -304,7 +304,7 @@ export const RuleEditorShadcn = ({
   const { root } = useRuleBuilder({
     source,
     sourceValues,
-    value: rule,
+    defaultValue: rule,
     onChange,
     maxDepth,
   });
