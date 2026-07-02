@@ -41,7 +41,7 @@ describe('runSources (library helper)', () => {
         mapName: 'app',
         model: 'User',
         field: 'tier',
-        values: ['gold', 'silver'],
+        options: [{ value: 'gold' }, { value: 'silver' }],
       },
     ]);
   });
@@ -63,7 +63,7 @@ describe('runSources (library helper)', () => {
         mapName: 'app',
         model: 'User',
         field: 'tier',
-        values: ['silver'],
+        options: [{ value: 'silver' }],
       },
     ]);
   });

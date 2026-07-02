@@ -19,21 +19,21 @@ export const runSources = (lensOrNarrowing: Lens | LensNarrowing, rows: SourceRo
   sourceQueries(lensOrNarrowing).map((q) => {
     const matched = (rows[q.model] ?? []).filter((r) => check(q.composedWhere, r) === true);
     const seen = new Set<string>();
-    const values: string[] = [];
+    const options: { value: string; label?: string }[] = [];
     for (const r of matched) {
       const raw = r[q.field];
       if (raw == null) continue;
-      const v = String(raw);
-      if (!seen.has(v)) {
-        seen.add(v);
-        values.push(v);
-      }
+      const value = String(raw);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      const labelRaw = q.label ? r[q.label] : undefined;
+      options.push(labelRaw == null ? { value } : { value, label: String(labelRaw) });
     }
     return {
       path: q.path,
       mapName: q.mapName,
       model: q.model,
       field: q.field,
-      values,
+      options,
     };
   });

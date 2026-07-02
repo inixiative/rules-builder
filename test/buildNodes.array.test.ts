@@ -132,3 +132,28 @@ describe('buildRoot — array nodes', () => {
     expect(node.field.options.map((o) => o.value).sort()).toEqual(['orders', 'tier']);
   });
 });
+
+// Regression: a bare array rule as the ROOT node (path []). The leaf/group roots
+// both guard `removeNode` against an empty path; the array root did not, so
+// `remove()` threw `removeNode: cannot remove the root`, and its id was the
+// string "undefined" (from `path[path.length - 1]` = path[-1]).
+describe('buildRoot — bare array root (regression)', () => {
+  const bareArrayRoot = (): Condition => ({ field: 'orders', arrayOperator: 'notEmpty' });
+
+  test('a bare array-root builds an array node at the root path', () => {
+    const root = build(bareArrayRoot());
+    expect(root.kind).toBe('array');
+    expect((root as ArrayNode).path).toEqual([]);
+  });
+
+  test('the root array node has a real id, not the string "undefined"', () => {
+    const root = build(bareArrayRoot()) as ArrayNode;
+    expect(root.id).not.toBe('undefined');
+  });
+
+  test('remove() on a bare array root is a safe no-op → clears to the empty root (matches leaf-root)', () => {
+    const root = build(bareArrayRoot()) as ArrayNode;
+    expect(() => root.remove()).not.toThrow();
+    expect(committed).toEqual({ all: [] });
+  });
+});

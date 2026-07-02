@@ -245,26 +245,34 @@ export const NarrowingNode = ({
             style={{ fontSize: 12, padding: '3px 6px' }}
           />
         </Row>
-        {Object.entries(sources).map(([field, where]) => (
-          <div key={field} style={{ border: `1px dashed ${tokens.borderStrong}`, borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Badge tone="accent">{field}</Badge>
-              <Button variant="danger" onClick={() => setSource(field, null)}>
-                remove
-              </Button>
-            </Row>
-            <span style={{ fontSize: 11, color: tokens.textMuted }}>
-              options = DISTINCT <code>{field}</code> where this holds
-            </span>
-            <RuleEditor
-              source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
-              sourceValues={ctx.sourceValues}
-              maxDepth={ctx.maxDepth}
-              rule={where && typeof where === 'object' ? where : { all: [] }}
-              onChange={(w) => setSource(field, w)}
-            />
-          </div>
-        ))}
+        {Object.entries(sources).map(([field, entry]) => {
+          // A `sources` entry is `Condition | SourceSpec`; a SourceSpec carries `where`/`label`.
+          const spec =
+            entry && typeof entry === 'object' && ('where' in entry || 'label' in entry)
+              ? (entry as { where?: Condition; label?: string })
+              : null;
+          const where: Condition = (spec ? spec.where : (entry as Condition)) ?? { all: [] };
+          return (
+            <div key={field} style={{ border: `1px dashed ${tokens.borderStrong}`, borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
+              <Row style={{ justifyContent: 'space-between' }}>
+                <Badge tone="accent">{field}</Badge>
+                <Button variant="danger" onClick={() => setSource(field, null)}>
+                  remove
+                </Button>
+              </Row>
+              <span style={{ fontSize: 11, color: tokens.textMuted }}>
+                options = DISTINCT <code>{field}</code> where this holds{spec?.label ? ` — label: ${spec.label}` : ''}
+              </span>
+              <RuleEditor
+                source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
+                sourceValues={ctx.sourceValues}
+                maxDepth={ctx.maxDepth}
+                rule={where}
+                onChange={(w) => setSource(field, w)}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {allowRelations && relations.length > 0 && (

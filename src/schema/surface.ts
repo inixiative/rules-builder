@@ -36,7 +36,7 @@ export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
 /**
  * Resolve a serializable source (+ optional fetched `sourceValues`) to the public
  * surface the builder reads. Folds createLens + narrowing + value-decoration +
- * projection in one call — fetched values land on `field.values` inside the
+ * projection in one call — fetched options land on `field.options` inside the
  * projection, never by mutating the maps.
  */
 export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens => {
@@ -120,6 +120,21 @@ const fieldAndDateOperators = (
 const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
   getArrayOperators().filter((op) => supportedByAllTargets(op, targets, (t) => getArrayOperators(t)));
 
+// Prefer labels from the surface's `options` (json-rules folds a sourced field's
+// value→label there); a caller-supplied `valueLabels` entry overrides (e.g. human
+// labels for enum values, which json-rules surfaces as label === value).
+const mergeOptionLabels = (
+  options: readonly { value: string; label?: string }[] | undefined,
+  overrides: Record<string, string> | undefined,
+): Record<string, string> | undefined => {
+  const fromOptions = options?.reduce<Record<string, string>>((acc, o) => {
+    if (o.label !== undefined && o.label !== o.value) acc[o.value] = o.label;
+    return acc;
+  }, {});
+  const merged = { ...fromOptions, ...overrides };
+  return Object.keys(merged).length ? merged : undefined;
+};
+
 export const describeModelFields = (
   lens: Lens,
   mapName: string,
@@ -151,8 +166,11 @@ export const describeModelFields = (
       isBridge: entry.kind === 'bridge',
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
-      enumValues: entry.values,
-      enumLabels: opts.valueLabels?.[`${modelName}.${name}`] ?? opts.valueLabels?.[name],
+      enumValues: entry.options?.map((o) => o.value) ?? entry.values,
+      enumLabels: mergeOptionLabels(
+        entry.options,
+        opts.valueLabels?.[`${modelName}.${name}`] ?? opts.valueLabels?.[name],
+      ),
       acceptsSubPath: kind === 'Json',
     });
   }

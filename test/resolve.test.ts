@@ -38,7 +38,7 @@ describe('resolve — serializable source → public surface', () => {
 describe('resolve — fetched sourceValues fold onto the surface', () => {
   const source = { maps: { app: map }, mapName: 'app', model: 'User' };
   const sourceValues = [
-    { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: ['gold', 'silver'] },
+    { path: 'User', mapName: 'app', model: 'User', field: 'tier', options: [{ value: 'gold' }, { value: 'silver' }] },
   ];
 
   test('fetched values surface as enumValues, kind preserved', () => {

@@ -332,7 +332,7 @@ const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
 
   return {
     kind: 'array',
-    id: idOf(node, path[path.length - 1] as number),
+    id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
     path,
     depth,
     relation: rel,
@@ -379,7 +379,9 @@ const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
         }
       : undefined,
     valid: checkRuleAgainstLens(node, scope.lens).ok,
-    remove: () => ctx.commit(removeNode(ctx.root, path)),
+    // A root array rule has no parent to splice out of — deleting it clears to a
+    // blank group, mirroring the leaf-root behavior.
+    remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
   };
 };
 
