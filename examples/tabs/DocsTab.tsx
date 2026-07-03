@@ -112,14 +112,33 @@ export const DocsTab = () => (
       <P>
         The hook is headless — it doesn't render value inputs. Switch on the{' '}
         <Mono>ValueControl</Mono>: <Mono>options</Mono> → a select; <Mono>shape === 'array'</Mono> →
-        multi-select; <Mono>kind === 'Boolean'</Mono> → a true/false select (coerce to a real
-        boolean); <Mono>kind === 'Int' | 'Float'</Mono> → number input (coerce with{' '}
-        <Mono>Number()</Mono>); <Mono>DateTime</Mono> → date input. The two reference renderers
-        (plain + shadcn) implement the full matrix — copy one.
+        multi-select; <Mono>kind === 'Boolean'</Mono> → a true/false select;{' '}
+        <Mono>kind === 'Int' | 'Float'</Mono> → number input; <Mono>DateTime</Mono> → date input.
+        Inputs don't need to hand-coerce — emitted rules carry <Mono>coerceType</Mono> (below), so a
+        date input's <Mono>'2026-06-01'</Mono> or a text input's <Mono>'5'</Mono> evaluates
+        correctly. The two reference renderers (plain + shadcn) implement the full matrix — copy
+        one.
       </P>
       <P>
         Per-control validity: <Mono>field.valid</Mono> / <Mono>value.valid</Mono> pinpoint which
         input is wrong.
+      </P>
+    </Panel>
+
+    <Panel title="Type coercion (coerceType)">
+      <P>
+        The builder auto-injects coercion: <Mono>value</Mono> / <Mono>onChange</Mono> run json-rules
+        2.13's <Mono>stampCoercions</Mono> against the composed lens, so every field rule carries{' '}
+        <Mono>{"coerceType: 'Int' | 'Float' | 'Boolean' | 'DateTime' | …"}</Mono> from its field
+        kind — never inferred from the value's shape. <Mono>check()</Mono> then coerces both sides:
+        dates land on epoch ms (Date objects, ISO strings in any zone, date-only strings — naive
+        datetimes anchor UTC, host-independent), numeric strings parse, <Mono>'true'</Mono>/
+        <Mono>'false'</Mono> map to booleans. <Mono>null</Mono> passes through untouched (the
+        is-null sentinel), and an uncoercible value just fails the comparison — no throw on dirty
+        rows. Array/aggregate nested conditions stamp against the related model; a seeded{' '}
+        <Mono>coerceType</Mono> is preserved. Try it: pick <Mono>createdAt after</Mono> in the
+        Builder tab and watch the Evaluate panel — the date input emits a date-only string and the
+        rows still match.
       </P>
     </Panel>
 

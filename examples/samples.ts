@@ -76,11 +76,62 @@ export const sampleBridges: Bridge[] = [
  */
 export const sampleRows: Record<string, Record<string, unknown>[]> = {
   User: [
-    { id: 1, tier: 'gold', active: true },
-    { id: 2, tier: 'silver', active: true },
-    { id: 3, tier: 'silver', active: true }, // duplicate → distinct
-    { id: 4, tier: 'bronze', active: false }, // dropped by where (active = true)
-    { id: 5, tier: 'platinum', active: false }, // dropped by where
+    // prettier-ignore
+    {
+      id: 1,
+      tier: 'gold',
+      active: true,
+      email: 'ada@acme.io',
+      age: 34,
+      role: 'admin',
+      createdAt: '2026-01-15T09:00:00.000Z',
+      metadata: { theme: 'dark' },
+      orders: [{ id: 11, total: 120.5, status: 'paid', placedAt: '2026-02-01T00:00:00.000Z' }],
+    },
+    {
+      id: 2,
+      tier: 'silver',
+      active: true,
+      email: 'bo@acme.io',
+      age: 22,
+      role: 'member',
+      createdAt: '2026-03-20T14:30:00.000Z',
+      metadata: { theme: 'light' },
+      orders: [{ id: 12, total: 40, status: 'pending', placedAt: '2026-03-21T00:00:00.000Z' }],
+    },
+    {
+      id: 3,
+      tier: 'silver',
+      active: true,
+      email: 'cy@acme.io',
+      age: 41,
+      role: 'member',
+      createdAt: '2026-05-02T08:15:00.000Z',
+      metadata: {},
+      orders: [],
+    }, // duplicate tier → distinct
+    {
+      id: 4,
+      tier: 'bronze',
+      active: false,
+      email: 'di@acme.io',
+      age: 29,
+      role: 'guest',
+      createdAt: '2026-06-10T18:45:00.000Z',
+      metadata: {},
+      orders: [],
+    }, // dropped by where (active = true)
+    {
+      id: 5,
+      tier: 'platinum',
+      active: false,
+      email: 'ed@acme.io',
+      age: 55,
+      role: 'guest',
+      createdAt: '2026-06-28T11:00:00.000Z',
+      metadata: {},
+      orders: [],
+    }, // dropped by where
   ],
   Account: [
     { id: 1, industry: 'tech' },

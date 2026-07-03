@@ -1,4 +1,4 @@
-import { checkRuleAgainstLens, describeRule, exposedSurface } from '@inixiative/json-rules';
+import { check, checkRuleAgainstLens, describeRule, exposedSurface } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { type RuleBuilderSource, runSources } from '../../src';
 import { RuleEditor } from '../RuleTree';
@@ -189,6 +189,32 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
               ))}
             </div>
           )}
+        </Panel>
+      )}
+
+      {analysis?.source && (sampleRows[analysis.source.model]?.length ?? 0) > 0 && (
+        <Panel title={`Evaluate — sample ${analysis.source.model} rows (check, in memory)`}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            {sampleRows[analysis.source.model].map((r, i) => {
+              const result = (() => {
+                try {
+                  return check(ws.rule, r);
+                } catch (err) {
+                  return String(err);
+                }
+              })();
+              const matched = result === true;
+              return (
+                <Row key={String(r.id ?? i)}>
+                  <Badge tone={matched ? 'ok' : 'muted'}>{matched ? '✓ match' : '✗'}</Badge>
+                  <code style={{ fontSize: 11, color: tokens.textMuted }}>{JSON.stringify(r)}</code>
+                  {typeof result === 'string' && (
+                    <span style={{ fontSize: 11, color: tokens.textMuted }}>{result}</span>
+                  )}
+                </Row>
+              );
+            })}
+          </div>
         </Panel>
       )}
 
