@@ -116,6 +116,28 @@ useRuleBuilder({ source, sourceValues }); // sourced fields now render as select
 In production you run the compiled query (`toSql` / `toPrisma`) against your DB;
 `runSources` is the same shape over in-memory rows.
 
+## Filtering a collection in hand
+
+For collections fetched whole — a calendar range, a Kanban board — where the
+server owns scope and the narrowing is display-only, `useFilteredCollection`
+composes the builder with the in-memory half of the rules duality. The builder
+owns the one `Condition`; sourced fields' options materialize from the rows
+themselves (a plain column becomes a pseudo-enum picker of the values that
+actually occur); `data` is the rows passing the emitted rule via `check()`:
+
+```ts
+import { useFilteredCollection } from '@inixiative/rules-builder';
+
+const { data, root, value, setCondition } = useFilteredCollection({
+  source: { maps, mapName, model, narrowing: { root: { sources: { rewardType: true } } } },
+  rows, // the fetched collection
+});
+```
+
+Emitted rules are coercion-stamped from the lens, so widget-authored values
+(date strings, stringified numbers) match wire-format rows. `source`, `rows`,
+and `checkOptions` must be referentially stable — memoize them at the call site.
+
 ## Array (list/relation) rules
 
 A list or relation field builds an `ArrayNode` — a predicate / count / presence
@@ -146,6 +168,7 @@ with a registry stores its own by-name reference.
 ## API
 
 - `useRuleBuilder(opts)` → `{ value, root, lens, setCondition, validate, describe }`
+- `useFilteredCollection({ ...opts, rows, checkOptions? })` → the same surface plus `data` (rows passing the current rule)
 - `buildRoot(condition, lens, fields, maxDepth, commit)` — the pure tree builder behind the hook
 - `resolve(source, { sourceValues })` — compose a `RuleBuilderSource` (+ fetched values) into the exposed surface
 - `describeModelFields(lens, map, model, { labels, valueLabels, targets })` — the selectable fields + operator sets

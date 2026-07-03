@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 — `useFilteredCollection`: the headless builder over a collection in hand
+
+- **`useFilteredCollection({ ...builderOpts, rows, checkOptions? })`** composes `useRuleBuilder` with the in-memory half of the rules duality, for collections fetched whole (calendar ranges, Kanban boards) where the server owns scope and the narrowing is display-only. One `Condition` owner (the builder), one option-folding seam (sourced fields materialize from the rows via json-rules 2.14's `sourceValuesFromRows`, folded through the builder's own `resolve`), stamp-once (the emitted `value` is already coercion-stamped; `data` is `rows.filter(check(value))`). Supersedes per-app filter hooks that double-owned the rule and double-folded `sourceValues` (`@template/ui`'s `useFilteredData`).
+- `useRuleBuilder`'s `value` is memoized (was re-minted every render), so downstream `data`/effect memos keyed on it hold.
+- `composeNarrowed(source)` extracted from `resolve` — the narrowed lens pre-projection, shared by the projection and the row materializer.
+- Peer floor raised to `@inixiative/json-rules@^2.14.0` (`sourceValuesFromRows`).
+
 ## 0.14.1 — json-rules ^2.13.1 floor (deterministic DateTime coercion)
 
 - Dependency floor raised to `@inixiative/json-rules@^2.13.1`: naive datetime strings anchor UTC during `coerceType: 'DateTime'` evaluation (2.13.0's tarball missed the fix).

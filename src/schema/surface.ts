@@ -33,22 +33,25 @@ export type RuleBuilderSource = {
 
 export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
 
-/**
- * Resolve a serializable source (+ optional fetched `sourceValues`) to the public
- * surface the builder reads. Folds createLens + narrowing + value-decoration +
- * projection in one call — fetched options land on `field.options` inside the
- * projection, never by mutating the maps.
- */
-export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens => {
+/** Compose a serializable source into its narrowed lens (pre-projection). */
+export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing => {
   const lens = createLens({
     maps: source.maps,
     bridges: source.bridges,
     mapName: source.mapName,
     model: source.model,
   });
-  const narrowed = source.narrowing ? { parent: lens, ...source.narrowing } : lens;
-  return exposedSurface(narrowed, { sourceValues: opts.sourceValues });
+  return source.narrowing ? { parent: lens, ...source.narrowing } : lens;
 };
+
+/**
+ * Resolve a serializable source (+ optional fetched `sourceValues`) to the public
+ * surface the builder reads. Folds createLens + narrowing + value-decoration +
+ * projection in one call — fetched options land on `field.options` inside the
+ * projection, never by mutating the maps.
+ */
+export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens =>
+  exposedSurface(composeNarrowed(source), { sourceValues: opts.sourceValues });
 
 export type BuilderField = {
   name: string;
