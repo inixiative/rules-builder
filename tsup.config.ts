@@ -1,14 +1,9 @@
-import { defineConfig } from 'tsup';
+import { react } from '@inixiative/config/tsup';
 
-export default defineConfig({
+export default react({
   entry: {
     index: 'src/index.ts',
     'schema/index': 'src/schema/index.ts',
   },
-  format: ['cjs', 'esm'],
-  dts: true,
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-  external: ['react', '@inixiative/json-rules'],
+  external: ['@inixiative/json-rules'],
 });
