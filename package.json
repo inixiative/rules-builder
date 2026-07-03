@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/rules-builder",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Visual rule builder for @inixiative/json-rules",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -37,7 +37,7 @@
     "url": "https://github.com/inixiative/rules-builder"
   },
   "peerDependencies": {
-    "@inixiative/json-rules": "^2.12.1",
+    "@inixiative/json-rules": "^2.13.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {

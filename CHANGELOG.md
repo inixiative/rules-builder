@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 — emit coercion-stamped rules (json-rules 2.13 `coerceType`)
+
+- **`useRuleBuilder` emits coercion-stamped rules.** The cleaned output (`value`, `onChange`, `validate`, `describe`) runs json-rules 2.13's `stampCoercions` against the composed lens, so every field rule carries `coerceType` from its field kind — `check()` then compares widget-authored values (date strings, stringified numbers/booleans) against wire-format rows with no type inference. Array/aggregate nested conditions stamp against the related model; a seeded `coerceType` is preserved. Requires `@inixiative/json-rules@^2.13.0`.
+- Not yet stamped: the permission/transition algebras' ABAC `rule` leaves (`useActionRuleBuilder`, `usePermissionBuilder`, `useTransitionBuilder`) — their leaves re-anchor on per-resource lenses, so stamping belongs at the leaf commit with the leaf's own lens.
+
 ## 0.13.0 — bind value-source, json-rules 2.12 option adoption, hooks tested
 
 - **Bind value-source in the rule builder** + reference renderers: a rule value can bind to context (the `{ bind }` value source), surfaced by the copy-paste reference renderers.

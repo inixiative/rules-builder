@@ -4,6 +4,7 @@ import {
   type Lens,
   type RuleDescription,
   type RuleTarget,
+  stampCoercions,
   validateRule,
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -63,9 +64,12 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   onChangeRef.current = opts.onChange;
   const first = useRef(true);
 
+  // Emitted rules carry their coercion: coerceType is stamped from the lens's field
+  // kinds so check() compares widget-authored values (date strings, stringified
+  // numbers) against wire-format rows without inferring types.
   const clean = useCallback(
-    (t: Condition): Condition => stripMeta(trimEmptyGroups(t) ?? EMPTY),
-    [],
+    (t: Condition): Condition => stampCoercions(stripMeta(trimEmptyGroups(t) ?? EMPTY), lens),
+    [lens],
   );
 
   useEffect(() => {

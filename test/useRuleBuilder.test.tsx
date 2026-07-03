@@ -24,6 +24,11 @@ const leafRule = (value = 'gold'): Condition => ({
   all: [{ field: 'tier', operator: 'equals', value }],
 });
 
+// Emitted rules are stamped with coerceType from the lens's field kinds.
+const stampedLeafRule = (value = 'gold'): Condition => ({
+  all: [{ field: 'tier', operator: 'equals', value, coerceType: 'String' }],
+});
+
 describe('useRuleBuilder — seed-once / defaultValue semantics', () => {
   test('seeds from defaultValue once and does NOT re-seed when the prop later changes', () => {
     const { result, rerender } = renderHook(
@@ -32,11 +37,11 @@ describe('useRuleBuilder — seed-once / defaultValue semantics', () => {
         initialProps: { source, defaultValue: leafRule('gold') },
       },
     );
-    expect(result.current.value).toEqual(leafRule('gold'));
+    expect(result.current.value).toEqual(stampedLeafRule('gold'));
 
     rerender({ source, defaultValue: leafRule('silver') });
     // Uncontrolled: the later defaultValue is ignored — still the mount seed.
-    expect(result.current.value).toEqual(leafRule('gold'));
+    expect(result.current.value).toEqual(stampedLeafRule('gold'));
   });
 
   test('setCondition re-seeds the tree (and emits)', () => {
@@ -47,7 +52,9 @@ describe('useRuleBuilder — seed-once / defaultValue semantics', () => {
     act(() =>
       result.current.setCondition({ all: [{ field: 'age', operator: 'equals', value: 5 }] }),
     );
-    expect(result.current.value).toEqual({ all: [{ field: 'age', operator: 'equals', value: 5 }] });
+    expect(result.current.value).toEqual({
+      all: [{ field: 'age', operator: 'equals', value: 5, coerceType: 'Int' }],
+    });
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 });
@@ -65,9 +72,7 @@ describe('useRuleBuilder — onChange lifecycle', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     // cleaned: editor `_id`/`_groupId` meta stripped from the payload.
-    expect(onChange.mock.calls[0][0]).toEqual({
-      all: [{ field: 'tier', operator: 'equals', value: 'silver' }],
-    });
+    expect(onChange.mock.calls[0][0]).toEqual(stampedLeafRule('silver'));
   });
 
   test('value is cleaned — empty groups trimmed, meta stripped', () => {
@@ -77,11 +82,41 @@ describe('useRuleBuilder — onChange lifecycle', () => {
         defaultValue: { all: [{ field: 'tier', operator: 'equals', value: 'gold' }, { all: [] }] },
       }),
     );
-    expect(result.current.value).toEqual({
-      all: [{ field: 'tier', operator: 'equals', value: 'gold' }],
-    });
+    expect(result.current.value).toEqual(stampedLeafRule('gold'));
     expect(JSON.stringify(result.current.value)).not.toContain('_id');
     expect(JSON.stringify(result.current.value)).not.toContain('_groupId');
+  });
+});
+
+describe('useRuleBuilder — coerceType stamping on emission', () => {
+  test('array-nested conditions stamp against the related model', () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source,
+        defaultValue: {
+          field: 'orders',
+          arrayOperator: 'any',
+          condition: { all: [{ field: 'total', operator: 'greaterThan', value: '10' }] },
+        },
+      }),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: test traversal
+    const value = result.current.value as any;
+    expect(value.condition.all[0].coerceType).toBe('Float');
+  });
+
+  test('a seeded coerceType is preserved, and the stamped rule validates', () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source,
+        defaultValue: {
+          all: [{ field: 'age', operator: 'equals', value: '5', coerceType: 'String' }],
+        },
+      }),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: test traversal
+    expect((result.current.value as any).all[0].coerceType).toBe('String');
+    expect(result.current.validate('check').ok).toBe(true);
   });
 });
 
