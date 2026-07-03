@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.1 — json-rules ^2.13.1 floor (deterministic DateTime coercion)
+
+- Dependency floor raised to `@inixiative/json-rules@^2.13.1`: naive datetime strings anchor UTC during `coerceType: 'DateTime'` evaluation (2.13.0's tarball missed the fix).
+
 ## 0.14.0 — emit coercion-stamped rules (json-rules 2.13 `coerceType`)
 
 - **`useRuleBuilder` emits coercion-stamped rules.** The cleaned output (`value`, `onChange`, `validate`, `describe`) runs json-rules 2.13's `stampCoercions` against the composed lens, so every field rule carries `coerceType` from its field kind — `check()` then compares widget-authored values (date strings, stringified numbers/booleans) against wire-format rows with no type inference. Array/aggregate nested conditions stamp against the related model; a seeded `coerceType` is preserved. Requires `@inixiative/json-rules@^2.13.0`.
