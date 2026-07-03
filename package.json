@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/inixiative/rules-builder"
+    "url": "git+https://github.com/inixiative/rules-builder.git"
   },
   "peerDependencies": {
     "@inixiative/json-rules": "^2.13.0",
