@@ -85,13 +85,14 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     () => buildRoot(tree, lens, fields, maxDepth, commit),
     [tree, lens, fields, maxDepth, commit],
   );
+  const value = useMemo(() => clean(tree), [tree, clean]);
 
   return {
-    value: clean(tree),
+    value,
     root,
     lens,
     setCondition: (c) => setTree(withIds(asRoot(c))),
-    validate: (target) => validateRule(clean(tree), { target }),
-    describe: () => describeRule(clean(tree), lens),
+    validate: (target) => validateRule(value, { target }),
+    describe: () => describeRule(value, lens),
   };
 };

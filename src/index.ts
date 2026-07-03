@@ -6,11 +6,13 @@ export type {
   LeafNode,
   OperatorControl,
   PickOption,
+  UseFilteredCollection,
+  UseFilteredCollectionOptions,
   UseRuleBuilder,
   UseRuleBuilderOptions,
   ValueControl,
 } from './builder';
-export { asGroupRoot, asRoot, buildRoot, useRuleBuilder } from './builder';
+export { asGroupRoot, asRoot, buildRoot, useFilteredCollection, useRuleBuilder } from './builder';
 export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,
