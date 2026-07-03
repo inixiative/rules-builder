@@ -37,8 +37,10 @@ const MERGE_OPTIONS = [
   { value: 'append', label: 'append ($push)' },
   { value: 'appendUnique', label: 'appendUnique ($addToSet)' },
 ];
-const mergeKind = (m: MergeStrategy | undefined): string => (m === undefined ? 'none' : typeof m === 'string' ? m : m.kind);
-const mergePath = (m: MergeStrategy | undefined): string => (m && typeof m === 'object' ? m.path : '');
+const mergeKind = (m: MergeStrategy | undefined): string =>
+  m === undefined ? 'none' : typeof m === 'string' ? m : m.kind;
+const mergePath = (m: MergeStrategy | undefined): string =>
+  m && typeof m === 'object' ? m.path : '';
 
 // Module-level so it isn't remounted each render (which would steal focus from the predicate inputs).
 const SideEditor = ({
@@ -85,11 +87,17 @@ const SideEditor = ({
         <Row>
           <span style={subLabel}>permission — authz on this side</span>
           {hasPerm ? (
-            <Button variant="ghost" onClick={() => tb.clearPermission(resource, action, index, side)}>
+            <Button
+              variant="ghost"
+              onClick={() => tb.clearPermission(resource, action, index, side)}
+            >
               remove
             </Button>
           ) : (
-            <Button variant="ghost" onClick={() => tb.enablePermission(resource, action, index, side)}>
+            <Button
+              variant="ghost"
+              onClick={() => tb.enablePermission(resource, action, index, side)}
+            >
               + permission
             </Button>
           )}
@@ -106,8 +114,13 @@ const SideEditor = ({
             options={MERGE_OPTIONS}
             onChange={(k) => {
               if (k === 'none') tb.setMerge(resource, action, index, undefined);
-              else if (k === 'spread' || k === 'deepMerge') tb.setMerge(resource, action, index, k as MergeStrategy);
-              else tb.setMerge(resource, action, index, { kind: k as 'append' | 'appendUnique', path: mergePath(merge) });
+              else if (k === 'spread' || k === 'deepMerge')
+                tb.setMerge(resource, action, index, k as MergeStrategy);
+              else
+                tb.setMerge(resource, action, index, {
+                  kind: k as 'append' | 'appendUnique',
+                  path: mergePath(merge),
+                });
             }}
           />
           {(mkind === 'append' || mkind === 'appendUnique') && (
@@ -116,7 +129,12 @@ const SideEditor = ({
               placeholder="path"
               value={mergePath(merge)}
               style={box}
-              onChange={(e) => tb.setMerge(resource, action, index, { kind: mkind as 'append' | 'appendUnique', path: e.target.value })}
+              onChange={(e) =>
+                tb.setMerge(resource, action, index, {
+                  kind: mkind as 'append' | 'appendUnique',
+                  path: e.target.value,
+                })
+              }
             />
           )}
         </Row>
@@ -146,7 +164,6 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const [addResKey, setAddResKey] = useState('');
   const [newAction, setNewAction] = useState('');
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the sidebar selection
   useEffect(() => {
     if (selected) {
       setResource(selected);
@@ -225,7 +242,9 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
       {resource && (
         <Panel title={`Actions on ${resource}`}>
           <Row>
-            {actions.length === 0 && <Empty>No actions yet — add one (e.g. capturePayment, ship, cancel).</Empty>}
+            {actions.length === 0 && (
+              <Empty>No actions yet — add one (e.g. capturePayment, ship, cancel).</Empty>
+            )}
             {actions.map((a) => (
               <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                 <Button variant={a === action ? 'primary' : 'default'} onClick={() => setAction(a)}>
@@ -239,7 +258,12 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
             ))}
           </Row>
           <Row>
-            <input value={newAction} onChange={(e) => setNewAction(e.target.value)} placeholder="action name (open)" style={{ ...box, flex: 1 }} />
+            <input
+              value={newAction}
+              onChange={(e) => setNewAction(e.target.value)}
+              placeholder="action name (open)"
+              style={{ ...box, flex: 1 }}
+            />
             <Button
               variant="primary"
               disabled={!newAction.trim()}
@@ -266,8 +290,16 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
           }
         >
           {Array.from({ length: pathCount }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: paths are positional + count-stable
-            <div key={i} style={{ display: 'grid', gap: 8, border: `1px dashed ${tokens.borderStrong}`, borderRadius: 8, padding: 10 }}>
+            <div
+              key={i}
+              style={{
+                display: 'grid',
+                gap: 8,
+                border: `1px dashed ${tokens.borderStrong}`,
+                borderRadius: 8,
+                padding: 10,
+              }}
+            >
               <Row style={{ justifyContent: 'space-between' }}>
                 <Badge tone="accent">path {i + 1}</Badge>
                 {pathCount > 1 && (
@@ -276,16 +308,33 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
                   </Button>
                 )}
               </Row>
-              <SideEditor tb={tb} resource={resource} action={action} index={i} side="from" label="from (current record)" />
+              <SideEditor
+                tb={tb}
+                resource={resource}
+                action={action}
+                index={i}
+                side="from"
+                label="from (current record)"
+              />
               <div style={{ textAlign: 'center', color: tokens.textMuted }}>↓</div>
-              <SideEditor tb={tb} resource={resource} action={action} index={i} side="to" label="to (resulting record)" />
+              <SideEditor
+                tb={tb}
+                resource={resource}
+                action={action}
+                index={i}
+                side="to"
+                label="to (resulting record)"
+              />
             </div>
           ))}
         </Panel>
       )}
 
       <Panel title="TransitionMap (JSON)">
-        <Empty>The whole serializable transition schema — resource → action → {'{ paths: [{ from, to }] }'}.</Empty>
+        <Empty>
+          The whole serializable transition schema — resource → action →{' '}
+          {'{ paths: [{ from, to }] }'}.
+        </Empty>
         <Code>{JSON.stringify(tb.value, null, 2)}</Code>
       </Panel>
     </div>

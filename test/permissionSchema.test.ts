@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { actionNamesByResource, removeSchemaAction, setSchemaAction } from '../src/permissions/schema';
+import {
+  actionNamesByResource,
+  removeSchemaAction,
+  setSchemaAction,
+} from '../src/permissions/schema';
 import type { RebacSchema } from '../src/permissions/types';
 
 const base = (): RebacSchema => ({
@@ -22,7 +26,11 @@ describe('setSchemaAction', () => {
   test('adds an action to an existing resource immutably', () => {
     const s = base();
     const next = setSchemaAction(s, 'db:User', 'manage', { self: 'id' });
-    expect(next.permissions['db:User'].actions).toEqual({ own: null, read: 'own', manage: { self: 'id' } });
+    expect(next.permissions['db:User'].actions).toEqual({
+      own: null,
+      read: 'own',
+      manage: { self: 'id' },
+    });
     expect(s.permissions['db:User'].actions).toEqual({ own: null, read: 'own' });
   });
 
@@ -35,10 +43,14 @@ describe('setSchemaAction', () => {
 
 describe('removeSchemaAction', () => {
   test('drops one action, keeping the resource', () => {
-    expect(removeSchemaAction(base(), 'db:User', 'read').permissions['db:User'].actions).toEqual({ own: null });
+    expect(removeSchemaAction(base(), 'db:User', 'read').permissions['db:User'].actions).toEqual({
+      own: null,
+    });
   });
 
   test('drops the whole resource entry when its last action is removed', () => {
-    expect(removeSchemaAction(base(), 'db:Organization', 'manage').permissions['db:Organization']).toBeUndefined();
+    expect(
+      removeSchemaAction(base(), 'db:Organization', 'manage').permissions['db:Organization'],
+    ).toBeUndefined();
   });
 });

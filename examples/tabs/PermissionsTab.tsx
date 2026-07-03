@@ -55,7 +55,6 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const [addResourceKey, setAddResourceKey] = useState('');
   const [newAction, setNewAction] = useState('');
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to the sidebar selection
   useEffect(() => {
     if (selected) {
       setSelectedResource(selected);
@@ -80,7 +79,8 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   }
 
   const actions = selectedResource ? pb.actionsOf(selectedResource) : [];
-  const root = selectedResource && selectedAction ? pb.actionRoot(selectedResource, selectedAction) : null;
+  const root =
+    selectedResource && selectedAction ? pb.actionRoot(selectedResource, selectedAction) : null;
 
   const addResource = () => {
     if (!addResourceKey) return;
@@ -104,7 +104,12 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
           <span style={{ fontSize: 13, color: tokens.textMuted }}>FieldMaps:</span>
           {Object.keys(ws.maps).map((m) => (
             <label key={m} style={{ fontSize: 12, fontFamily: 'monospace' }}>
-              <input type="checkbox" checked={!excludedMaps.has(m)} onChange={() => setExcludedMaps((s) => toggle(s, m))} /> {m}
+              <input
+                type="checkbox"
+                checked={!excludedMaps.has(m)}
+                onChange={() => setExcludedMaps((s) => toggle(s, m))}
+              />{' '}
+              {m}
             </label>
           ))}
         </Row>
@@ -123,7 +128,10 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
             ))}
           </Row>
         )}
-        <Empty>FieldMaps bound which resources you can add; checked bridges become the schema's `bridges` (for rel walks).</Empty>
+        <Empty>
+          FieldMaps bound which resources you can add; checked bridges become the schema's `bridges`
+          (for rel walks).
+        </Empty>
       </Panel>
 
       <Panel title="Resources (rebac schema)">
@@ -167,10 +175,15 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
       {selectedResource && (
         <Panel title={`Actions on ${selectedResource}`}>
           <Row>
-            {actions.length === 0 && <Empty>No actions yet — add one (e.g. read, manage, own).</Empty>}
+            {actions.length === 0 && (
+              <Empty>No actions yet — add one (e.g. read, manage, own).</Empty>
+            )}
             {actions.map((a) => (
               <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                <Button variant={a === selectedAction ? 'primary' : 'default'} onClick={() => setSelectedAction(a)}>
+                <Button
+                  variant={a === selectedAction ? 'primary' : 'default'}
+                  onClick={() => setSelectedAction(a)}
+                >
                   {a}
                 </Button>
                 {removeBtn(a, () => {
@@ -201,7 +214,9 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
       )}
 
       <Panel title="rebac schema (JSON)">
-        <Empty>The whole serializable schema — {'{ bridges, permissions: resource → { actions } }'}.</Empty>
+        <Empty>
+          The whole serializable schema — {'{ bridges, permissions: resource → { actions } }'}.
+        </Empty>
         <Code>{JSON.stringify(pb.value, null, 2)}</Code>
       </Panel>
     </div>

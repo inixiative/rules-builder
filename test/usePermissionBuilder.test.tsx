@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
+import { useState } from 'react';
 import type { RebacSchema } from '../src/permissions/types';
 import {
-  usePermissionBuilder,
   type UsePermissionBuilderOptions,
+  usePermissionBuilder,
 } from '../src/permissions/usePermissionBuilder';
-import { useState } from 'react';
 
 afterEach(cleanup);
 
@@ -35,9 +35,12 @@ describe('usePermissionBuilder — controlled tracking', () => {
   test('reflects the value prop and re-tracks it when the prop changes', () => {
     const a: RebacSchema = { permissions: { 'app:User': { actions: {} } } };
     const b: RebacSchema = { permissions: { 'app:Account': { actions: { read: true } } } };
-    const { result, rerender } = renderHook((p: UsePermissionBuilderOptions) => usePermissionBuilder(p), {
-      initialProps: { value: a, onChange: () => {}, maps },
-    });
+    const { result, rerender } = renderHook(
+      (p: UsePermissionBuilderOptions) => usePermissionBuilder(p),
+      {
+        initialProps: { value: a, onChange: () => {}, maps },
+      },
+    );
     expect(result.current.resources).toEqual(['app:User']);
     rerender({ value: b, onChange: () => {}, maps });
     expect(result.current.resources).toEqual(['app:Account']);
@@ -61,10 +64,14 @@ describe('usePermissionBuilder — resource + action edits', () => {
   });
 
   test('addAction seeds the default ABAC leaf; round-trips into actionsOf', () => {
-    const { result } = renderHook(() => useControlled({ permissions: { 'app:User': { actions: {} } } }));
+    const { result } = renderHook(() =>
+      useControlled({ permissions: { 'app:User': { actions: {} } } }),
+    );
     act(() => result.current.addAction('app:User', 'read'));
     expect(result.current.actionsOf('app:User')).toEqual(['read']);
-    expect(result.current.value.permissions['app:User'].actions.read).toEqual({ rule: { all: [] } });
+    expect(result.current.value.permissions['app:User'].actions.read).toEqual({
+      rule: { all: [] },
+    });
   });
 
   test('addAction is a no-op for an empty name or an existing action', () => {
@@ -107,7 +114,12 @@ describe('usePermissionBuilder — actionRoot descriptors', () => {
 
   test('returns null for an unknown action or a resource absent from the maps', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: { read: true } }, 'app:Ghost': { actions: { read: true } } } }),
+      useControlled({
+        permissions: {
+          'app:User': { actions: { read: true } },
+          'app:Ghost': { actions: { read: true } },
+        },
+      }),
     );
     expect(result.current.actionRoot('app:User', 'missing')).toBeNull();
     expect(result.current.actionRoot('app:Ghost', 'read')).toBeNull(); // Ghost is not in the maps

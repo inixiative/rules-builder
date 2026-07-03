@@ -1,25 +1,16 @@
 export type {
-  BuilderField,
-  LensValueOption,
-  LensValuePickerOptions,
-  ResolveOptions,
-  RuleBuilderSource,
-  SourceRows,
-  SourceValues,
-  SurfaceOptions,
-} from './schema';
-export {
-  describeModelFields,
-  lensValuePicker,
-  resolve,
-  runSources,
-  useLensValuePicker,
-  valueShapeForOperator,
-} from './schema';
-
-export type { SavedRule } from './serialize';
-export { parseSavedRule, stringifySavedRule } from './serialize';
-
+  ArrayNode,
+  BuilderNode,
+  FieldControl,
+  GroupNode,
+  LeafNode,
+  OperatorControl,
+  PickOption,
+  UseRuleBuilder,
+  UseRuleBuilderOptions,
+  ValueControl,
+} from './builder';
+export { asGroupRoot, asRoot, buildRoot, useRuleBuilder } from './builder';
 export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,
@@ -34,21 +25,6 @@ export {
   withIds,
   wrapInCompound,
 } from './core';
-
-export type {
-  ArrayNode,
-  BuilderNode,
-  FieldControl,
-  GroupNode,
-  LeafNode,
-  OperatorControl,
-  PickOption,
-  UseRuleBuilder,
-  UseRuleBuilderOptions,
-  ValueControl,
-} from './builder';
-export { asGroupRoot, asRoot, buildRoot, useRuleBuilder } from './builder';
-
 export type {
   ActionGroupNode,
   ActionLeafNode,
@@ -80,6 +56,26 @@ export {
   useActionRuleBuilder,
   usePermissionBuilder,
 } from './permissions';
+export type {
+  BuilderField,
+  LensValueOption,
+  LensValuePickerOptions,
+  ResolveOptions,
+  RuleBuilderSource,
+  SourceRows,
+  SourceValues,
+  SurfaceOptions,
+} from './schema';
+export {
+  describeModelFields,
+  lensValuePicker,
+  resolve,
+  runSources,
+  useLensValuePicker,
+  valueShapeForOperator,
+} from './schema';
+export type { SavedRule } from './serialize';
+export { parseSavedRule, stringifySavedRule } from './serialize';
 
 export type {
   Action,

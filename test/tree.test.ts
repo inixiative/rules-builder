@@ -75,7 +75,11 @@ describe('removeNode', () => {
   });
 
   test('removes an else branch', () => {
-    const ite: Condition = { if: leaf('x', 1), then: leaf('y', 2), else: leaf('z', 3) } as Condition;
+    const ite: Condition = {
+      if: leaf('x', 1),
+      then: leaf('y', 2),
+      else: leaf('z', 3),
+    } as Condition;
     const next = removeNode(ite, ['else']);
     expect('else' in (next as object)).toBe(false);
   });

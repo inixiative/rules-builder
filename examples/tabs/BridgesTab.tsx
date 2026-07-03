@@ -1,4 +1,9 @@
-import { type Bridge, type BridgeCardinality, type FieldMap, stitchFieldMaps } from '@inixiative/json-rules';
+import {
+  type Bridge,
+  type BridgeCardinality,
+  type FieldMap,
+  stitchFieldMaps,
+} from '@inixiative/json-rules';
 import { useState } from 'react';
 import { sampleBridges } from '../samples';
 import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';
@@ -19,12 +24,22 @@ const Picker = ({
   onChange: (e: Endpoint) => void;
 }) => {
   const models = value.map ? Object.keys(maps[value.map]?.models ?? {}) : [];
-  const fields = value.map && value.model ? Object.keys(maps[value.map]?.models[value.model]?.fields ?? {}) : [];
-  const sel = { padding: '5px 8px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}`, fontSize: 13 };
+  const fields =
+    value.map && value.model ? Object.keys(maps[value.map]?.models[value.model]?.fields ?? {}) : [];
+  const sel = {
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: `1px solid ${tokens.borderStrong}`,
+    fontSize: 13,
+  };
   return (
     <Row>
       <strong style={{ fontSize: 12, minWidth: 64 }}>{label}</strong>
-      <select style={sel} value={value.map} onChange={(e) => onChange({ map: e.target.value, model: '', on: '' })}>
+      <select
+        style={sel}
+        value={value.map}
+        onChange={(e) => onChange({ map: e.target.value, model: '', on: '' })}
+      >
         <option value="">map…</option>
         {Object.keys(maps).map((m) => (
           <option key={m} value={m}>
@@ -32,7 +47,12 @@ const Picker = ({
           </option>
         ))}
       </select>
-      <select style={sel} value={value.model} onChange={(e) => onChange({ ...value, model: e.target.value, on: '' })} disabled={!value.map}>
+      <select
+        style={sel}
+        value={value.model}
+        onChange={(e) => onChange({ ...value, model: e.target.value, on: '' })}
+        disabled={!value.map}
+      >
         <option value="">model…</option>
         {models.map((m) => (
           <option key={m} value={m}>
@@ -40,7 +60,12 @@ const Picker = ({
           </option>
         ))}
       </select>
-      <select style={sel} value={value.on} onChange={(e) => onChange({ ...value, on: e.target.value })} disabled={!value.model}>
+      <select
+        style={sel}
+        value={value.on}
+        onChange={(e) => onChange({ ...value, on: e.target.value })}
+        disabled={!value.model}
+      >
         <option value="">on field…</option>
         {fields.map((f) => (
           <option key={f} value={f}>
@@ -102,7 +127,9 @@ export const BridgesTab = ({ ws, patch }: TabProps) => {
         }
       >
         {ws.bridges.length === 0 ? (
-          <Empty>No bridges. A bridge injects a navigable “map:model” field on each endpoint model.</Empty>
+          <Empty>
+            No bridges. A bridge injects a navigable “map:model” field on each endpoint model.
+          </Empty>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {ws.bridges.map((br, i) => (
@@ -122,7 +149,11 @@ export const BridgesTab = ({ ws, patch }: TabProps) => {
 
       <Panel
         title="Add a bridge"
-        actions={<Button variant="primary" onClick={add}>Add bridge</Button>}
+        actions={
+          <Button variant="primary" onClick={add}>
+            Add bridge
+          </Button>
+        }
       >
         <Picker label="endpoint 0 (one)" maps={ws.maps} value={a} onChange={setA} />
         <Picker label="endpoint 1 (many)" maps={ws.maps} value={b} onChange={setB} />
@@ -131,7 +162,12 @@ export const BridgesTab = ({ ws, patch }: TabProps) => {
           <select
             value={card}
             onChange={(e) => setCard(e.target.value as BridgeCardinality)}
-            style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${tokens.borderStrong}`, fontSize: 13 }}
+            style={{
+              padding: '5px 8px',
+              borderRadius: 6,
+              border: `1px solid ${tokens.borderStrong}`,
+              fontSize: 13,
+            }}
           >
             <option value="oneToMany">oneToMany</option>
             <option value="oneToOne">oneToOne</option>

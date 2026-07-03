@@ -114,7 +114,8 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
     maxDepth: ws.maxDepth,
   };
 
-  const setRoot = (root: ModelNarrowing) => setDraft((d) => ({ ...d, narrowing: { ...d.narrowing, root } }));
+  const setRoot = (root: ModelNarrowing) =>
+    setDraft((d) => ({ ...d, narrowing: { ...d.narrowing, root } }));
 
   const setDefaultModel = (mp: string, md: string, node: ModelNarrowing | null) =>
     setDraft((d) => {
@@ -165,7 +166,8 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
             options={parentOptions}
           />
           <span style={{ fontSize: 12, color: tokens.textMuted }}>
-            anchor {parentSurface.mapName}.{parentSurface.model} — options are limited to what the parent exposes
+            anchor {parentSurface.mapName}.{parentSurface.model} — options are limited to what the
+            parent exposes
           </span>
         </Row>
       </Panel>
@@ -268,8 +270,9 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
 
       <Panel title="Narrowing (reference JSON)">
         <Empty>
-          The serializable narrowing you author &amp; save — a <strong>parent ref</strong> + restriction chain. The{' '}
-          <strong>projected</strong> surface is in "Validation &amp; exposed surface" above.
+          The serializable narrowing you author &amp; save — a <strong>parent ref</strong> +
+          restriction chain. The <strong>projected</strong> surface is in "Validation &amp; exposed
+          surface" above.
         </Empty>
         <Code>{JSON.stringify(draft, null, 2)}</Code>
       </Panel>

@@ -135,7 +135,9 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
               { value: 'plain', label: 'plain' },
             ]}
           />
-          <span style={{ fontSize: 12, color: tokens.textMuted }}>depth {ws.maxDepth} · set in Settings</span>
+          <span style={{ fontSize: 12, color: tokens.textMuted }}>
+            depth {ws.maxDepth} · set in Settings
+          </span>
         </Row>
       </Panel>
 
@@ -170,9 +172,12 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
             <Badge tone={analysis.description.bridgesCrossed ? 'danger' : 'muted'}>
               bridgesCrossed: {String(analysis.description.bridgesCrossed)}
             </Badge>
-            <Badge tone="muted">targets: {analysis.description.supportedTargets.join(', ') || '—'}</Badge>
+            <Badge tone="muted">
+              targets: {analysis.description.supportedTargets.join(', ') || '—'}
+            </Badge>
             <Badge tone={analysis.check.ok ? 'ok' : 'danger'}>
-              checkRuleAgainstLens: {analysis.check.ok ? 'ok' : `${analysis.check.violations.length} violation(s)`}
+              checkRuleAgainstLens:{' '}
+              {analysis.check.ok ? 'ok' : `${analysis.check.violations.length} violation(s)`}
             </Badge>
           </Row>
           {!analysis.check.ok && (

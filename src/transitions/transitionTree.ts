@@ -22,7 +22,11 @@ export const setTransitionAction = (
   [resource]: { ...(schema[resource] ?? {}), [action]: value },
 });
 
-export const removeTransitionAction = (schema: TransitionMap, resource: string, action: string): TransitionMap => {
+export const removeTransitionAction = (
+  schema: TransitionMap,
+  resource: string,
+  action: string,
+): TransitionMap => {
   const actions = schema[resource];
   if (!actions) return schema;
   const { [action]: _drop, ...rest } = actions;
@@ -46,7 +50,12 @@ const mapAction = (
 export const addPath = (schema: TransitionMap, resource: string, action: string): TransitionMap =>
   mapAction(schema, resource, action, (a) => ({ ...a, paths: [...a.paths, emptyTransition()] }));
 
-export const removePath = (schema: TransitionMap, resource: string, action: string, i: number): TransitionMap =>
+export const removePath = (
+  schema: TransitionMap,
+  resource: string,
+  action: string,
+  i: number,
+): TransitionMap =>
   mapAction(schema, resource, action, (a) => ({ ...a, paths: a.paths.filter((_, n) => n !== i) }));
 
 /** Immutably update one path's `from` or `to` side. */

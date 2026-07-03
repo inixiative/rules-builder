@@ -31,7 +31,9 @@ const withOneAction = (): TransitionMap => ({ 'app:User': { submit: emptyAction(
 describe('useTransitionBuilder — controlled tracking', () => {
   test('reflects the value prop; onChange never fires on render', () => {
     const onChange = mock<(s: TransitionMap) => void>();
-    const { result } = renderHook(() => useTransitionBuilder({ value: withOneAction(), onChange, maps }));
+    const { result } = renderHook(() =>
+      useTransitionBuilder({ value: withOneAction(), onChange, maps }),
+    );
     expect(result.current.resources).toEqual(['app:User']);
     expect(result.current.actionsOf('app:User')).toEqual(['submit']);
     expect(onChange).not.toHaveBeenCalled();
@@ -67,13 +69,18 @@ describe('useTransitionBuilder — predicate descriptors', () => {
     const root = result.current.predicateRoot('app:User', 'submit', 0, 'from');
     expect(root?.kind).toBe('group');
     act(() => (root as { addRule: () => void }).addRule());
-    const predicate = result.current.value['app:User'].submit.paths[0].from.predicate as { all: unknown[] };
+    const predicate = result.current.value['app:User'].submit.paths[0].from.predicate as {
+      all: unknown[];
+    };
     expect(predicate.all).toHaveLength(1);
   });
 
   test('predicateRoot is null for a missing edge or a resource absent from the maps', () => {
     const { result } = renderHook(() =>
-      useControlled({ 'app:User': { submit: emptyAction() }, 'app:Ghost': { submit: emptyAction() } }),
+      useControlled({
+        'app:User': { submit: emptyAction() },
+        'app:Ghost': { submit: emptyAction() },
+      }),
     );
     expect(result.current.predicateRoot('app:User', 'submit', 5, 'from')).toBeNull(); // no path index 5
     expect(result.current.predicateRoot('app:Ghost', 'submit', 0, 'from')).toBeNull(); // not in the maps
@@ -88,7 +95,9 @@ describe('useTransitionBuilder — per-side permission', () => {
 
     act(() => result.current.enablePermission('app:User', 'submit', 0, 'from'));
     expect(result.current.permissionHas('app:User', 'submit', 0, 'from')).toBe(true);
-    expect(result.current.value['app:User'].submit.paths[0].from.permission).toEqual({ rule: { all: [] } });
+    expect(result.current.value['app:User'].submit.paths[0].from.permission).toEqual({
+      rule: { all: [] },
+    });
     expect(result.current.permissionRoot('app:User', 'submit', 0, 'from')?.kind.value).toBe('rule');
 
     act(() => result.current.clearPermission('app:User', 'submit', 0, 'from'));
@@ -106,7 +115,10 @@ describe('useTransitionBuilder — serializable merge strategy', () => {
     expect(result.current.value['app:User'].submit.paths[0].to.merge).toBe('deepMerge');
 
     act(() => result.current.setMerge('app:User', 'submit', 0, { kind: 'append', path: 'log' }));
-    expect(result.current.mergeOf('app:User', 'submit', 0)).toEqual({ kind: 'append', path: 'log' });
+    expect(result.current.mergeOf('app:User', 'submit', 0)).toEqual({
+      kind: 'append',
+      path: 'log',
+    });
 
     act(() => result.current.setMerge('app:User', 'submit', 0, undefined));
     expect(result.current.mergeOf('app:User', 'submit', 0)).toBeUndefined();

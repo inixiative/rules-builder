@@ -108,7 +108,12 @@ export const sampleNarrowings: Record<string, SavedNarrowing> = {
       },
       mapDefaults: {
         crm: {
-          models: { Account: { picks: ['id', 'name', 'industry', 'tier'], sources: { industry: { all: [] } } } },
+          models: {
+            Account: {
+              picks: ['id', 'name', 'industry', 'tier'],
+              sources: { industry: { all: [] } },
+            },
+          },
         },
       },
     },

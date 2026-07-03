@@ -1,4 +1,10 @@
-import { check, type Lens, type LensNarrowing, type SourceValues, sourceQueries } from '@inixiative/json-rules';
+import {
+  check,
+  type Lens,
+  type LensNarrowing,
+  type SourceValues,
+  sourceQueries,
+} from '@inixiative/json-rules';
 
 export type { SourceValues } from '@inixiative/json-rules';
 
@@ -15,7 +21,10 @@ export type SourceRows = Record<string, Record<string, unknown>[]>;
  * Real apps run the compiled query (`toSql`/`toPrisma`) against a database; this
  * is the same shape over local rows.
  */
-export const runSources = (lensOrNarrowing: Lens | LensNarrowing, rows: SourceRows): SourceValues[] =>
+export const runSources = (
+  lensOrNarrowing: Lens | LensNarrowing,
+  rows: SourceRows,
+): SourceValues[] =>
   sourceQueries(lensOrNarrowing).map((q) => {
     const matched = (rows[q.model] ?? []).filter((r) => check(q.composedWhere, r) === true);
     const seen = new Set<string>();

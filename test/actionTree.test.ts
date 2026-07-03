@@ -57,7 +57,9 @@ describe('setActionNode', () => {
 
   test('replaces a deeply nested node', () => {
     const r: ActionRule = { any: [{ all: ['own', 'manage'] }] };
-    expect(setActionNode(r, [0, 1], { self: 'x' })).toEqual({ any: [{ all: ['own', { self: 'x' }] }] });
+    expect(setActionNode(r, [0, 1], { self: 'x' })).toEqual({
+      any: [{ all: ['own', { self: 'x' }] }],
+    });
   });
 });
 

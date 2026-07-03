@@ -51,7 +51,12 @@ export type UseTransitionBuilder = {
   permissionHas: (resource: string, action: string, i: number, side: SideKey) => boolean;
   enablePermission: (resource: string, action: string, i: number, side: SideKey) => void;
   clearPermission: (resource: string, action: string, i: number, side: SideKey) => void;
-  permissionRoot: (resource: string, action: string, i: number, side: SideKey) => ActionRuleNode | null;
+  permissionRoot: (
+    resource: string,
+    action: string,
+    i: number,
+    side: SideKey,
+  ) => ActionRuleNode | null;
   mergeOf: (resource: string, action: string, i: number) => MergeStrategy | undefined;
   setMerge: (resource: string, action: string, i: number, merge: MergeStrategy | undefined) => void;
 };
@@ -89,18 +94,31 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     if (!action || schema[resource]?.[action] !== undefined) return;
     setSchema(setTransitionAction(schema, resource, action, emptyAction()));
   };
-  const removeAction = (resource: string, action: string) => setSchema(removeTransitionAction(schema, resource, action));
+  const removeAction = (resource: string, action: string) =>
+    setSchema(removeTransitionAction(schema, resource, action));
 
-  const predicateRoot = (resource: string, action: string, i: number, side: SideKey): BuilderNode | null => {
+  const predicateRoot = (
+    resource: string,
+    action: string,
+    i: number,
+    side: SideKey,
+  ): BuilderNode | null => {
     const sideObj = sideOf(resource, action, i, side);
     const s = surface(resource);
     if (!sideObj || !s) return null;
     return buildRoot(sideObj.predicate, s.lens, s.fields, maxDepth ?? 4, (next) =>
-      setSchema(updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, predicate: next }))),
+      setSchema(
+        updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, predicate: next })),
+      ),
     );
   };
 
-  const permissionRoot = (resource: string, action: string, i: number, side: SideKey): ActionRuleNode | null => {
+  const permissionRoot = (
+    resource: string,
+    action: string,
+    i: number,
+    side: SideKey,
+  ): ActionRuleNode | null => {
     const sideObj = sideOf(resource, action, i, side);
     const s = surface(resource);
     if (!sideObj || sideObj.permission === undefined || !s) return null;
@@ -112,7 +130,9 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
       resourceFields,
       maxDepth,
       commit: (next) =>
-        setSchema(updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, permission: next }))),
+        setSchema(
+          updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, permission: next })),
+        ),
     });
   };
 
@@ -129,9 +149,15 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     addPath: (resource, action) => setSchema(addPathOp(schema, resource, action)),
     removePath: (resource, action, i) => setSchema(removePathOp(schema, resource, action, i)),
     predicateRoot,
-    permissionHas: (resource, action, i, side) => sideOf(resource, action, i, side)?.permission !== undefined,
+    permissionHas: (resource, action, i, side) =>
+      sideOf(resource, action, i, side)?.permission !== undefined,
     enablePermission: (resource, action, i, side) =>
-      setSchema(updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, permission: defaultActionRule() }))),
+      setSchema(
+        updateSide(schema, resource, action, i, side, (sd) => ({
+          ...sd,
+          permission: defaultActionRule(),
+        })),
+      ),
     clearPermission: (resource, action, i, side) =>
       setSchema(
         updateSide(schema, resource, action, i, side, (sd) => {

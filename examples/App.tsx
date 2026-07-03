@@ -32,20 +32,43 @@ const bridgeLabel = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
 
 const inventorySections = (ws: Workspace): SectionDef[] => [
-  { key: 'fieldmaps', label: 'FieldMaps', items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })) },
-  { key: 'bridges', label: 'Bridges', items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })) },
-  { key: 'lenses', label: 'Lenses', items: Object.keys(ws.lenses).map((n) => ({ id: n, label: n })) },
+  {
+    key: 'fieldmaps',
+    label: 'FieldMaps',
+    items: Object.keys(ws.maps).map((m) => ({ id: m, label: m })),
+  },
+  {
+    key: 'bridges',
+    label: 'Bridges',
+    items: ws.bridges.map((b, i) => ({ id: String(i), label: bridgeLabel(b) })),
+  },
+  {
+    key: 'lenses',
+    label: 'Lenses',
+    items: Object.keys(ws.lenses).map((n) => ({ id: n, label: n })),
+  },
   {
     key: 'narrowings',
     label: 'Narrowings',
-    items: Object.entries(ws.narrowings).map(([n, sn]) => ({ id: n, label: `${n} ← ${sn.parent.name}` })),
+    items: Object.entries(ws.narrowings).map(([n, sn]) => ({
+      id: n,
+      label: `${n} ← ${sn.parent.name}`,
+    })),
   },
 ];
 
 const builderSections = (ws: Workspace): SectionDef[] => [
   { key: 'rules', label: 'Rules', items: Object.keys(ws.rules).map((n) => ({ id: n, label: n })) },
-  { key: 'permissions', label: 'Permissions', items: Object.keys(ws.permissions).map((r) => ({ id: r, label: r })) },
-  { key: 'transitions', label: 'Transitions', items: Object.keys(ws.transitions).map((r) => ({ id: r, label: r })) },
+  {
+    key: 'permissions',
+    label: 'Permissions',
+    items: Object.keys(ws.permissions).map((r) => ({ id: r, label: r })),
+  },
+  {
+    key: 'transitions',
+    label: 'Transitions',
+    items: Object.keys(ws.transitions).map((r) => ({ id: r, label: r })),
+  },
 ];
 
 export const App = () => {
@@ -150,12 +173,24 @@ export const App = () => {
 
   const renderSection = (s: SectionDef) => (
     <div key={s.key} style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-      <button type="button" style={navItem(sel.section === s.key && !sel.item)} onClick={() => setSel({ section: s.key })}>
+      <button
+        type="button"
+        style={navItem(sel.section === s.key && !sel.item)}
+        onClick={() => setSel({ section: s.key })}
+      >
         <span>{s.label}</span>
         <span style={{ fontSize: 11, color: tokens.textMuted }}>{s.items.length}</span>
       </button>
       {s.items.map((it) => (
-        <div key={it.id} style={{ ...navItem(sel.section === s.key && sel.item === it.id), paddingLeft: 18, fontSize: 12, minWidth: 0 }}>
+        <div
+          key={it.id}
+          style={{
+            ...navItem(sel.section === s.key && sel.item === it.id),
+            paddingLeft: 18,
+            fontSize: 12,
+            minWidth: 0,
+          }}
+        >
           <button type="button" onClick={() => selectItem(s.key, it.id)} style={labelBtn}>
             {it.label}
           </button>
@@ -164,7 +199,14 @@ export const App = () => {
             aria-label={`remove ${it.label}`}
             title="remove"
             onClick={() => removeItem(s.key, it.id)}
-            style={{ flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted, padding: '0 2px' }}
+            style={{
+              flexShrink: 0,
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: tokens.textMuted,
+              padding: '0 2px',
+            }}
           >
             ✕
           </button>
@@ -174,7 +216,14 @@ export const App = () => {
   );
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', color: tokens.text, background: tokens.bgMuted, minHeight: '100vh' }}>
+    <div
+      style={{
+        fontFamily: 'system-ui, sans-serif',
+        color: tokens.text,
+        background: tokens.bgMuted,
+        minHeight: '100vh',
+      }}
+    >
       <header
         style={{
           display: 'flex',
@@ -191,7 +240,16 @@ export const App = () => {
         </span>
       </header>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: 20, maxWidth: 1200, margin: '0 auto' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 16,
+          padding: 20,
+          maxWidth: 1200,
+          margin: '0 auto',
+        }}
+      >
         <nav
           style={{
             width: 240,
@@ -209,16 +267,40 @@ export const App = () => {
             padding: 12,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minHeight: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              overflowY: 'auto',
+              minHeight: 0,
+            }}
+          >
             <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
               <div style={groupLabel}>INVENTORY</div>
               {inventorySections(ws).map(renderSection)}
             </div>
-            <div style={{ display: 'grid', gap: 4, minWidth: 0, borderTop: `1px solid ${tokens.border}`, paddingTop: 10 }}>
+            <div
+              style={{
+                display: 'grid',
+                gap: 4,
+                minWidth: 0,
+                borderTop: `1px solid ${tokens.border}`,
+                paddingTop: 10,
+              }}
+            >
               <div style={groupLabel}>BUILDERS</div>
               {builderSections(ws).map(renderSection)}
             </div>
-            <div style={{ display: 'grid', gap: 2, minWidth: 0, borderTop: `1px solid ${tokens.border}`, paddingTop: 10 }}>
+            <div
+              style={{
+                display: 'grid',
+                gap: 2,
+                minWidth: 0,
+                borderTop: `1px solid ${tokens.border}`,
+                paddingTop: 10,
+              }}
+            >
               <div style={groupLabel}>TOOLS</div>
               <button
                 type="button"
@@ -230,11 +312,28 @@ export const App = () => {
             </div>
           </div>
 
-          <div style={{ marginTop: 'auto', borderTop: `1px solid ${tokens.border}`, paddingTop: 8, display: 'grid', gap: 2, minWidth: 0 }}>
-            <button type="button" style={navItem(sel.section === 'docs')} onClick={() => setSel({ section: 'docs' })}>
+          <div
+            style={{
+              marginTop: 'auto',
+              borderTop: `1px solid ${tokens.border}`,
+              paddingTop: 8,
+              display: 'grid',
+              gap: 2,
+              minWidth: 0,
+            }}
+          >
+            <button
+              type="button"
+              style={navItem(sel.section === 'docs')}
+              onClick={() => setSel({ section: 'docs' })}
+            >
               <span>📖 Docs</span>
             </button>
-            <button type="button" style={navItem(sel.section === 'settings')} onClick={() => setSel({ section: 'settings' })}>
+            <button
+              type="button"
+              style={navItem(sel.section === 'settings')}
+              onClick={() => setSel({ section: 'settings' })}
+            >
               <span>⚙ Settings</span>
             </button>
           </div>

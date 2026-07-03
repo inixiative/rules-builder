@@ -4,7 +4,10 @@ import type { ActionRule, RebacSchema } from './types';
  *  `useActionRuleBuilder` needs for `delegate` (same-resource) and `rel` (a target's actions). */
 export const actionNamesByResource = (schema: RebacSchema): Record<string, string[]> =>
   Object.fromEntries(
-    Object.entries(schema.permissions).map(([resource, mp]) => [resource, Object.keys(mp?.actions ?? {})]),
+    Object.entries(schema.permissions).map(([resource, mp]) => [
+      resource,
+      Object.keys(mp?.actions ?? {}),
+    ]),
   );
 
 /** Immutably set one resource.action's rule, creating the resource entry if absent. */
@@ -22,7 +25,11 @@ export const setSchemaAction = (
 });
 
 /** Immutably drop one resource.action (and the resource entry if it becomes empty). */
-export const removeSchemaAction = (schema: RebacSchema, resource: string, action: string): RebacSchema => {
+export const removeSchemaAction = (
+  schema: RebacSchema,
+  resource: string,
+  action: string,
+): RebacSchema => {
   const entry = schema.permissions[resource];
   if (!entry) return schema;
   const { [action]: _drop, ...actions } = entry.actions;

@@ -22,7 +22,9 @@ export const nodeKey = (n: Condition, index: number): string => {
   return (r._groupId as string) ?? (r._id as string) ?? String(index);
 };
 
-const firstOperator = (field: BuilderField): { key: 'operator' | 'dateOperator'; op: string } | null => {
+const firstOperator = (
+  field: BuilderField,
+): { key: 'operator' | 'dateOperator'; op: string } | null => {
   if (field.operators.field.length > 0) return { key: 'operator', op: field.operators.field[0] };
   if (field.operators.date.length > 0) return { key: 'dateOperator', op: field.operators.date[0] };
   return null;
@@ -42,5 +44,7 @@ export const defaultRule = (fields: BuilderField[]): Condition => {
   if (scalar) return ruleForField(scalar);
   const list = fields.find((f) => f.isList);
   if (list) return ruleForField(list);
-  return fields[0] ? ruleForField(fields[0]) : ({ field: '', operator: 'equals', value: '' } as Condition);
+  return fields[0]
+    ? ruleForField(fields[0])
+    : ({ field: '', operator: 'equals', value: '' } as Condition);
 };

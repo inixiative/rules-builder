@@ -40,7 +40,12 @@ const Picker = ({
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) => (
-  <select aria-label={ariaLabel} style={sel} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+  <select
+    aria-label={ariaLabel}
+    style={sel}
+    value={value ?? ''}
+    onChange={(e) => onChange(e.target.value)}
+  >
     <option value="" disabled>
       {ariaLabel}…
     </option>
@@ -114,7 +119,9 @@ const LiteralValue = ({ value }: { value: ValueControl }) => {
       style={sel}
       value={value.current == null ? '' : String(value.current)}
       onChange={(e) =>
-        value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)
+        value.set(
+          numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value,
+        )
       }
     />
   );
@@ -183,7 +190,12 @@ const Leaf = ({ node }: { node: LeafNode }) => (
       node.operator &&
       node.value && (
         <>
-          <Picker ariaLabel="field" value={node.field.value} options={node.field.options} onChange={node.field.set} />
+          <Picker
+            ariaLabel="field"
+            value={node.field.value}
+            options={node.field.options}
+            onChange={node.field.set}
+          />
           {node.field.acceptsSubPath && node.field.setSubPath && (
             <input
               aria-label="json sub-path"
@@ -240,7 +252,12 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
     }}
   >
     <div style={row}>
-      <Picker ariaLabel="field" value={node.field.value} options={node.field.options} onChange={node.field.set} />
+      <Picker
+        ariaLabel="field"
+        value={node.field.value}
+        options={node.field.options}
+        onChange={node.field.set}
+      />
       <Picker
         ariaLabel="array operator"
         value={node.arrayOperator.value}
@@ -253,10 +270,14 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           type="number"
           style={{ ...sel, width: 80 }}
           value={node.count.value ?? ''}
-          onChange={(e) => node.count?.set(e.target.value === '' ? undefined : Number(e.target.value))}
+          onChange={(e) =>
+            node.count?.set(e.target.value === '' ? undefined : Number(e.target.value))
+          }
         />
       )}
-      {node.relation && <span style={{ fontSize: 11, color: '#7048e8' }}>↪ {node.relation.modelName}</span>}
+      {node.relation && (
+        <span style={{ fontSize: 11, color: '#7048e8' }}>↪ {node.relation.modelName}</span>
+      )}
       {!node.valid && <span style={{ color: '#c00', fontSize: 12 }}>✗</span>}
       <button
         type="button"
@@ -304,7 +325,11 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           <Node node={node.filter} />
         </div>
       ) : (
-        <button type="button" style={{ ...sel, justifySelf: 'start', color: '#64748b' }} onClick={node.filter.addRule}>
+        <button
+          type="button"
+          style={{ ...sel, justifySelf: 'start', color: '#64748b' }}
+          onClick={node.filter.addRule}
+        >
           + element filter
         </button>
       ))}

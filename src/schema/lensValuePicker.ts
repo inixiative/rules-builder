@@ -49,7 +49,13 @@ export const lensValuePicker = (
   const maxDepth = opts.maxDepth ?? 0;
   const out: LensValueOption[] = [];
 
-  const walk = (mapName: string, modelName: string, prefix: string, depth: number, seen: Set<string>): void => {
+  const walk = (
+    mapName: string,
+    modelName: string,
+    prefix: string,
+    depth: number,
+    seen: Set<string>,
+  ): void => {
     const model = lens.maps[mapName]?.models[modelName];
     if (!model) return;
     const key = `${mapName}:${modelName}`;
@@ -87,8 +93,8 @@ export const useLensValuePicker = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: LensValuePickerOptions = {},
 ): LensValueOption[] =>
+  // biome-ignore lint/correctness/useExhaustiveDependencies: depend on option fields, not opts identity, so inline literals don't re-run the walk
   useMemo(
     () => lensValuePicker(lensOrNarrowing, opts),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [lensOrNarrowing, opts.mapName, opts.model, opts.maxDepth, opts.labels],
   );

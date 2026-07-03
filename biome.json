@@ -1,0 +1,21 @@
+{
+  "extends": ["@inixiative/config/biome/base.json", "@inixiative/config/biome/react.json"],
+  "files": {
+    "includes": ["!examples/index.css"]
+  },
+  "overrides": [
+    {
+      "includes": ["examples/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
+    }
+  ]
+}

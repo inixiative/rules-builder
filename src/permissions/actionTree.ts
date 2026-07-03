@@ -56,8 +56,13 @@ export const setActionNode = (rule: ActionRule, path: ActionPath, next: ActionRu
 
 export const addActionChild = (rule: ActionRule, path: ActionPath): ActionRule => {
   const group = getActionNode(rule, path);
-  if (group === undefined || !isActionGroup(group)) throw new Error('addActionChild: target is not a group');
-  return setActionNode(rule, path, withChildren(group, [...childrenOfAction(group), defaultActionRule()]));
+  if (group === undefined || !isActionGroup(group))
+    throw new Error('addActionChild: target is not a group');
+  return setActionNode(
+    rule,
+    path,
+    withChildren(group, [...childrenOfAction(group), defaultActionRule()]),
+  );
 };
 
 export const removeActionNode = (rule: ActionRule, path: ActionPath): ActionRule => {
@@ -65,6 +70,14 @@ export const removeActionNode = (rule: ActionRule, path: ActionPath): ActionRule
   const parentPath = path.slice(0, -1);
   const i = path[path.length - 1];
   const parent = getActionNode(rule, parentPath);
-  if (parent === undefined || !isActionGroup(parent)) throw new Error('removeActionNode: parent is not a group');
-  return setActionNode(rule, parentPath, withChildren(parent, childrenOfAction(parent).filter((_, n) => n !== i)));
+  if (parent === undefined || !isActionGroup(parent))
+    throw new Error('removeActionNode: parent is not a group');
+  return setActionNode(
+    rule,
+    parentPath,
+    withChildren(
+      parent,
+      childrenOfAction(parent).filter((_, n) => n !== i),
+    ),
+  );
 };

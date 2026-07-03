@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens, type Condition, type FieldMap } from '@inixiative/json-rules';
+import { type Condition, checkRuleAgainstLens, type FieldMap } from '@inixiative/json-rules';
 import { describeModelFields, resolve } from '../src/schema/surface';
 
 const map: FieldMap = {
@@ -19,7 +19,9 @@ const map: FieldMap = {
 describe('resolve — serializable source → public surface', () => {
   test('builds an exposed-surface lens from maps + entrypoint', () => {
     const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-    const names = describeModelFields(lens, 'app', 'User').map((f) => f.name).sort();
+    const names = describeModelFields(lens, 'app', 'User')
+      .map((f) => f.name)
+      .sort();
     expect(names).toEqual(['email', 'password', 'role', 'tier']);
   });
 
@@ -30,7 +32,9 @@ describe('resolve — serializable source → public surface', () => {
       model: 'User',
       narrowing: { mapDefaults: { app: { models: { User: { omits: ['password'] } } } } },
     });
-    const names = describeModelFields(lens, 'app', 'User').map((f) => f.name).sort();
+    const names = describeModelFields(lens, 'app', 'User')
+      .map((f) => f.name)
+      .sort();
     expect(names).toEqual(['email', 'role', 'tier']);
   });
 });
@@ -38,7 +42,13 @@ describe('resolve — serializable source → public surface', () => {
 describe('resolve — fetched sourceValues fold onto the surface', () => {
   const source = { maps: { app: map }, mapName: 'app', model: 'User' };
   const sourceValues = [
-    { path: 'User', mapName: 'app', model: 'User', field: 'tier', options: [{ value: 'gold' }, { value: 'silver' }] },
+    {
+      path: 'User',
+      mapName: 'app',
+      model: 'User',
+      field: 'tier',
+      options: [{ value: 'gold' }, { value: 'silver' }],
+    },
   ];
 
   test('fetched values surface as enumValues, kind preserved', () => {

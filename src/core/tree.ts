@@ -44,7 +44,10 @@ export const setNode = (cond: Condition, path: RulePath, node: Condition): Condi
     return withChildArray(cond as AllNode | AnyNode, next);
   }
   const record = cond as unknown as Record<string, Condition | undefined>;
-  return { ...record, [seg]: setNode(record[seg] as Condition, rest, node) } as unknown as Condition;
+  return {
+    ...record,
+    [seg]: setNode(record[seg] as Condition, rest, node),
+  } as unknown as Condition;
 };
 
 export const removeNode = (cond: Condition, path: RulePath): Condition => {
@@ -52,12 +55,20 @@ export const removeNode = (cond: Condition, path: RulePath): Condition => {
   const parentPath = path.slice(0, -1);
   const key = path[path.length - 1];
   const parent = getNode(cond, parentPath);
-  if (parent === undefined || !isObj(parent)) throw new Error('removeNode: parent path does not resolve');
+  if (parent === undefined || !isObj(parent))
+    throw new Error('removeNode: parent path does not resolve');
 
   if (typeof key === 'number') {
     const arr = childArray(parent);
     if (!arr) throw new Error('removeNode: parent is not all/any');
-    return setNode(cond, parentPath, withChildArray(parent as AllNode | AnyNode, arr.filter((_, i) => i !== key)));
+    return setNode(
+      cond,
+      parentPath,
+      withChildArray(
+        parent as AllNode | AnyNode,
+        arr.filter((_, i) => i !== key),
+      ),
+    );
   }
   if (key === 'else') {
     const { else: _omit, ...rest } = parent as unknown as Record<string, unknown>;
@@ -97,10 +108,14 @@ export const groupSiblings = (
   const arr = childArray(parent) as Condition[];
   const sorted = [...new Set(indices)].sort((a, b) => a - b);
   if (sorted.length === 0) throw new Error('groupSiblings: no indices selected');
-  if (sorted.some((i) => i < 0 || i >= arr.length)) throw new Error('groupSiblings: index out of range');
+  if (sorted.some((i) => i < 0 || i >= arr.length))
+    throw new Error('groupSiblings: index out of range');
 
   const selected = new Set(sorted);
-  const group: Condition = kind === 'all' ? { all: sorted.map((i) => arr[i] as Condition) } : { any: sorted.map((i) => arr[i] as Condition) };
+  const group: Condition =
+    kind === 'all'
+      ? { all: sorted.map((i) => arr[i] as Condition) }
+      : { any: sorted.map((i) => arr[i] as Condition) };
   const next: Condition[] = [];
   for (let i = 0; i < arr.length; i++) {
     if (i === sorted[0]) next.push(group);
@@ -118,7 +133,8 @@ export const unwrapCompound = (cond: Condition, path: RulePath): Condition => {
   if (!children) throw new Error('unwrapCompound: node is not an all/any compound');
 
   if (path.length === 0) {
-    if (children.length !== 1) throw new Error('unwrapCompound: cannot dissolve a multi-child root');
+    if (children.length !== 1)
+      throw new Error('unwrapCompound: cannot dissolve a multi-child root');
     return children[0] as Condition;
   }
 

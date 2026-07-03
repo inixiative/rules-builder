@@ -43,10 +43,20 @@ const defaultForKind = (kind: ActionRuleKind): ActionRule => {
   }
 };
 
-type KindControl = { value: ActionRuleKind; options: PickOption[]; set: (k: ActionRuleKind) => void };
+type KindControl = {
+  value: ActionRuleKind;
+  options: PickOption[];
+  set: (k: ActionRuleKind) => void;
+};
 type Control = { value?: string; options: PickOption[]; set: (v: string) => void };
 
-type BaseNode = { id: string; path: ActionPath; depth: number; kind: KindControl; remove?: () => void };
+type BaseNode = {
+  id: string;
+  path: ActionPath;
+  depth: number;
+  kind: KindControl;
+  remove?: () => void;
+};
 /** A `rel` walk as a path of hops: one segment per relation crossed, each scoped to the resource
  *  reached so far (intra-map relations + bridges). `target` is the final resource. */
 export type RelControl = {
@@ -147,7 +157,8 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
         .map((f) => opt(f.name));
     // Editing the relation path can move the target resource, so the previously-picked action
     // (an action on the OLD target) no longer applies — reset it. Only `action.set` keeps it.
-    const setRel = (next: string) => ctx.commit(setActionNode(ctx.root, path, { rel: next, action: '' }));
+    const setRel = (next: string) =>
+      ctx.commit(setActionNode(ctx.root, path, { rel: next, action: '' }));
 
     const segs = rel.rel ? rel.rel.split('.') : [];
     let resource = currentResource;
@@ -158,7 +169,11 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
       if (next) resource = next;
       else resolved = false;
       // Changing a hop truncates everything past it (deeper hops are scoped to it).
-      return { value: seg, options: relOptionsAt(optionsResource), set: (r) => setRel([...segs.slice(0, i), r].join('.')) };
+      return {
+        value: seg,
+        options: relOptionsAt(optionsResource),
+        set: (r) => setRel([...segs.slice(0, i), r].join('.')),
+      };
     });
     const target = resolved ? resource : undefined;
 

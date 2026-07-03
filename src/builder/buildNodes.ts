@@ -11,7 +11,14 @@ import { switchGroupOperator } from '../core/decorate';
 import { addRule, type RulePath, removeNode, setNode } from '../core/tree';
 import type { BuilderField } from '../schema/surface';
 import { describeModelFields, valueShapeForOperator } from '../schema/surface';
-import { defaultRule, groupChildrenOf, groupOperatorOf, isArrayNode, isGroupNode, ruleForField } from './nodes';
+import {
+  defaultRule,
+  groupChildrenOf,
+  groupOperatorOf,
+  isArrayNode,
+  isGroupNode,
+  ruleForField,
+} from './nodes';
 
 export type PickOption = { value: string; label: string };
 
@@ -138,14 +145,21 @@ const arrayCat = (op: string | undefined): ArrayCat =>
 
 /** Scalars, enums, json, and list relations are directly rule-able; a to-one
  *  relation is not (you traverse it via a dotted path or its own array node). */
-const selectableFields = (fields: BuilderField[]): BuilderField[] => fields.filter((f) => f.isList || !f.relation);
+const selectableFields = (fields: BuilderField[]): BuilderField[] =>
+  fields.filter((f) => f.isList || !f.relation);
 
 const idOf = (n: Condition, index: number): string => {
   const r = n as Rec;
   return (r._groupId as string) ?? (r._id as string) ?? String(index);
 };
 
-const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): LeafNode => {
+const buildLeaf = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): LeafNode => {
   const id = idOf(node, path.length ? (path[path.length - 1] as number) : 0);
   // A root leaf has no parent array to splice out of — deleting it clears to a blank group.
   const remove = () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] });
@@ -219,7 +233,8 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
-        if (next) ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
+        if (next)
+          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
       },
       valid: fieldValid,
       acceptsSubPath: field?.acceptsSubPath,
@@ -293,7 +308,13 @@ const buildLeaf = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
   };
 };
 
-const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): ArrayNode => {
+const buildArray = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): ArrayNode => {
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
   const field = scope.fields.find((f) => f.name === fieldName);
@@ -344,7 +365,8 @@ const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
-        if (next) ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
+        if (next)
+          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
       },
       valid: field !== undefined,
     },
@@ -385,7 +407,13 @@ const buildArray =(node: Condition, path: RulePath, depth: number, ctx: Ctx, sco
   };
 };
 
-const buildGroup = (node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): GroupNode => ({
+const buildGroup = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): GroupNode => ({
   kind: 'group',
   id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
   path,
@@ -394,14 +422,22 @@ const buildGroup = (node: Condition, path: RulePath, depth: number, ctx: Ctx, sc
     value: groupOperatorOf(node),
     set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),
   },
-  children: groupChildrenOf(node).map((child, i) => buildNode(child, [...path, i], depth + 1, ctx, scope)),
+  children: groupChildrenOf(node).map((child, i) =>
+    buildNode(child, [...path, i], depth + 1, ctx, scope),
+  ),
   addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(scope.fields))),
   addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
   canAddGroup: depth < ctx.maxDepth,
   remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
 });
 
-const buildNode = (node: Condition, path: RulePath, depth: number, ctx: Ctx, scope: Scope): BuilderNode =>
+const buildNode = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): BuilderNode =>
   isGroupNode(node)
     ? buildGroup(node, path, depth, ctx, scope)
     : isArrayNode(node)
@@ -416,7 +452,8 @@ export const asGroupRoot = (cond: Condition | undefined): Condition =>
 /** The root is the condition itself — never synthetically wrapped. Only an absent condition
  *  becomes a blank group (a first-class, add-into-able container); a bare leaf or `true`/`false`
  *  stays bare. */
-export const asRoot = (cond: Condition | undefined): Condition => (cond === undefined ? { all: [] } : cond);
+export const asRoot = (cond: Condition | undefined): Condition =>
+  cond === undefined ? { all: [] } : cond;
 
 /**
  * Build the headless descriptor tree from a condition + composed lens. The root is whatever the

@@ -59,14 +59,18 @@ describe('buildRoot — descriptor tree', () => {
 
   test('valid reflects the sourced/enum gate', () => {
     expect((build(cond()).children[0] as LeafNode).valid).toBe(true);
-    const bad: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'platinum', _id: 'a' }] };
+    const bad: Condition = {
+      all: [{ field: 'tier', operator: 'equals', value: 'platinum', _id: 'a' }],
+    };
     expect((build(bad).children[0] as LeafNode).valid).toBe(false);
   });
 
   test('value.set commits an updated tree', () => {
     const leaf = build(cond()).children[0] as LeafNode;
     leaf.value.set('silver');
-    expect(committed).toEqual({ all: [{ field: 'tier', operator: 'equals', value: 'silver', _id: 'a' }] });
+    expect(committed).toEqual({
+      all: [{ field: 'tier', operator: 'equals', value: 'silver', _id: 'a' }],
+    });
   });
 
   test('value.setMode switches a literal value to a path reference (value dropped)', () => {
@@ -86,7 +90,9 @@ describe('buildRoot — descriptor tree', () => {
     expect(leaf.value.mode).toBe('path');
     expect(leaf.value.path?.value).toBe('age');
     leaf.value.path?.set('metadata');
-    expect(((committed as { all: Condition[] }).all[0] as Record<string, unknown>).path).toBe('metadata');
+    expect(((committed as { all: Condition[] }).all[0] as Record<string, unknown>).path).toBe(
+      'metadata',
+    );
 
     const leaf2 = build(ref).children[0] as LeafNode;
     leaf2.value.setMode('value');
@@ -106,12 +112,16 @@ describe('buildRoot — descriptor tree', () => {
   });
 
   test('a bind-mode leaf exposes bind.value + bind.set; setMode back restores a literal value', () => {
-    const ref: Condition = { all: [{ field: 'tier', operator: 'equals', bind: 'currentTier', _id: 'a' }] };
+    const ref: Condition = {
+      all: [{ field: 'tier', operator: 'equals', bind: 'currentTier', _id: 'a' }],
+    };
     const leaf = build(ref).children[0] as LeafNode;
     expect(leaf.value.mode).toBe('bind');
     expect(leaf.value.bind?.value).toBe('currentTier');
     leaf.value.bind?.set('targetTier');
-    expect(((committed as { all: Condition[] }).all[0] as Record<string, unknown>).bind).toBe('targetTier');
+    expect(((committed as { all: Condition[] }).all[0] as Record<string, unknown>).bind).toBe(
+      'targetTier',
+    );
 
     const leaf2 = build(ref).children[0] as LeafNode;
     leaf2.value.setMode('value');
@@ -154,7 +164,9 @@ describe('buildRoot — descriptor tree', () => {
   test('a Json field exposes acceptsSubPath + freeform subPath wiring', () => {
     expect(fields.find((f) => f.name === 'metadata')?.acceptsSubPath).toBe(true);
 
-    const jsonCond: Condition = { all: [{ field: 'metadata.theme', operator: 'equals', value: 'dark', _id: 'm' }] };
+    const jsonCond: Condition = {
+      all: [{ field: 'metadata.theme', operator: 'equals', value: 'dark', _id: 'm' }],
+    };
     const leaf = build(jsonCond).children[0] as LeafNode;
     expect(leaf.field.value).toBe('metadata'); // base field selected
     expect(leaf.field.acceptsSubPath).toBe(true);
@@ -200,7 +212,11 @@ describe('buildRoot — boolean leaves + bare root', () => {
   });
 
   test('setLeafKind flips field ⇄ boolean (true on enter; a default field rule on exit)', () => {
-    const fieldLeaf = build({ field: 'tier', operator: 'equals', value: 'gold' }) as unknown as LeafNode;
+    const fieldLeaf = build({
+      field: 'tier',
+      operator: 'equals',
+      value: 'gold',
+    }) as unknown as LeafNode;
     fieldLeaf.setLeafKind('boolean');
     expect(committed).toBe(true);
 
@@ -210,7 +226,9 @@ describe('buildRoot — boolean leaves + bare root', () => {
   });
 
   test('a boolean inside a group renders as a literal-leaf child', () => {
-    const c: Condition = { all: [true, { field: 'tier', operator: 'equals', value: 'gold', _id: 'a' }] };
+    const c: Condition = {
+      all: [true, { field: 'tier', operator: 'equals', value: 'gold', _id: 'a' }],
+    };
     const root = build(c) as GroupNode;
     expect(root.kind).toBe('group');
     expect((root.children[0] as LeafNode).leafKind).toBe('boolean');

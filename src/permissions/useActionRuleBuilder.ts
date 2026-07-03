@@ -1,8 +1,13 @@
 import type { SourceValues } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type BuilderField, describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
-import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
+import {
+  type BuilderField,
+  describeModelFields,
+  type RuleBuilderSource,
+  resolve,
+} from '../schema/surface';
 import { defaultActionRule } from './actionTree';
+import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
 import type { ActionRule } from './types';
 
 export type UseActionRuleBuilderOptions = {
@@ -74,7 +79,16 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, lens, fields, opts.siblingActions, opts.actionsByResource, opts.maxDepth, commit, resourceFields],
+    [
+      tree,
+      lens,
+      fields,
+      opts.siblingActions,
+      opts.actionsByResource,
+      opts.maxDepth,
+      commit,
+      resourceFields,
+    ],
   );
 
   return { value: tree, root, setRule: setTree };

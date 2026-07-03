@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '@inixiative/json-rules';
-import { type ActionGroupNode, type ActionLeafNode, buildActionRoot } from '../src/permissions/buildActionRoot';
+import {
+  type ActionGroupNode,
+  type ActionLeafNode,
+  buildActionRoot,
+} from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
 import { describeModelFields, resolve } from '../src/schema/surface';
 
@@ -29,7 +33,10 @@ const map: FieldMap = {
 
 const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
 const fields = describeModelFields(lens, 'app', 'User');
-const actionsByResource = { 'app:User': ['own', 'manage', 'read'], 'app:Organization': ['own', 'manage', 'read'] };
+const actionsByResource = {
+  'app:User': ['own', 'manage', 'read'],
+  'app:Organization': ['own', 'manage', 'read'],
+};
 const resourceFields = (res: string) => {
   const [m, mdl] = res.split(':');
   return describeModelFields(resolve({ maps: { app: map }, mapName: m, model: mdl }), m, mdl);
@@ -115,7 +122,9 @@ describe('buildActionRoot — model-aware leaves', () => {
   });
 
   test('rule embeds a condition builder (a group node)', () => {
-    const n = build({ rule: { all: [{ field: 'role', operator: 'equals', value: 'admin' }] } }) as ActionLeafNode;
+    const n = build({
+      rule: { all: [{ field: 'role', operator: 'equals', value: 'admin' }] },
+    }) as ActionLeafNode;
     expect(n.kind.value).toBe('rule');
     expect(n.rule?.kind).toBe('group');
     expect(n.rule?.children[0]?.kind).toBe('leaf');

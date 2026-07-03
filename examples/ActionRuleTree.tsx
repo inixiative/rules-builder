@@ -66,7 +66,10 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
         {leaf?.rel && (
           <>
             {leaf.rel.segments.map((seg, i) => (
-              <span key={`${i}-${seg.value}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span
+                key={`${i}-${seg.value}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
                 {i > 0 && <span style={{ color: tokens.textMuted }}>.</span>}
                 <Select
                   ariaLabel={`relation hop ${i + 1}`}
@@ -91,7 +94,12 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
                 type="button"
                 title="remove last hop"
                 onClick={leaf.rel.removeLast}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: tokens.textMuted,
+                }}
               >
                 −
               </button>
@@ -116,7 +124,13 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
             type="button"
             aria-label="remove"
             onClick={node.remove}
-            style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: tokens.textMuted }}
+            style={{
+              marginLeft: 'auto',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: tokens.textMuted,
+            }}
           >
             ✕
           </button>

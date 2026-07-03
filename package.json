@@ -16,10 +16,12 @@
     "test": "NODE_ENV=development bun test",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc --noEmit -p tsconfig.examples.json",
-    "check": "bun run typecheck",
+    "check": "bun run typecheck && bun run typecheck:examples && bun run lint && bun run test",
     "example": "vite",
     "example:build": "tsc --noEmit -p tsconfig.examples.json && vite build",
-    "prepublishOnly": "bun run check && bun run test && bun run build"
+    "prepublishOnly": "bun run check && bun run build",
+    "lint": "biome check .",
+    "prepare": "lefthook install"
   },
   "keywords": [
     "json-rules",
@@ -44,7 +46,7 @@
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@types/bun": "latest",
+    "@types/bun": "1.3.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.2",
@@ -55,9 +57,12 @@
     "react-dom": "^19",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.1",
-    "tsup": "^8.5.0",
-    "typescript": "^5.0.0",
-    "vite": "^8.0.16"
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vite": "^8.0.16",
+    "@biomejs/biome": "2.5.2",
+    "@inixiative/config": "^0.2.1",
+    "lefthook": "2.1.9"
   },
   "exports": {
     ".": {
@@ -70,5 +75,6 @@
       "import": "./dist/schema/index.js",
       "require": "./dist/schema/index.cjs"
     }
-  }
+  },
+  "packageManager": "bun@1.3.14"
 }

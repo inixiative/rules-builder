@@ -28,4 +28,12 @@ export type RebacSchema = {
   permissions: Record<string, ResourcePermission>;
 };
 
-export type ActionRuleKind = 'delegate' | 'rel' | 'self' | 'rule' | 'any' | 'all' | 'allow' | 'deny';
+export type ActionRuleKind =
+  | 'delegate'
+  | 'rel'
+  | 'self'
+  | 'rule'
+  | 'any'
+  | 'all'
+  | 'allow'
+  | 'deny';

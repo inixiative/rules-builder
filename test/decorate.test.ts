@@ -98,7 +98,10 @@ describe('stripMeta', () => {
 describe('editor boundary: decorate in, strip out → DB form stays clean', () => {
   test('stripMeta(withIds(clean)) deep-equals the original clean Condition', () => {
     const clean = {
-      all: [{ field: 'a', operator: 'equals', value: 1 }, { any: [{ field: 'b', operator: 'equals', value: 2 }] }],
+      all: [
+        { field: 'a', operator: 'equals', value: 1 },
+        { any: [{ field: 'b', operator: 'equals', value: 2 }] },
+      ],
     } as unknown as Condition;
     const decorated = withIds(
       clean,

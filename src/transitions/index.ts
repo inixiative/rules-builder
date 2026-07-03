@@ -1,4 +1,3 @@
-export type { Action, MergeStrategy, Side, SideKey, ToSide, Transition, TransitionMap } from './types';
 export {
   actionNamesByResource,
   addPath,
@@ -9,5 +8,14 @@ export {
   setTransitionAction,
   updateSide,
 } from './transitionTree';
+export type {
+  Action,
+  MergeStrategy,
+  Side,
+  SideKey,
+  ToSide,
+  Transition,
+  TransitionMap,
+} from './types';
 export type { UseTransitionBuilder, UseTransitionBuilderOptions } from './useTransitionBuilder';
 export { useTransitionBuilder } from './useTransitionBuilder';

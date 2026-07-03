@@ -52,7 +52,9 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
  *  the identity — Save creates a new map or updates/renames the selected one. */
 export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const [name, setName] = useState(selected ?? '');
-  const [draft, setDraft] = useState(selected && ws.maps[selected] ? JSON.stringify(ws.maps[selected], null, 2) : EMPTY_MAP);
+  const [draft, setDraft] = useState(
+    selected && ws.maps[selected] ? JSON.stringify(ws.maps[selected], null, 2) : EMPTY_MAP,
+  );
   const [error, setError] = useState<string | null>(null);
 
   // The sidebar drives it: a map item loads it; the section header (no item) → a fresh map.

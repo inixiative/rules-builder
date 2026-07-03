@@ -89,7 +89,8 @@ export const SettingsTab = ({
   };
 
   const placeholder: Record<ImportType, string> = {
-    workspace: '{ "maps": {...}, "bridges": [...], "narrowings": {...}, "rule": {...}, "rules": {...} }',
+    workspace:
+      '{ "maps": {...}, "bridges": [...], "narrowings": {...}, "rule": {...}, "rules": {...} }',
     maps: '{ "app": { "models": { "User": { "fields": { "email": { "kind": "scalar", "type": "String" } } } } } }',
     bridges: '[ { "endpoints": [ {...}, {...} ], "cardinality": "oneToMany" } ]',
   };
@@ -103,7 +104,11 @@ export const SettingsTab = ({
           <Button variant="ghost" onClick={() => replace(emptyWorkspace())} title="Empty workspace">
             Clean
           </Button>
-          <Button variant="primary" onClick={() => replace(defaultWorkspace())} title="Bundled samples">
+          <Button
+            variant="primary"
+            onClick={() => replace(defaultWorkspace())}
+            title="Bundled samples"
+          >
             Load sample
           </Button>
           <input
@@ -132,7 +137,9 @@ export const SettingsTab = ({
               label: String(n),
             }))}
           />
-          <span style={{ fontSize: 12, color: tokens.textMuted }}>max group nesting — applies to every rule field</span>
+          <span style={{ fontSize: 12, color: tokens.textMuted }}>
+            max group nesting — applies to every rule field
+          </span>
         </Row>
       </Panel>
 
@@ -153,7 +160,8 @@ export const SettingsTab = ({
         }
       >
         <Empty>
-          Paste JSON and pick its type. Full workspace replaces everything; the others replace just that slice.
+          Paste JSON and pick its type. Full workspace replaces everything; the others replace just
+          that slice.
         </Empty>
         <textarea
           value={draft}
@@ -187,8 +195,8 @@ export const SettingsTab = ({
         }
       >
         <Empty>
-          The entire workspace as editable JSON — tweak and Apply to replace everything (Reload re-reads the current
-          state).
+          The entire workspace as editable JSON — tweak and Apply to replace everything (Reload
+          re-reads the current state).
         </Empty>
         <textarea
           value={openJson}

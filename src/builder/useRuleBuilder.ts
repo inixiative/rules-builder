@@ -8,7 +8,7 @@ import {
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
-import { describeModelFields, resolve, type RuleBuilderSource } from '../schema/surface';
+import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
 const EMPTY: Condition = { all: [] };
@@ -63,7 +63,10 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   onChangeRef.current = opts.onChange;
   const first = useRef(true);
 
-  const clean = useCallback((t: Condition): Condition => stripMeta(trimEmptyGroups(t) ?? EMPTY), []);
+  const clean = useCallback(
+    (t: Condition): Condition => stripMeta(trimEmptyGroups(t) ?? EMPTY),
+    [],
+  );
 
   useEffect(() => {
     if (first.current) {

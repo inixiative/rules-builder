@@ -146,7 +146,8 @@ export const LensEditor = ({ ws, patch, selected }: TabProps & { selected?: stri
                       }))
                     }
                   />{' '}
-                  {b.endpoints[0].fieldMap}:{b.endpoints[0].model} ↔ {b.endpoints[1].fieldMap}:{b.endpoints[1].model}
+                  {b.endpoints[0].fieldMap}:{b.endpoints[0].model} ↔ {b.endpoints[1].fieldMap}:
+                  {b.endpoints[1].model}
                 </label>
               );
             })}

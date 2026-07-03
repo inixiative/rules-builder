@@ -3,7 +3,10 @@ import type { FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ActionGroupNode, ActionLeafNode } from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
-import { useActionRuleBuilder, type UseActionRuleBuilderOptions } from '../src/permissions/useActionRuleBuilder';
+import {
+  type UseActionRuleBuilderOptions,
+  useActionRuleBuilder,
+} from '../src/permissions/useActionRuleBuilder';
 
 afterEach(cleanup);
 
@@ -29,9 +32,12 @@ describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
   });
 
   test('seeds from defaultValue once; a later prop change does NOT re-seed', () => {
-    const { result, rerender } = renderHook((p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p), {
-      initialProps: { source, defaultValue: true as ActionRule },
-    });
+    const { result, rerender } = renderHook(
+      (p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p),
+      {
+        initialProps: { source, defaultValue: true as ActionRule },
+      },
+    );
     expect(result.current.value).toBe(true);
     rerender({ source, defaultValue: false as ActionRule });
     expect(result.current.value).toBe(true);
@@ -61,7 +67,9 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
   });
 
   test('a group node adds children; addChild is gated on depth', () => {
-    const { result } = renderHook(() => useActionRuleBuilder({ source, defaultValue: { all: [] } }));
+    const { result } = renderHook(() =>
+      useActionRuleBuilder({ source, defaultValue: { all: [] } }),
+    );
     const root = result.current.root as ActionGroupNode;
     expect(root.children).toHaveLength(0);
     act(() => root.addChild?.());
@@ -72,7 +80,9 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
   });
 
   test('self leaf offers non-relation fields and commits { self: field }', () => {
-    const { result } = renderHook(() => useActionRuleBuilder({ source, defaultValue: { self: '' } }));
+    const { result } = renderHook(() =>
+      useActionRuleBuilder({ source, defaultValue: { self: '' } }),
+    );
     const root = result.current.root as ActionLeafNode;
     expect(root.self?.options.map((o) => o.value)).toEqual(['tier', 'ownerId']);
     act(() => root.self?.set('ownerId'));
@@ -96,7 +106,9 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
   });
 
   test('the ABAC rule leaf embeds a json-rules builder whose edits fold back under { rule }', () => {
-    const { result } = renderHook(() => useActionRuleBuilder({ source, defaultValue: { rule: { all: [] } } }));
+    const { result } = renderHook(() =>
+      useActionRuleBuilder({ source, defaultValue: { rule: { all: [] } } }),
+    );
     const root = result.current.root as ActionLeafNode;
     expect(root.rule?.kind).toBe('group');
     act(() => (root.rule as { addRule: () => void }).addRule());
@@ -108,9 +120,12 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
 describe('useActionRuleBuilder — memoization', () => {
   test('root is referentially stable across a no-op re-render', () => {
     const props: UseActionRuleBuilderOptions = { source, defaultValue: { all: [] } };
-    const { result, rerender } = renderHook((p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p), {
-      initialProps: props,
-    });
+    const { result, rerender } = renderHook(
+      (p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p),
+      {
+        initialProps: props,
+      },
+    );
     const first = result.current.root;
     rerender(props);
     expect(result.current.root).toBe(first);

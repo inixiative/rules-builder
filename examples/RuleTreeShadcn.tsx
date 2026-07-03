@@ -21,7 +21,14 @@ const LiteralValue = ({ value }: { value: ValueControl }) => {
   if (value.options) {
     if (value.shape === 'array' || value.shape === 'dayList') {
       const current = Array.isArray(value.current) ? (value.current as string[]) : [];
-      return <MultiSelect aria-label="value" options={value.options} value={current} onChange={value.set} />;
+      return (
+        <MultiSelect
+          aria-label="value"
+          options={value.options}
+          value={current}
+          onChange={value.set}
+        />
+      );
     }
     return (
       <Select
@@ -64,7 +71,9 @@ const LiteralValue = ({ value }: { value: ValueControl }) => {
       type={numeric ? 'number' : 'text'}
       value={value.current == null ? '' : String(value.current)}
       onChange={(e) =>
-        value.set(numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value)
+        value.set(
+          numeric ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value,
+        )
       }
     />
   );
@@ -194,12 +203,22 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           type="number"
           className="w-20"
           value={node.count.value ?? ''}
-          onChange={(e) => node.count?.set(e.target.value === '' ? undefined : Number(e.target.value))}
+          onChange={(e) =>
+            node.count?.set(e.target.value === '' ? undefined : Number(e.target.value))
+          }
         />
       )}
-      {node.relation && <span className="text-xs text-violet-600">↪ {node.relation.modelName}</span>}
+      {node.relation && (
+        <span className="text-xs text-violet-600">↪ {node.relation.modelName}</span>
+      )}
       {!node.valid && <Badge tone="danger">✗</Badge>}
-      <Button aria-label="remove" variant="ghost" size="icon" className="ml-auto" onClick={node.remove}>
+      <Button
+        aria-label="remove"
+        variant="ghost"
+        size="icon"
+        className="ml-auto"
+        onClick={node.remove}
+      >
         ✕
       </Button>
     </div>
@@ -229,7 +248,12 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           <Node node={node.filter} />
         </div>
       ) : (
-        <Button variant="outline" size="sm" className="justify-self-start" onClick={node.filter.addRule}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="justify-self-start"
+          onClick={node.filter.addRule}
+        >
           + element filter
         </Button>
       ))}
@@ -243,7 +267,12 @@ const Group = ({ node }: { node: GroupNode }) => {
       className={`rounded-lg border border-border border-l-2 p-3 ${node.depth ? 'ml-4 border-l-muted-foreground/40 bg-muted/30' : 'border-l-primary'}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="icon" aria-label="collapse" onClick={() => setCollapsed((c) => !c)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="collapse"
+          onClick={() => setCollapsed((c) => !c)}
+        >
           {collapsed ? '▸' : '▾'}
         </Button>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

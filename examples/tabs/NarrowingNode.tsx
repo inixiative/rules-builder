@@ -18,7 +18,10 @@ export type NodeCtx = {
   maxDepth: number;
 };
 
-const relTarget = (entry: FieldMapEntry, currentMap: string): { map: string; model: string } | null => {
+const relTarget = (
+  entry: FieldMapEntry,
+  currentMap: string,
+): { map: string; model: string } | null => {
   if (entry.kind === 'object') return { map: currentMap, model: entry.type };
   if (entry.kind === 'bridge') {
     const [m, n] = entry.type.includes(':') ? entry.type.split(':') : [currentMap, entry.type];
@@ -46,7 +49,8 @@ const FieldVisibility = ({
       picks: m === 'picks' ? (value.picks ?? []) : undefined,
       omits: m === 'omits' ? (value.omits ?? []) : undefined,
     });
-  const active = mode === 'picks' ? value.picks ?? [] : mode === 'omits' ? value.omits ?? [] : [];
+  const active =
+    mode === 'picks' ? (value.picks ?? []) : mode === 'omits' ? (value.omits ?? []) : [];
   const toggle = (f: string) => {
     if (mode === 'none') return;
     const key = mode === 'picks' ? 'picks' : 'omits';
@@ -119,8 +123,13 @@ const EnumNarrowingEditor = ({
     <div style={{ display: 'grid', gap: 6 }}>
       <strong style={{ fontSize: 12 }}>enum values</strong>
       {enumFields.map(([name, entry]) => {
-        const mode = value.enumPicks?.[name] ? 'enumPicks' : value.enumOmits?.[name] ? 'enumOmits' : 'none';
-        const active = (mode === 'enumPicks' ? value.enumPicks?.[name] : value.enumOmits?.[name]) ?? [];
+        const mode = value.enumPicks?.[name]
+          ? 'enumPicks'
+          : value.enumOmits?.[name]
+            ? 'enumOmits'
+            : 'none';
+        const active =
+          (mode === 'enumPicks' ? value.enumPicks?.[name] : value.enumOmits?.[name]) ?? [];
         const toggle = (v: string) => {
           if (mode === 'none') return;
           const next = active.includes(v) ? active.filter((x) => x !== v) : [...active, v];
@@ -143,7 +152,8 @@ const EnumNarrowingEditor = ({
             {mode !== 'none' &&
               valuesFor(entry).map((v) => (
                 <label key={v} style={{ fontSize: 12 }}>
-                  <input type="checkbox" checked={active.includes(v)} onChange={() => toggle(v)} /> {v}
+                  <input type="checkbox" checked={active.includes(v)} onChange={() => toggle(v)} />{' '}
+                  {v}
                 </label>
               ))}
           </Row>
@@ -170,9 +180,16 @@ export const NarrowingNode = ({
   depth: number;
   allowRelations: boolean;
 }) => {
-  const [showWhere, setShowWhere] = useState(!isEmptyCond(value.where) && value.where !== undefined);
+  const [showWhere, setShowWhere] = useState(
+    !isEmptyCond(value.where) && value.where !== undefined,
+  );
   const map = ctx.maps[mapName];
-  if (!map?.models[model]) return <Badge tone="danger">missing {mapName}.{model}</Badge>;
+  if (!map?.models[model])
+    return (
+      <Badge tone="danger">
+        missing {mapName}.{model}
+      </Badge>
+    );
 
   const fieldEntries = Object.entries(map.models[model].fields);
   const fieldNames = fieldEntries.map(([n]) => n);
@@ -228,7 +245,9 @@ export const NarrowingNode = ({
             sourceValues={ctx.sourceValues}
             maxDepth={ctx.maxDepth}
             rule={value.where && typeof value.where === 'object' ? value.where : { all: [] }}
-            onChange={(where) => onChange({ ...value, where: isEmptyCond(where) ? undefined : where })}
+            onChange={(where) =>
+              onChange({ ...value, where: isEmptyCond(where) ? undefined : where })
+            }
           />
         )}
       </div>
@@ -253,7 +272,16 @@ export const NarrowingNode = ({
               : null;
           const where: Condition = (spec ? spec.where : (entry as Condition)) ?? { all: [] };
           return (
-            <div key={field} style={{ border: `1px dashed ${tokens.borderStrong}`, borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
+            <div
+              key={field}
+              style={{
+                border: `1px dashed ${tokens.borderStrong}`,
+                borderRadius: 6,
+                padding: 8,
+                display: 'grid',
+                gap: 6,
+              }}
+            >
               <Row style={{ justifyContent: 'space-between' }}>
                 <Badge tone="accent">{field}</Badge>
                 <Button variant="danger" onClick={() => setSource(field, null)}>
@@ -261,7 +289,8 @@ export const NarrowingNode = ({
                 </Button>
               </Row>
               <span style={{ fontSize: 11, color: tokens.textMuted }}>
-                options = DISTINCT <code>{field}</code> where this holds{spec?.label ? ` — label: ${spec.label}` : ''}
+                options = DISTINCT <code>{field}</code> where this holds
+                {spec?.label ? ` — label: ${spec.label}` : ''}
               </span>
               <RuleEditor
                 source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
@@ -293,7 +322,11 @@ export const NarrowingNode = ({
                       remove
                     </Button>
                   ) : (
-                    <Button onClick={() => setRelation(rel, {})} disabled={depth >= 3} title="add a narrowing scoped to this relation">
+                    <Button
+                      onClick={() => setRelation(rel, {})}
+                      disabled={depth >= 3}
+                      title="add a narrowing scoped to this relation"
+                    >
                       extend →
                     </Button>
                   )}

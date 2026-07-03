@@ -45,7 +45,9 @@ describe('SavedRule serialization', () => {
   });
 
   test('parse throws when rule or source is missing', () => {
-    expect(() => parseSavedRule(JSON.stringify({ source: { kind: 'lens', name: 'x' } }))).toThrow(/rule/);
+    expect(() => parseSavedRule(JSON.stringify({ source: { kind: 'lens', name: 'x' } }))).toThrow(
+      /rule/,
+    );
     expect(() => parseSavedRule(JSON.stringify({ rule: { all: [] } }))).toThrow(/source/);
   });
 

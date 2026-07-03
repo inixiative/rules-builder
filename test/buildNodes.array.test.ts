@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
-import { type ArrayNode, buildRoot, type GroupNode, type LeafNode } from '../src/builder/buildNodes';
+import { type ArrayNode, buildRoot, type LeafNode } from '../src/builder/buildNodes';
 import { describeModelFields, resolve } from '../src/schema/surface';
 
 const map: FieldMap = {
@@ -50,7 +50,16 @@ describe('buildRoot — array nodes', () => {
     expect(a.field.value).toBe('orders');
     expect(a.arrayOperator.value).toBe('notEmpty');
     expect(a.arrayOperator.options.map((o) => o.value)).toEqual(
-      expect.arrayContaining(['any', 'all', 'none', 'atLeast', 'atMost', 'exactly', 'empty', 'notEmpty']),
+      expect.arrayContaining([
+        'any',
+        'all',
+        'none',
+        'atLeast',
+        'atMost',
+        'exactly',
+        'empty',
+        'notEmpty',
+      ]),
     );
   });
 

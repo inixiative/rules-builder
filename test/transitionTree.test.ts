@@ -44,7 +44,10 @@ describe('transition tree ops', () => {
 
   test('updateSide updates a side immutably', () => {
     const s = base();
-    const next = updateSide(s, 'db:Inquiry', 'approve', 0, 'to', (side) => ({ ...side, merge: 'deepMerge' }));
+    const next = updateSide(s, 'db:Inquiry', 'approve', 0, 'to', (side) => ({
+      ...side,
+      merge: 'deepMerge',
+    }));
     expect(next['db:Inquiry'].approve.paths[0].to.merge).toBe('deepMerge');
     expect(s['db:Inquiry'].approve.paths[0].to).toEqual({ predicate: { all: [] } }); // original untouched
   });

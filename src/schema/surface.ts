@@ -118,7 +118,9 @@ const fieldAndDateOperators = (
 };
 
 const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
-  getArrayOperators().filter((op) => supportedByAllTargets(op, targets, (t) => getArrayOperators(t)));
+  getArrayOperators().filter((op) =>
+    supportedByAllTargets(op, targets, (t) => getArrayOperators(t)),
+  );
 
 // Prefer labels from the surface's `options` (json-rules folds a sourced field's
 // value→label there); a caller-supplied `valueLabels` entry overrides (e.g. human

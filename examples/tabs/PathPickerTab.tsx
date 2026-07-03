@@ -90,7 +90,10 @@ export const PathPickerTab = ({ ws }: TabProps) => {
   const sourceOptions = [
     { value: '', label: '(none — raw maps)' },
     ...Object.keys(ws.lenses).map((n) => ({ value: `lens:${n}`, label: `lens · ${n}` })),
-    ...Object.keys(ws.narrowings).map((n) => ({ value: `narrowing:${n}`, label: `narrowing · ${n}` })),
+    ...Object.keys(ws.narrowings).map((n) => ({
+      value: `narrowing:${n}`,
+      label: `narrowing · ${n}`,
+    })),
   ];
 
   return (
@@ -98,9 +101,19 @@ export const PathPickerTab = ({ ws }: TabProps) => {
       <Panel title="Lens value picker">
         <Row>
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Surface:</label>
-          <Select ariaLabel="surface" value={sourceKey} onChange={pickSource} options={sourceOptions} />
+          <Select
+            ariaLabel="surface"
+            value={sourceKey}
+            onChange={pickSource}
+            options={sourceOptions}
+          />
           <label style={{ fontSize: 13, color: tokens.textMuted }}>FieldMap:</label>
-          <Select ariaLabel="fieldmap" value={mapName} onChange={pickMap} options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))} />
+          <Select
+            ariaLabel="fieldmap"
+            value={mapName}
+            onChange={pickMap}
+            options={Object.keys(ws.maps).map((m) => ({ value: m, label: m }))}
+          />
           <label style={{ fontSize: 13, color: tokens.textMuted }}>Model:</label>
           <Select
             ariaLabel="model"
@@ -150,7 +163,9 @@ export const PathPickerTab = ({ ws }: TabProps) => {
       </Panel>
 
       <Panel title="Operand (wire format)">
-        <Code>{JSON.stringify(selected ? { path: composed, kind: selected.kind } : null, null, 2)}</Code>
+        <Code>
+          {JSON.stringify(selected ? { path: composed, kind: selected.kind } : null, null, 2)}
+        </Code>
       </Panel>
     </div>
   );

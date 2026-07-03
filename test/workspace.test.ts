@@ -39,7 +39,9 @@ const sample = (): Workspace => ({
     },
   },
   permissions: {
-    'app:User': { actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } } },
+    'app:User': {
+      actions: { read: { rule: { all: [{ field: 'tier', operator: 'equals', value: 'g' }] } } },
+    },
   },
   transitions: {
     'app:User': {
@@ -118,7 +120,9 @@ describe('narrowingAncestors (cycle guard for the parent picker)', () => {
   test('a narrowing may parent only non-descendants — c is a descendant of a, so a can’t pick c', () => {
     const w = ws();
     // editing 'a': candidates whose ancestors include 'a' are descendants → excluded.
-    const candidates = Object.keys(w.narrowings).filter((n) => n !== 'a' && !narrowingAncestors(w, n).has('a'));
+    const candidates = Object.keys(w.narrowings).filter(
+      (n) => n !== 'a' && !narrowingAncestors(w, n).has('a'),
+    );
     expect(candidates).toEqual([]); // b and c both descend from a
   });
 });

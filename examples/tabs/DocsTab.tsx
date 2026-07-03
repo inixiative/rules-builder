@@ -17,15 +17,32 @@ const Mono = ({ children }: { children: React.ReactNode }) => (
   </code>
 );
 const Link = ({ href, children }: { href: string; children: React.ReactNode }) => (
-  <a href={href} target="_blank" rel="noreferrer" style={{ color: tokens.accent, textDecoration: 'none' }}>
+  <a
+    href={href}
+    target="_blank"
+    rel="noreferrer"
+    style={{ color: tokens.accent, textDecoration: 'none' }}
+  >
     {children}
   </a>
 );
 
 const RELATED: { name: string; what: string; href: string }[] = [
-  { name: '@inixiative/rules-builder', what: 'this headless builder — hooks, descriptor tree, renderers', href: 'https://github.com/inixiative/rules-builder' },
-  { name: '@inixiative/json-rules', what: 'the engine — Condition, lenses, check / toSql / toPrisma', href: 'https://github.com/inixiative/json-rules' },
-  { name: 'inixiative.com', what: 'the platform + shared vocabulary', href: 'https://www.inixiative.com' },
+  {
+    name: '@inixiative/rules-builder',
+    what: 'this headless builder — hooks, descriptor tree, renderers',
+    href: 'https://github.com/inixiative/rules-builder',
+  },
+  {
+    name: '@inixiative/json-rules',
+    what: 'the engine — Condition, lenses, check / toSql / toPrisma',
+    href: 'https://github.com/inixiative/json-rules',
+  },
+  {
+    name: 'inixiative.com',
+    what: 'the platform + shared vocabulary',
+    href: 'https://www.inixiative.com',
+  },
 ];
 
 const HOOK = `import { useRuleBuilder } from '@inixiative/rules-builder';
@@ -63,8 +80,8 @@ export const DocsTab = () => (
       <P>
         <Mono>@inixiative/rules-builder</Mono> is a <strong>headless</strong> rule builder for{' '}
         <Mono>@inixiative/json-rules</Mono>. It owns the <Mono>Condition</Mono> JSON and hands you a{' '}
-        <strong>descriptor tree</strong> — what controls exist at each level and the bound actions. It renders nothing;
-        you bring the components. This playground is a live reference consumer.
+        <strong>descriptor tree</strong> — what controls exist at each level and the bound actions.
+        It renders nothing; you bring the components. This playground is a live reference consumer.
       </P>
       <Row>
         <Badge tone="accent">fieldMaps</Badge>
@@ -83,8 +100,9 @@ export const DocsTab = () => (
 
     <Panel title="The hook">
       <P>
-        <Mono>useRuleBuilder</Mono> returns <Mono>{'{ value, root, lens, setCondition, validate, describe }'}</Mono>.
-        Walk <Mono>root</Mono> and switch on <Mono>node.kind</Mono>:
+        <Mono>useRuleBuilder</Mono> returns{' '}
+        <Mono>{'{ value, root, lens, setCondition, validate, describe }'}</Mono>. Walk{' '}
+        <Mono>root</Mono> and switch on <Mono>node.kind</Mono>:
       </P>
       <Code>{HOOK}</Code>
       <Code>{NODE}</Code>
@@ -92,58 +110,66 @@ export const DocsTab = () => (
 
     <Panel title="Rendering values">
       <P>
-        The hook is headless — it doesn't render value inputs. Switch on the <Mono>ValueControl</Mono>:{' '}
-        <Mono>options</Mono> → a select; <Mono>shape === 'array'</Mono> → multi-select; <Mono>kind === 'Boolean'</Mono>{' '}
-        → a true/false select (coerce to a real boolean); <Mono>kind === 'Int' | 'Float'</Mono> → number input (coerce
-        with <Mono>Number()</Mono>); <Mono>DateTime</Mono> → date input. The two reference renderers (plain + shadcn)
-        implement the full matrix — copy one.
+        The hook is headless — it doesn't render value inputs. Switch on the{' '}
+        <Mono>ValueControl</Mono>: <Mono>options</Mono> → a select; <Mono>shape === 'array'</Mono> →
+        multi-select; <Mono>kind === 'Boolean'</Mono> → a true/false select (coerce to a real
+        boolean); <Mono>kind === 'Int' | 'Float'</Mono> → number input (coerce with{' '}
+        <Mono>Number()</Mono>); <Mono>DateTime</Mono> → date input. The two reference renderers
+        (plain + shadcn) implement the full matrix — copy one.
       </P>
       <P>
-        Per-control validity: <Mono>field.valid</Mono> / <Mono>value.valid</Mono> pinpoint which input is wrong.
+        Per-control validity: <Mono>field.valid</Mono> / <Mono>value.valid</Mono> pinpoint which
+        input is wrong.
       </P>
     </Panel>
 
     <Panel title="Sourced fields (data-backed options)">
       <P>
-        A narrowing declares <Mono>sources</Mono> — a field whose option set is the DISTINCT values of its column after
-        an eligibility filter. The engine compiles the queries; your app runs them and hands the values back:
+        A narrowing declares <Mono>sources</Mono> — a field whose option set is the DISTINCT values
+        of its column after an eligibility filter. The engine compiles the queries; your app runs
+        them and hands the values back:
       </P>
       <Code>{SOURCES}</Code>
     </Panel>
 
     <Panel title="Array (list/relation) rules">
       <P>
-        A list/relation field builds an <Mono>ArrayNode</Mono>: <strong>presence</strong> (empty/notEmpty),{' '}
-        <strong>count</strong> (atLeast/atMost/exactly + a number), or <strong>predicate</strong> (all/any/none + a
-        nested <Mono>condition</Mono>). It also carries a window <Mono>filter</Mono>. Both <Mono>condition</Mono> and{' '}
-        <Mono>filter</Mono> are nested groups scoped to the <strong>related model</strong> — author them like the top
-        level.
+        A list/relation field builds an <Mono>ArrayNode</Mono>: <strong>presence</strong>{' '}
+        (empty/notEmpty), <strong>count</strong> (atLeast/atMost/exactly + a number), or{' '}
+        <strong>predicate</strong> (all/any/none + a nested <Mono>condition</Mono>). It also carries
+        a window <Mono>filter</Mono>. Both <Mono>condition</Mono> and <Mono>filter</Mono> are nested
+        groups scoped to the <strong>related model</strong> — author them like the top level.
       </P>
     </Panel>
 
     <Panel title="Permissions (rebac / abac / rbac)">
       <P>
-        <Mono>usePermissionBuilder</Mono> builds a rebac schema (<Mono>{'{ bridges, permissions: resource → { actions } }'}</Mono>)
-        over the RAW model records (resources are map-qualified, e.g. <Mono>db:User</Mono>). An <Mono>ActionRule</Mono> is a recursive algebra:{' '}
-        <Mono>{'{ rule }'}</Mono> (abac predicate — embeds the json-rules builder), <Mono>{'{ self }'}</Mono>{' '}
-        (owner field), <Mono>{'{ rel, action }'}</Mono> (walk a relation, check an action on the target),{' '}
-        a <Mono>string</Mono> (delegate to another action), <Mono>{'{ any }'}</Mono>/<Mono>{'{ all }'}</Mono>, or{' '}
-        <Mono>null</Mono> (deny). The leaves are model-aware: <Mono>self</Mono> picks the model's fields,{' '}
-        <Mono>delegate</Mono> its other actions, <Mono>rel</Mono> a relation + the target model's actions.
+        <Mono>usePermissionBuilder</Mono> builds a rebac schema (
+        <Mono>{'{ bridges, permissions: resource → { actions } }'}</Mono>) over the RAW model
+        records (resources are map-qualified, e.g. <Mono>db:User</Mono>). An <Mono>ActionRule</Mono>{' '}
+        is a recursive algebra: <Mono>{'{ rule }'}</Mono> (abac predicate — embeds the json-rules
+        builder), <Mono>{'{ self }'}</Mono> (owner field), <Mono>{'{ rel, action }'}</Mono> (walk a
+        relation, check an action on the target), a <Mono>string</Mono> (delegate to another
+        action), <Mono>{'{ any }'}</Mono>/<Mono>{'{ all }'}</Mono>, or <Mono>null</Mono> (deny). The
+        leaves are model-aware: <Mono>self</Mono> picks the model's fields, <Mono>delegate</Mono>{' '}
+        its other actions, <Mono>rel</Mono> a relation + the target model's actions.
       </P>
       <Code>{PERMS}</Code>
     </Panel>
 
     <Panel title="Serialization">
       <P>
-        A rule loses meaning without its binding. <Mono>SavedRule</Mono> packages the rule with a <Mono>source</Mono>{' '}
-        reference and the captured <Mono>sourceValues</Mono>:
+        A rule loses meaning without its binding. <Mono>SavedRule</Mono> packages the rule with a{' '}
+        <Mono>source</Mono> reference and the captured <Mono>sourceValues</Mono>:
       </P>
       <Code>{SAVE}</Code>
     </Panel>
 
     <Panel title="Related">
-      <P>Full API + architecture in the rules-builder README; the engine and the rest of the ecosystem:</P>
+      <P>
+        Full API + architecture in the rules-builder README; the engine and the rest of the
+        ecosystem:
+      </P>
       <div style={{ display: 'grid', gap: 6 }}>
         {RELATED.map((r) => (
           <Row key={r.href}>

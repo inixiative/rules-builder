@@ -58,7 +58,11 @@ export const emptyWorkspace = (): Workspace => ({
 
 /** Narrowing names in `name`'s parent chain (its ancestors). Used to keep the
  *  parent picker from offering a narrowing's own descendants (cycle guard). */
-export const narrowingAncestors = (ws: Workspace, name: string, seen: Set<string> = new Set()): Set<string> => {
+export const narrowingAncestors = (
+  ws: Workspace,
+  name: string,
+  seen: Set<string> = new Set(),
+): Set<string> => {
   const out = new Set<string>();
   const n = ws.narrowings[name];
   if (!n || seen.has(name)) return out;
@@ -73,9 +77,13 @@ export const narrowingAncestors = (ws: Workspace, name: string, seen: Set<string
 /** The createLens input for a saved lens: maps filtered to those it includes (always its
  *  anchor), and bridges kept only when both endpoints' maps are included. */
 export const lensInput = (ws: Workspace, l: SavedLens) => {
-  const include = l.maps && l.maps.length ? new Set([...l.maps, l.mapName]) : null;
-  const maps = include ? Object.fromEntries(Object.entries(ws.maps).filter(([m]) => include.has(m))) : ws.maps;
-  const bridges = (l.bridges ?? []).filter((b) => b.endpoints.every((e) => !include || include.has(e.fieldMap)));
+  const include = l.maps?.length ? new Set([...l.maps, l.mapName]) : null;
+  const maps = include
+    ? Object.fromEntries(Object.entries(ws.maps).filter(([m]) => include.has(m)))
+    : ws.maps;
+  const bridges = (l.bridges ?? []).filter((b) =>
+    b.endpoints.every((e) => !include || include.has(e.fieldMap)),
+  );
   return { maps, bridges, mapName: l.mapName, model: l.model };
 };
 
@@ -115,7 +123,8 @@ export const importWorkspace = (json: string): Workspace => {
     ws.maps = parsed.maps as Record<string, FieldMap>;
   }
   if ('bridges' in parsed) {
-    if (!Array.isArray(parsed.bridges)) throw new Error('importWorkspace: bridges must be an array');
+    if (!Array.isArray(parsed.bridges))
+      throw new Error('importWorkspace: bridges must be an array');
     ws.bridges = parsed.bridges as Bridge[];
   }
   if ('lenses' in parsed) {
@@ -123,7 +132,8 @@ export const importWorkspace = (json: string): Workspace => {
     ws.lenses = parsed.lenses as Record<string, SavedLens>;
   }
   if ('narrowings' in parsed) {
-    if (!isPlainObject(parsed.narrowings)) throw new Error('importWorkspace: narrowings must be an object');
+    if (!isPlainObject(parsed.narrowings))
+      throw new Error('importWorkspace: narrowings must be an object');
     ws.narrowings = parsed.narrowings as Record<string, SavedNarrowing>;
   }
   if ('rule' in parsed && parsed.rule !== undefined) {
