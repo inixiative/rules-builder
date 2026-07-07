@@ -116,4 +116,34 @@ describe('useFilteredCollection', () => {
     expect(result.current.root).toBeDefined();
     expect(result.current.value).toEqual({ all: [] });
   });
+
+  test('search is case-insensitive and slightly fuzzy by default', () => {
+    const { result } = renderHook(() => useFilteredCollection({ source, rows }));
+
+    act(() =>
+      result.current.setCondition({ field: 'regionName', operator: 'contains', value: 'united' }),
+    );
+    expect(result.current.data.map((r) => r.id)).toEqual(['1', '3']);
+
+    // one-edit typo tolerated (unitd → united)
+    act(() =>
+      result.current.setCondition({
+        field: 'regionName',
+        operator: 'contains',
+        value: 'unitd states',
+      }),
+    );
+    expect(result.current.data.map((r) => r.id)).toEqual(['1', '3']);
+  });
+
+  test('caseInsensitive:false / fuzzy:false makes matching exact', () => {
+    const { result } = renderHook(() =>
+      useFilteredCollection({ source, rows, caseInsensitive: false, fuzzy: false }),
+    );
+
+    act(() =>
+      result.current.setCondition({ field: 'regionName', operator: 'contains', value: 'united' }),
+    );
+    expect(result.current.data).toHaveLength(0);
+  });
 });

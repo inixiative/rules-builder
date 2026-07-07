@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 — `useFilteredCollection` string-match defaults (case-insensitive + slight fuzzy)
+
+- `UseFilteredCollectionOptions` now extends the engine's string settings (`Partial<EngineGlobalsState['string']>` — `caseInsensitive?`, `fuzzy?`), and the filter pass applies them via `engineGlobals.with({ string }, …)`. Defaults to **case-insensitive + slight typo-tolerance** (`{ caseInsensitive: true, fuzzy: { maxRatio: 0.2, maxDistance: 1 } }`): client search shrugs off casing and a single-char typo without any per-rule flags. Override per call (`{ fuzzy: false }` for exact). The override is scoped to the synchronous filter pass — global engine config is untouched. Requires `@inixiative/json-rules@^2.16.0`.
+
 ## 0.15.0 — `useFilteredCollection`: the headless builder over a collection in hand
 
 - **`useFilteredCollection({ ...builderOpts, rows, checkOptions? })`** composes `useRuleBuilder` with the in-memory half of the rules duality, for collections fetched whole (calendar ranges, Kanban boards) where the server owns scope and the narrowing is display-only. One `Condition` owner (the builder), one option-folding seam (sourced fields materialize from the rows via json-rules 2.14's `sourceValuesFromRows`, folded through the builder's own `resolve`), stamp-once (the emitted `value` is already coercion-stamped; `data` is `rows.filter(check(value))`). Supersedes per-app filter hooks that double-owned the rule and double-folded `sourceValues` (`@template/ui`'s `useFilteredData`).
