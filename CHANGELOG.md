@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 — configurable `empty` scaffold; `setCondition(undefined)` clears
+
+- **`useRuleBuilder({ empty })`** — what an absent `defaultValue` seeds to, replacing the hardcoded `{ all: [] }` (still the default). Lets a consumer scaffold a shaped blank builder — e.g. segments seeding `{ any: [{ all: [] }, { field: 'uuid', operator: 'in', value: [] }] }` for "rule-matched OR hand-picked members". Threads through `useFilteredCollection` via the shared options.
+- **`setCondition(undefined)`** reseeds to `empty` — the "clear" gesture, symmetric with the mount seed. `asRoot` gains the `empty` parameter.
+- Absence stays `undefined`-only, deliberately: a `null` from a DB row is the caller's to normalize at its own boundary, not a symbol the builder legitimizes (documented on `asRoot`).
+
 ## 0.16.0 — `useFilteredCollection` string-match defaults (case-insensitive + slight fuzzy)
 
 - `UseFilteredCollectionOptions` now extends the engine's string settings (`Partial<EngineGlobalsState['string']>` — `caseInsensitive?`, `fuzzy?`), and the filter pass applies them via `engineGlobals.with({ string }, …)`. Defaults to **case-insensitive + slight typo-tolerance** (`{ caseInsensitive: true, fuzzy: { maxRatio: 0.2, maxDistance: 1 } }`): client search shrugs off casing and a single-char typo without any per-rule flags. Override per call (`{ fuzzy: false }` for exact). The override is scoped to the synchronous filter pass — global engine config is untouched. Requires `@inixiative/json-rules@^2.16.0`.

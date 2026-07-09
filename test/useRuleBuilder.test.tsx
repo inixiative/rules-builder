@@ -57,6 +57,30 @@ describe('useRuleBuilder — seed-once / defaultValue semantics', () => {
     });
     expect(onChange).toHaveBeenCalledTimes(1);
   });
+
+  test('absent defaultValue seeds the blank group; `empty` overrides the scaffold', () => {
+    const blank = renderHook(() => useRuleBuilder({ source }));
+    expect((blank.result.current.root as GroupNode).children).toEqual([]);
+
+    const scaffold: Condition = {
+      any: [{ all: [] }, { field: 'tier', operator: 'in', value: [] }],
+    };
+    const seeded = renderHook(() => useRuleBuilder({ source, empty: scaffold }));
+    expect((seeded.result.current.root as GroupNode).children).toHaveLength(2);
+  });
+
+  test('defaultValue wins over `empty`; setCondition(undefined) reseeds to `empty`', () => {
+    const scaffold: Condition = {
+      any: [{ all: [] }, { field: 'tier', operator: 'in', value: [] }],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source, defaultValue: leafRule('gold'), empty: scaffold }),
+    );
+    expect(result.current.value).toEqual(stampedLeafRule('gold'));
+
+    act(() => result.current.setCondition(undefined));
+    expect((result.current.root as GroupNode).children).toHaveLength(2);
+  });
 });
 
 describe('useRuleBuilder — onChange lifecycle', () => {

@@ -21,6 +21,11 @@ export type UseRuleBuilderOptions = {
   targets?: RuleTarget[];
   /** Uncontrolled seed — read once at mount. Re-mount (`key`) or `setCondition` to reseed. */
   defaultValue?: Condition;
+  /** What an absent condition seeds to — the blank-builder scaffold. Defaults to `{ all: [] }`.
+   *  E.g. segments seed `{ any: [{ all: [] }, { field: 'uuid', operator: 'in', value: [] }] }`
+   *  to scaffold "rule-matched OR hand-picked members". Read at mount and on
+   *  `setCondition(undefined)`. */
+  empty?: Condition;
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
   valueLabels?: Record<string, Record<string, string>>;
@@ -37,7 +42,8 @@ export type UseRuleBuilder = {
   value: Condition;
   root: BuilderNode;
   lens: Lens;
-  setCondition: (clean: Condition) => void;
+  /** Reseed the tree. `undefined` reseeds to `empty` — the "clear" gesture. */
+  setCondition: (clean: Condition | undefined) => void;
   validate: (target: RuleTarget) => ReturnType<typeof validateRule>;
   describe: () => RuleDescription;
 };
@@ -58,7 +64,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   );
   const maxDepth = opts.maxDepth ?? 4;
 
-  const [tree, setTree] = useState<Condition>(() => withIds(asRoot(opts.defaultValue)));
+  const [tree, setTree] = useState<Condition>(() => withIds(asRoot(opts.defaultValue, opts.empty)));
 
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;
@@ -91,7 +97,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     value,
     root,
     lens,
-    setCondition: (c) => setTree(withIds(asRoot(c))),
+    setCondition: (c) => setTree(withIds(asRoot(c, opts.empty))),
     validate: (target) => validateRule(value, { target }),
     describe: () => describeRule(value, lens),
   };

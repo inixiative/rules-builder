@@ -450,10 +450,11 @@ export const asGroupRoot = (cond: Condition | undefined): Condition =>
   cond !== undefined && isGroupNode(cond) ? cond : { all: cond !== undefined ? [cond] : [] };
 
 /** The root is the condition itself — never synthetically wrapped. Only an absent condition
- *  becomes a blank group (a first-class, add-into-able container); a bare leaf or `true`/`false`
- *  stays bare. */
-export const asRoot = (cond: Condition | undefined): Condition =>
-  cond === undefined ? { all: [] } : cond;
+ *  becomes `empty` — a blank group by default (a first-class, add-into-able container), or a
+ *  caller-supplied scaffold; a bare leaf or `true`/`false` stays bare. Absence is `undefined`
+ *  only: a `null` from a DB row is the caller's to normalize at its own boundary. */
+export const asRoot = (cond: Condition | undefined, empty: Condition = { all: [] }): Condition =>
+  cond === undefined ? empty : cond;
 
 /**
  * Build the headless descriptor tree from a condition + composed lens. The root is whatever the
