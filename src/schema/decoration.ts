@@ -1,5 +1,5 @@
 import type { ArrayOperator, Condition, FieldKind, Lens } from '@inixiative/json-rules';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
 import {
   type BuilderField,
@@ -135,9 +135,11 @@ const pickDecor = (dict: Record<string, Decor> | undefined, ...keys: string[]): 
 };
 
 /** A stable id — the selector option value and React key. Only the *fixed* `where`
- *  folds in (it is identity); `defaultWhere` is editable, so it never does. */
+ *  folds in (it is identity); `defaultWhere` is editable, so it never does. The
+ *  `where` is canonicalized (like every comparison here) so key order doesn't
+ *  yield different ids for structurally identical wheres. */
 export const facetId = (facet: Facet): string =>
-  facet.where ? `${facet.path}#${JSON.stringify(facet.where)}` : facet.path;
+  facet.where ? `${facet.path}#${JSON.stringify(canonical(facet.where))}` : facet.path;
 
 // A rehydrated node carries metadata the authored `where` never has (coerceType
 // from stampCoercions, _id/_groupId from the tree). Strip it and sort keys so the
@@ -581,8 +583,21 @@ export const matchFacet = (
       } else break;
     }
     const lead = whereConditions(facet.where);
-    if (lead.length === 0) return facet;
     const destConds = (dest.condition as { all?: Condition[] } | undefined)?.all ?? [];
+    if (lead.length === 0) {
+      // A whereless collection has no identity block, so require the element leaf to
+      // actually appear — otherwise any array node on this field would mislabel as
+      // this facet. A whole-collection facet (no leaf) has nothing to require.
+      if (!resolved.elementLeaf) return facet;
+      const leafName = resolved.elementLeaf.split('.').pop();
+      if (
+        destConds.some(
+          (c) => c && typeof c === 'object' && (c as { field?: string }).field === leafName,
+        )
+      )
+        return facet;
+      continue;
+    }
     if (isLeadingPrefix(lead, destConds)) return facet;
   }
   return undefined;
@@ -602,10 +617,19 @@ export const validateDecoration = (lens: Lens, decoration: Decoration): string[]
   const byTarget = new Map<string, { facet: Facet; lead: Condition[] }[]>();
 
   for (const facet of decoration.facets) {
-    if (!resolvePath(lens, facet.path)) {
+    const resolved = resolvePath(lens, facet.path);
+    if (!resolved) {
       violations.push(`facet '${facet.path}' does not resolve against the lens`);
       continue;
     }
+    // A leaf facet ignores `where`/`defaultWhere` (they are collection concepts) —
+    // and a `where` still folds into its id while its BuilderField keeps `name:
+    // path`, so two leaf facets on the same path with different wheres emit two
+    // identical picker options. Reject it outright.
+    if (resolved.kind === 'leaf' && (facet.where || facet.defaultWhere))
+      violations.push(
+        `leaf facet '${facet.path}' cannot carry 'where'/'defaultWhere' — those are collection concepts`,
+      );
     if (facet.defaultWhere) {
       const need = arrayTraversalCount(lens, facet.path);
       if (facet.defaultWhere.length !== need)
@@ -654,14 +678,24 @@ export const decorationSurfaceOptions = (decoration: Decoration | undefined): Su
   return { labels, valueLabels };
 };
 
-/** Memoized hook form of {@link describeFacets}. */
+/** Memoized hook form of {@link describeFacets}. In dev, surfaces
+ *  {@link validateDecoration} violations as a `console.warn` so the collision-free
+ *  invariant is enforced by the API, not just the docs. */
 export const useFacetFields = (
   lens: Lens,
   decoration: Decoration | undefined,
   opts: SurfaceOptions = {},
-): BuilderField[] =>
+): BuilderField[] => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: depend on option fields, not opts identity, so inline literals don't re-run the walk
-  useMemo(
+  const fields = useMemo(
     () => (decoration ? describeFacets(lens, decoration, opts) : []),
     [lens, decoration, opts.targets, opts.labels, opts.valueLabels],
   );
+  useEffect(() => {
+    if (!decoration || process.env.NODE_ENV === 'production') return;
+    const violations = validateDecoration(lens, decoration);
+    if (violations.length)
+      console.warn(`[rules-builder] invalid Decoration:\n- ${violations.join('\n- ')}`);
+  }, [lens, decoration]);
+  return fields;
+};

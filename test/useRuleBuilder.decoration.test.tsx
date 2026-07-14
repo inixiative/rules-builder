@@ -290,4 +290,28 @@ describe('useRuleBuilder — branch facets (a to-one relation as a scoped group)
     expect(emitted.field).toBe('account.contracts');
     expect(emitted.arrayOperator).toBeDefined();
   });
+
+  test('the ROOT group is never captured by a whereless branch facet', () => {
+    // repro: branch `account` (no where) + leaf hoist `account.industry`; a rule
+    // whose only leaf sits under `account.` must not turn the root into the branch.
+    const mixed: Decoration = {
+      facets: [
+        { path: 'account', label: 'Company' },
+        { path: 'account.industry', label: 'Industry' },
+      ],
+    };
+    const defaultValue: Condition = {
+      all: [{ field: 'account.industry', operator: 'equals', value: 'tech' }],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: branchSource, decoration: mixed, defaultValue }),
+    );
+    const root = asGroupNode(result.current.root as unknown);
+    expect(root.hoist).toBeUndefined();
+    // the anchor's own fields are still offered at the root — the scope wasn't swapped.
+    const row = root.children[0] as LeafNode;
+    const values = row.field?.options.map((o) => o.value) ?? [];
+    expect(values).toContain('tier');
+    expect(values).toContain('account.industry'); // the leaf hoist
+  });
 });

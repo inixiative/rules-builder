@@ -482,10 +482,12 @@ const buildGroup = (
   ctx: Ctx,
   scope: Scope,
 ): GroupNode => {
-  // A hoisted branch facet: a to-one relation surfaced as a scoped group. Its field
-  // picker is scoped to the related model's `prefix.field` surface.
+  // A hoisted branch facet: a to-one relation surfaced as a scoped group. A branch
+  // is always a *nested* group, never the root — gating on `path.length` stops the
+  // whereless prefix heuristic from capturing the root group (and swapping its
+  // picker to the branch scope) when every root rule happens to sit under one relation.
   const branchFacet =
-    ctx.decoration && ctx.anchorLens === scope.lens
+    ctx.decoration && ctx.anchorLens === scope.lens && path.length > 0
       ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
   const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);

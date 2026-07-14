@@ -360,6 +360,30 @@ describe('consumedTopFields / matchFacet', () => {
     expect(check(rule, { orders: [{ customFields: [{ key: 'nps', value: 1 }] }] })).not.toBe(true);
   });
 
+  test('a whereless deep-leaf facet only collapses a node that references its leaf', () => {
+    const decoration: Decoration = { facets: [{ path: 'orders.total', label: 'Order total' }] };
+    const onTotal = {
+      field: 'orders',
+      arrayOperator: 'any',
+      condition: { all: [{ field: 'total', operator: 'greaterThan', value: 5 }] },
+    } as Condition;
+    const onSomethingElse = {
+      field: 'orders',
+      arrayOperator: 'any',
+      condition: {
+        all: [
+          {
+            field: 'items',
+            arrayOperator: 'any',
+            condition: { all: [{ field: 'sku', value: 'x' }] },
+          },
+        ],
+      },
+    } as Condition;
+    expect(matchFacet(eav, decoration, onTotal)?.label).toBe('Order total');
+    expect(matchFacet(eav, decoration, onSomethingElse)).toBeUndefined();
+  });
+
   test('a different leading where is not the NPS facet', () => {
     const node = {
       field: 'customFields',
@@ -439,6 +463,13 @@ describe('validateDecoration — collision-free guarantee', () => {
     });
     expect(violations.length).toBeGreaterThan(0);
     expect(violations[0]).toContain('collide');
+  });
+
+  test('rejects `where` on a leaf facet (a leaf ignores it, and it would dup the picker option)', () => {
+    const violations = validateDecoration(lens, {
+      facets: [{ path: 'tier', where: { field: 'x', operator: 'equals', value: 'a' } }],
+    });
+    expect(violations.some((v) => v.includes('leaf facet'))).toBe(true);
   });
 
   test('requires one traversal operator per array boundary', () => {

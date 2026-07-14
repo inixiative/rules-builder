@@ -56,7 +56,7 @@ export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): L
 export type BuilderField = {
   name: string;
   label: string;
-  /** Optional display glyph, carried from a {@link LensView} hoisted entry. */
+  /** Optional display glyph, carried from a {@link Decoration} hoisted entry. */
   icon?: string;
   kind: FieldKind;
   isList: boolean;
@@ -65,7 +65,7 @@ export type BuilderField = {
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
   /** A hoisted collection entry seeds this whole `Condition` on select (an array
    *  node with a pre-filled `where`/operator) instead of the default `{field}` rule.
-   *  Set by {@link LensView}; absent for ordinary and leaf-hoisted fields. */
+   *  Set by {@link Decoration}; absent for ordinary and leaf-hoisted fields. */
   seed?: import('@inixiative/json-rules').Condition;
   /** False for a hoist *resolver* field — present only so a seeded array node's
    *  dotted `field` resolves its relation, never offered in the picker. */
