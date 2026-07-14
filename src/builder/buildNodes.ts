@@ -9,7 +9,13 @@ import {
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
 import { addRule, type RulePath, removeNode, setNode } from '../core/tree';
-import { collapsedElementLeaf, type LensView, matchNodeToRoot, rootId } from '../schema/lensView';
+import {
+  type Decoration,
+  facetElementLeaf,
+  facetId,
+  facetLockedLeading,
+  matchFacet,
+} from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import { describeModelFields, valueShapeForOperator } from '../schema/surface';
 import {
@@ -76,7 +82,7 @@ export type LeafNode = {
   field?: FieldControl;
   operator?: OperatorControl;
   value?: ValueControl;
-  /** Set when this leaf is a hoisted alias (a {@link LensView} leaf root) — a
+  /** Set when this leaf is a hoisted alias (a {@link Decoration} leaf facet) — a
    *  renderer shows the entry's label/icon instead of the raw path. */
   hoist?: HoistBadge;
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
@@ -84,7 +90,7 @@ export type LeafNode = {
   remove: () => void;
 };
 
-/** Marks a node the builder recognized as a hoisted {@link LensView} entry, so a
+/** Marks a node the builder recognized as a hoisted {@link Decoration} facet, so a
  *  renderer collapses it to the named field instead of raw internals. */
 export type HoistBadge = { id: string; label: string; icon?: string };
 
@@ -122,12 +128,13 @@ export type ArrayNode = {
      *  affordance rather than showing it inline. */
     hidden?: boolean;
   };
-  /** Set when this array node is a hoisted alias (a {@link LensView} collection
-   *  root) — a renderer collapses it to the named field. */
+  /** Set when this array node is a hoisted alias (a {@link Decoration} facet) — a
+   *  renderer collapses it to the named field. */
   hoist?: HoistBadge;
-  /** The `filter` carries an authored, non-editable `where` (the hoist's slice) —
-   *  a renderer hides it rather than exposing the filter sub-builder. */
-  whereLocked?: boolean;
+  /** The count of leading `condition` children that are the facet's fixed,
+   *  non-editable `where` — a renderer hides exactly this many (the identity
+   *  block), leaving the rest editable. */
+  lockedLeading?: number;
   /** The related model the elements belong to (present for relation lists). */
   relation?: { mapName: string; modelName: string };
   /** Count operators (atLeast/atMost/exactly) → a numeric threshold. */
@@ -150,10 +157,10 @@ type Ctx = {
   root: Condition;
   maxDepth: number;
   commit: (c: Condition) => void;
-  /** The anchor lens + view, constant across the tree — used to recognize a node
-   *  as a hoisted {@link LensView} entry and collapse it. */
+  /** The anchor lens + decoration, constant across the tree — used to recognize a
+   *  node as a hoisted {@link Decoration} facet and collapse it. */
   anchorLens: Lens;
-  view?: LensView;
+  decoration?: Decoration;
   surfaceOpts: SurfaceOptions;
 };
 /** What a node sees: the surface to validate against + its selectable fields. On
@@ -241,11 +248,11 @@ const buildLeaf = (
   const valueMode: 'value' | 'path' | 'bind' =
     rec.bind !== undefined ? 'bind' : rec.path !== undefined ? 'path' : 'value';
   const leafMatch =
-    ctx.view && ctx.anchorLens === scope.lens
-      ? matchNodeToRoot(ctx.anchorLens, ctx.view, node)
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
   const leafHoist: HoistBadge | undefined = leafMatch
-    ? { id: rootId(leafMatch), label: leafMatch.label ?? baseName ?? '', icon: leafMatch.icon }
+    ? { id: facetId(leafMatch), label: leafMatch.label ?? baseName ?? '', icon: leafMatch.icon }
     : undefined;
 
   return {
@@ -353,14 +360,14 @@ const buildArray = (
   const cat = arrayCat(op);
   const rel = field?.relation;
 
-  // A hoisted collection alias: recognize the node so it renders as its named
-  // entry (locked `where` hidden, operator hidden-editable, element leaf retyped).
-  const matchedRoot =
-    ctx.view && ctx.anchorLens === scope.lens
-      ? matchNodeToRoot(ctx.anchorLens, ctx.view, node)
+  // A hoisted collection facet: recognize the node so it renders as its named
+  // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
+  const matchedFacet =
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
-  const overrideLeaf = matchedRoot
-    ? collapsedElementLeaf(ctx.anchorLens, matchedRoot, ctx.surfaceOpts)
+  const overrideLeaf = matchedFacet
+    ? facetElementLeaf(ctx.anchorLens, matchedFacet, ctx.surfaceOpts)
     : undefined;
 
   // Elements belong to the related model → author condition/filter against its surface.
@@ -414,21 +421,21 @@ const buildArray = (
       },
       valid: field !== undefined,
     },
-    hoist: matchedRoot
+    hoist: matchedFacet
       ? {
-          id: rootId(matchedRoot),
-          label: matchedRoot.label ?? fieldName ?? '',
-          icon: matchedRoot.icon,
+          id: facetId(matchedFacet),
+          label: matchedFacet.label ?? fieldName ?? '',
+          icon: matchedFacet.icon,
         }
       : undefined,
-    whereLocked: matchedRoot?.where ? true : undefined,
+    lockedLeading: matchedFacet ? facetLockedLeading(matchedFacet) || undefined : undefined,
     arrayOperator: {
       value: op,
       options: (field?.operators.array ?? []).map((o) => ({
         value: o,
         label: o,
       })),
-      hidden: matchedRoot ? true : undefined,
+      hidden: matchedFacet ? true : undefined,
       set: (nextOp) => {
         const nextCat = arrayCat(nextOp);
         const { count, condition, ...restRec } = rec;
@@ -520,7 +527,7 @@ export const buildRoot = (
   fields: BuilderField[],
   maxDepth: number,
   commit: (next: Condition) => void,
-  opts: { view?: LensView; surfaceOpts?: SurfaceOptions } = {},
+  opts: { decoration?: Decoration; surfaceOpts?: SurfaceOptions } = {},
 ): BuilderNode => {
   const normalized = asRoot(root);
   const ctx: Ctx = {
@@ -528,7 +535,7 @@ export const buildRoot = (
     maxDepth,
     commit,
     anchorLens: lens,
-    view: opts.view,
+    decoration: opts.decoration,
     surfaceOpts: opts.surfaceOpts ?? {},
   };
   return buildNode(normalized, [], 0, ctx, { lens, fields });

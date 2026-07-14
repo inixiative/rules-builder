@@ -60,11 +60,11 @@ export {
 } from './permissions';
 export type {
   BuilderField,
-  LensDecor,
+  Decor,
+  Decoration,
+  Facet,
   LensValueOption,
   LensValuePickerOptions,
-  LensView,
-  LensViewRoot,
   ResolveOptions,
   RuleBuilderSource,
   SourceRows,
@@ -72,19 +72,22 @@ export type {
   SurfaceOptions,
 } from './schema';
 export {
-  collapsedElementLeaf,
-  describeHoistedFields,
+  consumedTopFields,
+  decorationSurfaceOptions,
+  describeFacets,
   describeModelFields,
+  facetElementLeaf,
+  facetId,
+  facetLockedLeading,
   lensValuePicker,
-  matchNodeToRoot,
+  matchFacet,
   resolve,
-  rootId,
   runSources,
-  useHoistedFields,
+  useFacetFields,
   useLensValuePicker,
+  validateDecoration,
   valueShapeForOperator,
-  viewConsumedTopFields,
-  viewSurfaceOptions,
+  whereConditions,
 } from './schema';
 export type { SavedRule } from './serialize';
 export { parseSavedRule, stringifySavedRule } from './serialize';

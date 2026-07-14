@@ -3,7 +3,7 @@ import type { Bridge, Condition, FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
-import type { LensView } from '../src/schema/lensView';
+import type { Decoration } from '../src/schema/decoration';
 
 afterEach(cleanup);
 
@@ -38,8 +38,8 @@ const bridges: Bridge[] = [
 ];
 const source = { maps: { prisma, salesforce }, bridges, mapName: 'prisma', model: 'User' };
 
-const view: LensView = {
-  roots: [{ path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' }],
+const view: Decoration = {
+  facets: [{ path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' }],
 };
 
 const rootGroup = (r: { root: unknown }) => r.root as GroupNode;
@@ -47,7 +47,9 @@ const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gol
 
 describe('useRuleBuilder — view (hoisted roots)', () => {
   test('a hoisted bridge path shows up as a labeled root selector option', () => {
-    const { result } = renderHook(() => useRuleBuilder({ source, view, defaultValue: seed }));
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source, decoration: view, defaultValue: seed }),
+    );
     const leaf = rootGroup(result.current).children[0] as LeafNode;
     const option = leaf.field.options.find((o) => o.value === 'salesforce:Contact.arr');
     expect(option).toBeDefined();
@@ -57,7 +59,9 @@ describe('useRuleBuilder — view (hoisted roots)', () => {
   });
 
   test('selecting a hoisted root emits the real dotted path as the rule field', () => {
-    const { result } = renderHook(() => useRuleBuilder({ source, view, defaultValue: seed }));
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source, decoration: view, defaultValue: seed }),
+    );
     const leaf = rootGroup(result.current).children[0] as LeafNode;
     act(() => leaf.field.set('salesforce:Contact.arr'));
     const emitted = (result.current.value as { all: Condition[] }).all[0] as {
@@ -72,7 +76,7 @@ describe('useRuleBuilder — view (hoisted roots)', () => {
     const defaultValue: Condition = {
       all: [{ field: 'salesforce:Contact.arr', operator: 'greaterThan', value: 1000 }],
     };
-    const { result } = renderHook(() => useRuleBuilder({ source, view, defaultValue }));
+    const { result } = renderHook(() => useRuleBuilder({ source, decoration: view, defaultValue }));
     const leaf = rootGroup(result.current).children[0] as LeafNode;
     expect(leaf.field.value).toBe('salesforce:Contact.arr');
     expect(leaf.field.valid).toBe(true);
@@ -97,8 +101,8 @@ const eavMap: FieldMap = {
   },
 };
 const eavSource = { maps: { app: eavMap }, mapName: 'app', model: 'User' };
-const npsView: LensView = {
-  roots: [
+const npsView: Decoration = {
+  facets: [
     {
       path: 'customFields.value',
       where: { field: 'key', operator: 'equals', value: 'nps' },
@@ -108,11 +112,11 @@ const npsView: LensView = {
   ],
 };
 
-describe('useRuleBuilder — collection & sliced hoists', () => {
-  test('selecting a sliced hoist seeds a locked-filter array node reasoning over the value', () => {
+describe('useRuleBuilder — collection & sliced facets', () => {
+  test('selecting a sliced facet seeds an array node with the fixed where as leading condition', () => {
     const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
     const { result } = renderHook(() =>
-      useRuleBuilder({ source: eavSource, view: npsView, defaultValue: seed }),
+      useRuleBuilder({ source: eavSource, decoration: npsView, defaultValue: seed }),
     );
     const row = rootGroup(result.current).children[0] as LeafNode;
     const npsOption = row.field.options.find((o) => o.label === 'NPS');
@@ -121,20 +125,19 @@ describe('useRuleBuilder — collection & sliced hoists', () => {
     const node = (result.current.value as { all: Condition[] }).all[0] as {
       field: string;
       arrayOperator: string;
-      filter: unknown;
+      condition: { all: Condition[] };
     };
     expect(node.field).toBe('customFields');
     expect(node.arrayOperator).toBe('any');
-    expect(node.filter).toMatchObject({
-      all: [{ field: 'key', operator: 'equals', value: 'nps' }],
-    });
+    // fixed where leads the condition block (no window filter).
+    expect(node.condition.all[0]).toMatchObject({ field: 'key', operator: 'equals', value: 'nps' });
   });
 
   test('a wholesale-hoisted top relation is removed from the root selector (move, not copy)', () => {
     const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
-    const view: LensView = { roots: [{ path: 'customFields', label: 'Enrichments' }] };
+    const view: Decoration = { facets: [{ path: 'customFields', label: 'Enrichments' }] };
     const { result } = renderHook(() =>
-      useRuleBuilder({ source: eavSource, view, defaultValue: seed }),
+      useRuleBuilder({ source: eavSource, decoration: view, defaultValue: seed }),
     );
     const row = rootGroup(result.current).children[0] as LeafNode;
     const values = row.field.options.map((o) => o.value);
@@ -150,33 +153,38 @@ describe('useRuleBuilder — rehydration (detecting an aliased saved rule)', () 
     const defaultValue: Condition = {
       all: [{ field: 'salesforce:Contact.arr', operator: 'greaterThan', value: 1000 }],
     };
-    const { result } = renderHook(() => useRuleBuilder({ source, view, defaultValue }));
+    const { result } = renderHook(() => useRuleBuilder({ source, decoration: view, defaultValue }));
     const leaf = rootGroup(result.current).children[0] as LeafNode;
     expect(leaf.hoist?.label).toBe('Annual Revenue');
     expect(leaf.hoist?.icon).toBe('💰');
   });
 
-  test('a saved sliced-collection rule collapses to the named entry, hidden op, locked where, retyped value', () => {
+  test('a saved sliced-collection rule collapses to the named entry, hidden op, locked leading, retyped value', () => {
     const defaultValue: Condition = {
       all: [
         {
           field: 'customFields',
           arrayOperator: 'any',
-          filter: { all: [{ field: 'key', operator: 'equals', value: 'nps' }] },
-          condition: { all: [{ field: 'value', operator: 'greaterThan', value: 5 }] },
+          condition: {
+            all: [
+              { field: 'key', operator: 'equals', value: 'nps' },
+              { field: 'value', operator: 'greaterThan', value: 5 },
+            ],
+          },
         },
       ],
     };
     const { result } = renderHook(() =>
-      useRuleBuilder({ source: eavSource, view: npsView, defaultValue }),
+      useRuleBuilder({ source: eavSource, decoration: npsView, defaultValue }),
     );
     const node = rootGroup(result.current).children[0] as ArrayNode;
     expect(node.kind).toBe('array');
     expect(node.hoist?.label).toBe('NPS');
     expect(node.arrayOperator.hidden).toBe(true);
-    expect(node.whereLocked).toBe(true);
-    // the kind override flows into the element surface: `value` offers numeric ops.
-    const valueLeaf = node.condition?.children[0] as LeafNode;
+    // one leading condition (the fixed `key=nps` where) is locked/hidden.
+    expect(node.lockedLeading).toBe(1);
+    // the kind override flows into the element surface: `value` (after the where) offers numeric ops.
+    const valueLeaf = node.condition?.children[1] as LeafNode;
     expect(valueLeaf.operator?.options.map((o) => o.value)).toContain('greaterThan');
   });
 
@@ -191,7 +199,7 @@ describe('useRuleBuilder — rehydration (detecting an aliased saved rule)', () 
       ],
     };
     const { result } = renderHook(() =>
-      useRuleBuilder({ source: eavSource, view: npsView, defaultValue }),
+      useRuleBuilder({ source: eavSource, decoration: npsView, defaultValue }),
     );
     const node = rootGroup(result.current).children[0] as ArrayNode;
     expect(node.hoist).toBeUndefined();

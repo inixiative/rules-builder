@@ -150,22 +150,22 @@ over its elements:
 `node.condition` and `node.filter` are nested `GroupNode`s scoped to the **related
 model's** surface — author them exactly like the top-level tree.
 
-## Display view — hoisting & relabeling
+## Decoration — hoisting, relabeling & aliasing
 
 By default the root selector offers only the anchor model's own fields; to reach
-anything else you traverse relations. A **`view`** pre-traverses for you: it moves
-chosen lens locations *up* to the root selector and relabels them. It is purely
-presentational — the lens stays the source of truth, and a hoisted entry emits its
-real dotted path (bridges included) as the rule's `field`, so nothing the engine
-runs changes.
+anything else you traverse relations. A **`Decoration`** pre-traverses for you: it
+moves chosen lens locations *up* to the root selector as named **facets** and
+relabels them. It is purely presentational — the lens stays the source of truth,
+and every facet emits its real dotted path (bridges included) as the rule's
+`field`, so nothing the engine runs changes.
 
 ```ts
-import { useRuleBuilder, type LensView } from '@inixiative/rules-builder';
+import { useRuleBuilder, type Decoration } from '@inixiative/rules-builder';
 
-const view: LensView = {
+const decoration: Decoration = {
   // any path from the anchor, additive to the anchor's own fields.
   // crosses `map:Model` bridge segments — reach other sources at the root.
-  roots: [
+  facets: [
     { path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' },
     { path: 'account.industry', label: 'Industry' },
   ],
@@ -176,59 +176,71 @@ const view: LensView = {
   },
 };
 
-useRuleBuilder({ source, view }); // hoisted entries now appear in the root selector
+useRuleBuilder({ source, decoration }); // facets now appear in the root selector
 ```
 
-The hoist kind is decided by the path's shape against the lens:
+The facet kind is decided by the path's shape against the lens (a path may
+traverse any number of to-one relations/bridges first — `account.contracts.amount`
+is fine):
 
 - **Leaf** (no list relation crossed) → a directly rule-able field; emits `{ field: path }`.
-- **Collection** (the first segment is a list relation) → a top-level **array node**.
-  json-rules can't evaluate a scalar operator over a list path (it silently
-  mis-matches), so a list-crossing hoist *must* seed a node, not a flat field.
+- **Collection** (a list relation crossed) → a top-level **array node**. json-rules
+  can't evaluate a scalar operator over a list path (it silently mis-matches), so a
+  list-crossing facet *must* seed a node, not a flat field.
 
-A path may traverse any number of to-one relations (including bridges) before it
-reaches its leaf or list — `account.contracts.amount` is fine. A collection root
-can carry a **`where`** — an authored, non-editable filter that carves a named
-view out of an EAV `key`/`value` list — plus a **`kind`** to type the otherwise
-untyped `value` column:
+### Two `where`s
+
+A facet can carry two authored filters — kept distinct because only one is
+identity:
+
+- **`where`** — **fixed, non-editable**: the facet's identity. It is prepended as
+  the **leading condition(s)** and is the *only* thing rehydration matches on.
+- **`defaultWhere`** — **prefilled but editable**: an array-traversal starting
+  point, seeded after the fixed block. Not identity, never matched.
 
 ```ts
-const view: LensView = {
-  roots: [
+const decoration: Decoration = {
+  facets: [
     // "NPS" = customFields where key='nps', reasoning over `value` as a number.
     { path: 'customFields.value', label: 'NPS', kind: 'Int',
       where: { field: 'key', operator: 'equals', value: 'nps' } },
-    // whole collection — reason about orders directly.
-    { path: 'orders', label: 'Orders' },
+    { path: 'orders', label: 'Orders' }, // whole collection
   ],
 };
 ```
 
-Selecting "NPS" seeds `{ field: 'customFields', arrayOperator: 'any', filter: {key='nps'}, condition: {value …} }`.
-`arrayOperator` defaults to `any` (has-a-matching-element) and the builder keeps it
-**editable but hidden** — a renderer reveals it behind an "advanced" affordance
-(`arrayOperator.hidden`), so the common case reads as one clean field.
+Selecting "NPS" seeds `{ field: 'customFields', arrayOperator: 'any', condition: { all: [ {key='nps'}, {value …} ] } }`
+— `any(key=nps AND value…)` is exactly "the NPS element matches." `arrayOperator`
+defaults to `any` and is **editable but hidden** (`arrayOperator.hidden`), revealed
+behind an "advanced" affordance so the common case reads as one clean field. `kind`
+retypes an untyped EAV `value` column so its operators are right.
 
-**Move, not copy.** A hoist that consumes a top-level field *wholesale* (a bare
+**Move, not copy.** A facet that consumes a top-level field *wholesale* (a bare
 relation, no `where`, no deeper leaf) is removed from the root selector — a thing
-lives in one place. `where`/deep-leaf hoists leave their origin (you only took a
-slice of it).
+lives in one place. `where`/deep facets leave their origin.
 
 **Rehydration.** A saved rule is a raw path/array node with no trace of the alias.
-The builder recognizes it via `matchNodeToRoot` and **collapses it back** to the
-named entry: a leaf node gets a `hoist` badge (label/icon); a collection node gets
-`hoist` + `whereLocked` (hide the slice) + `arrayOperator.hidden`, and the element
-surface is retyped by the entry's `kind`. So a reopened "NPS" reads as "NPS", not a
-raw array builder over `customFields`.
+The builder recognizes it via `matchFacet` — a leaf by `field`, a collection when
+its **leading condition block equals the facet's fixed `where`** — and **collapses
+it back** to the named entry: a leaf gets a `hoist` badge; a collection gets
+`hoist` + `lockedLeading` (how many leading conditions to hide) + `arrayOperator.hidden`,
+with the element surface retyped by `kind`. So a reopened "NPS" reads as "NPS."
 
-`describeHoistedFields` is the pure function behind hoisting; `viewSurfaceOptions`
-folds the view's labels into the plain surface; `viewConsumedTopFields` is the
-move-not-copy set; `matchNodeToRoot` / `collapsedElementLeaf` drive rehydration.
-Absent `view`, behavior is unchanged.
+**No collisions.** Because rehydration matches on the leading `where`, the facet set
+must be collision-free. `validateDecoration(lens, decoration)` returns violations
+(empty = valid): unresolvable paths, duplicate ids, and — the key guarantee — two
+facets on the same target whose fixed `where`s aren't prefix-free (a rule under the
+specific one would also match the general one). Validate at construction.
 
-**Envelope.** One list relation per hoist (with any to-one prefix/suffix);
-nested-list paths (`orders.items.sku`, two array levels) aren't collapsed yet. The
-locked `where` is presentation, not security — the lens gate doesn't enforce it.
+`describeFacets` is the pure function behind hoisting; `decorationSurfaceOptions`
+folds labels into the plain surface; `consumedTopFields` is the move-not-copy set;
+`matchFacet` / `facetElementLeaf` / `facetLockedLeading` drive rehydration. Absent
+`decoration`, behavior is unchanged.
+
+**Envelope.** One list relation per facet (any to-one prefix/suffix); nested-list
+paths (`orders.items.sku`, two array levels) and branch facets (hoisting a to-one
+relation as a scoped group) aren't in yet. The fixed `where` is presentation, not
+security — the lens gate doesn't enforce it.
 
 ## Serialization
 
