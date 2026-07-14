@@ -21,12 +21,28 @@ leading-prefix composition `matchFacet` already handles. So it is fully
 **expressible today, by hand**: author each facet with the combined
 `where: {all:[source=A, key=nps]}`. Two facets, two `source` values, done.
 
-**What's missing (the small part).** Only ergonomics: declaring `source=A` once
-instead of repeating it in every facet, and grouping the picker into "Integration
-A / Integration B" sections. A `scope` concept in the decoration — a shared
+**Demonstrated (manual form).** The hand-authored split works today, no new
+primitive — see `test/sourceSplit.test.ts`. Each integration is a facet whose
+fixed `where` leads with the system slug: `where: {all:[slug=salesforce, key=nps]}`
+vs `slug=gong`. The two are collision-free (distinct leading blocks), each seeds
+`customFields any (slug=… AND key=nps AND value…)`, evaluates only on its own
+source's rows, and rehydrates back to its own name. So the answer to "just define
+both sources" is: yes, author two facets, done.
+
+**What's missing (the small part).** Only ergonomics: declaring `slug=salesforce`
+once instead of repeating it in every facet, and grouping the picker into
+"Salesforce / Gong" sections. A `scope` concept in the decoration — a shared
 leading `where` + group label that facets attach to — would cover it, and it reuses
 the existing where-machinery with almost no new mechanism. Deferred pending a real
-need; the hand-authored form is available now.
+need; the hand-authored form above is available now.
+
+**Sources *do* carry filters** (confirmed by reading `LensNarrowing.sources`): a
+`sources` entry is `fieldName → { where: Condition, label? }` — an eligibility
+`where` plus an optional label column, so a sourced `key`/`slug` field can be
+filtered to enumerate only one integration's values. Two caveats: it's keyed by
+*field* (one filtered source per field per narrowing node, not naturally "two
+sources on the same field"), and it supplies option *values* only — the
+presentation split into named sources is still the decoration's job.
 
 **What's *not* possible: auto-discovery.** You cannot enumerate the logical sources
 from the data automatically. The lens knows *types*, and sourced-fields
