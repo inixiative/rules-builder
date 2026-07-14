@@ -211,16 +211,14 @@ export const facetElementLeaf = (
  *  occupies — a renderer hides exactly this many. */
 export const facetLockedLeading = (facet: Facet): number => whereConditions(facet.where).length;
 
-/** How many *to-one* hops a branch's scoped picker reaches (`account.owner.email`
- *  is depth 1). List relations are surfaced as array selectables, never descended
- *  for leaves — a flat path over a list would silently mis-evaluate. */
-const BRANCH_DEPTH = 3;
-
 /**
  * The field surface a branch facet's group is authored against, each re-`name`d to
- * its `prefix.…` dotted path so a leaf emits the real path. It reaches, cycle-safe:
- *  - scalar/enum values of the branch model **and its nested to-one relations**
- *    (up to {@link BRANCH_DEPTH}) — the nested-branch case as flattened deep paths;
+ * its `prefix.…` dotted path so a leaf emits the real path. It walks the branch
+ * model's exposed surface — the lens already fixes the depth (a narrowing decides
+ * what's reachable), so there is no cap here; a per-chain `seen` guard terminates
+ * on recursive schemas, exactly as `exposedSurface` does. It reaches:
+ *  - scalar/enum values of the branch model and its nested to-one relations
+ *    (`account.owner.email`) — the nested-branch case as flattened deep paths;
  *  - **list relations** at each level, kept selectable so they build a nested array
  *    node (`account.contracts …`) rather than a broken flat leaf.
  */
@@ -231,13 +229,7 @@ export const branchFields = (
   opts: SurfaceOptions = {},
 ): BuilderField[] => {
   const out: BuilderField[] = [];
-  const walk = (
-    mapName: string,
-    modelName: string,
-    at: string,
-    depth: number,
-    seen: Set<string>,
-  ) => {
+  const walk = (mapName: string, modelName: string, at: string, seen: Set<string>) => {
     const key = `${mapName}:${modelName}`;
     if (seen.has(key)) return;
     const nextSeen = new Set([...seen, key]);
@@ -246,13 +238,13 @@ export const branchFields = (
       if (f.isList) {
         out.push({ ...f, name }); // a list → an array node, never descended flat
       } else if (f.relation) {
-        if (depth > 0) walk(f.relation.mapName, f.relation.modelName, name, depth - 1, nextSeen);
+        walk(f.relation.mapName, f.relation.modelName, name, nextSeen);
       } else {
         out.push({ ...f, name });
       }
     }
   };
-  walk(target.mapName, target.modelName, prefix, BRANCH_DEPTH, new Set());
+  walk(target.mapName, target.modelName, prefix, new Set());
   return out;
 };
 
