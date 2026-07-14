@@ -264,6 +264,49 @@ descends nested to-one relations (`account.owner.email`) and surfaces lists as
 nested array nodes. The fixed `where` is presentation, not security — the lens
 gate doesn't enforce it.
 
+### Splitting one relation into tagged sources
+
+A single physical relation often carries rows from several integrations — a shared
+EAV/enrichment table (`customFields`, `enrichments`) discriminated by a `system` /
+`source` slug: "here are Salesforce's custom fields, here are Gong's." Because a
+facet is just a `where`-slice of a relation, this needs **no new primitive** — point
+several facets at the *same* path, each leading its `where` with a different slug,
+and give each its own tag (`label` + `icon`):
+
+```ts
+const source = (system: string, label: string, icon: string) => ({
+  path: 'customFields.value', kind: 'Int', label, icon,
+  where: { all: [
+    { field: 'system', operator: 'equals', value: system },
+    { field: 'key', operator: 'equals', value: 'nps' },
+  ] },
+});
+const decoration: Decoration = {
+  facets: [source('a', 'System A', '🔵'), source('b', 'System B', '🟢'), source('c', 'System C', '🟠')],
+};
+```
+
+Each source seeds its slug as a leading, locked condition, so it evaluates only on
+its own integration's rows and rehydrates back to its own name. And since each is a
+slice of the *same* relation, **the relation can be adjoined N times in one rule** —
+one slice per source, each traversed independently:
+
+```
+{ all: [
+    customFields any (system='a' AND key='nps' AND value … ),   // System A
+    customFields any (system='b' AND key='nps' AND value … ),   // System B
+    customFields any (system='c' AND key='nps' AND value … ),   // System C
+] }
+```
+
+The slices are collision-free (`validateDecoration` enforces prefix-free `where`s),
+compose for free, and each stays independently tagged. See
+[`test/multiSourceAdjoin.test.ts`](./test/multiSourceAdjoin.test.ts). What's *not*
+provided yet is ergonomic sugar — declaring `system='a'` once as a named scope and
+grouping the picker into "System A/B/C" sections; that deferred `scope` concept and
+its limits (sources carry a `where` filter but no provenance, so auto-*discovery* of
+the sources is a separate problem) are in [docs/OPEN_QUESTIONS.md](./docs/OPEN_QUESTIONS.md).
+
 ## Serialization
 
 A rule loses meaning without its binding. `SavedRule` packages the rule with a

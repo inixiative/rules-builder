@@ -29,6 +29,16 @@ vs `slug=gong`. The two are collision-free (distinct leading blocks), each seeds
 source's rows, and rehydrates back to its own name. So the answer to "just define
 both sources" is: yes, author two facets, done.
 
+**Demonstrated (N tagged sources + adjoin).** `test/multiSourceAdjoin.test.ts`
+extends this to three sources (System A/B/C by a `system` slug), each with its own
+tag (`label` + `icon`), and shows the deeper point: because each source is a
+`where`-slice of the *same* relation, the relation can be **adjoined N times in one
+rule** — `all:[customFields any (system=a …), customFields any (system=b …),
+customFields any (system=c …)]`. Each slice is traversed independently, evaluates
+only on its own system's rows, and the whole adjunction fails if any one system
+lacks a qualifying row. The sources compose for free — no primitive was added to
+make them compose; it falls out of "a facet is a slice."
+
 **What's missing (the small part).** Only ergonomics: declaring `slug=salesforce`
 once instead of repeating it in every facet, and grouping the picker into
 "Salesforce / Gong" sections. A `scope` concept in the decoration — a shared
