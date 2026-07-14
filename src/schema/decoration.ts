@@ -20,27 +20,24 @@ export type Decor = { label?: string; icon?: string };
  *  - crosses a *list* relation → a **collection**: a top-level array node (a
  *    scalar operator over a list path silently mis-evaluates, so it must be a node).
  *
- * Two distinct filters, both authored:
- *  - `where` — **fixed**, non-editable, the facet's *identity*. It is prepended as
- *    the leading condition(s), and it is the only thing rehydration reverse-matches
- *    on ("if the first conditions match, this is that facet"). For EAV this is the
+ * Two distinct pieces, both authored:
+ *  - `where` — **fixed**, non-editable, the facet's *identity*. It sits on the model
+ *    its fields reference (where the path travels to), as the leading condition(s),
+ *    and it is the only thing rehydration reverse-matches on. For EAV this is the
  *    `key = 'nps'` that makes the list read as one field "NPS".
- *  - `defaultWhere` — the **upstream array-traversal layer**: the operators for the
- *    array boundaries the path crosses *before* it reaches the model the `where`
- *    sits on. Just a list of {@link ArrayOperator}s (one per preceding boundary),
- *    each defaulting to `any` (the "contains" semantic) — enough to cross the
- *    boundaries and get to where the path has traveled to. Collection-only; not
- *    part of the identity, so never matched.
+ *  - `defaultWhere` — the **array-traversal layer**: one {@link ArrayOperator} per
+ *    array boundary the path crosses to reach that model. Its length must equal the
+ *    path's array-traversal count ({@link validateDecoration} enforces it); each
+ *    defaults to `any` (the "contains" semantic). Editable defaults, not identity —
+ *    never matched.
  *
- * `arrayOperator` is the operator of the **destination** boundary (the one whose
- * element holds the `where` + value), default `any`; `kind` overrides an untyped
- * `value` column. Purely presentational — the emitted rule is what the engine runs.
+ * `kind` overrides an untyped `value` column. Purely presentational — the emitted
+ * rule is exactly what the engine runs.
  */
 export type Facet = {
   path: string;
   where?: Condition;
   defaultWhere?: ArrayOperator[];
-  arrayOperator?: ArrayOperator;
   kind?: FieldKind;
 } & Decor;
 
@@ -342,26 +339,42 @@ const leafRuleAt = (
   return ruleForField(leaf);
 };
 
+/** How many array boundaries a path crosses — the number of traversal operators
+ *  it needs (see {@link validateDecoration}). */
+export const arrayTraversalCount = (lens: Lens, path: string): number => {
+  const segments = path.split('.');
+  let m = lens.mapName;
+  let mod = lens.model;
+  let count = 0;
+  for (const seg of segments) {
+    const entry = lens.maps[m]?.models[mod]?.fields[seg];
+    if (!entry) break;
+    const target = relationTarget(entry, m);
+    if (entry.isList) count++;
+    if (!target) break;
+    m = target.mapName;
+    mod = target.modelName;
+  }
+  return count;
+};
+
 /**
- * Build the array-node structure for a collection path. Each list boundary the
- * path crosses becomes an array node; the boundaries *before* the destination
- * (the last list, whose element holds the `where` + value) are the upstream
- * traversal layer — their operators come from `defaultWhere` in order, defaulting
- * to `any`. The destination uses `arrayOp` and carries the fixed `where` and the
- * value leaf. So `orders.customFields.value` with `where key=nps` seeds
- * `orders any ( customFields <op> ( key=nps AND value ) )` — the `where` lands on
- * the model whose fields it actually references, not the outer list.
+ * Build the array-node structure for a collection path. Every array boundary the
+ * path crosses becomes an array node whose operator is the next entry of `ops`
+ * (defaulting to `any`) — one operator per traversal. The `where` and value leaf
+ * sit at the innermost element, the model the path travels to. So
+ * `orders.customFields.value` with `where key=nps` and `ops [any, any]` seeds
+ * `orders any ( customFields any ( key=nps AND value ) )`.
  */
 const buildCollection = (
   lens: Lens,
   mapName: string,
   modelName: string,
   segments: string[],
-  defaultOps: ArrayOperator[],
+  ops: ArrayOperator[],
   opIndex: { i: number },
   where: Condition | undefined,
   kind: FieldKind | undefined,
-  arrayOp: ArrayOperator,
   opts: SurfaceOptions,
 ): Condition | null => {
   let m = mapName;
@@ -374,18 +387,17 @@ const buildCollection = (
       if (!target) return null;
       const listField = segments.slice(0, i + 1).join('.');
       const rest = segments.slice(i + 1);
+      const op = ops[opIndex.i++] ?? 'any';
       if (pathHasList(lens, target.mapName, target.modelName, rest)) {
-        const op = defaultOps[opIndex.i++] ?? 'any';
         const inner = buildCollection(
           lens,
           target.mapName,
           target.modelName,
           rest,
-          defaultOps,
+          ops,
           opIndex,
           where,
           kind,
-          arrayOp,
           opts,
         );
         return {
@@ -399,7 +411,7 @@ const buildCollection = (
         : null;
       return {
         field: listField,
-        arrayOperator: arrayOp,
+        arrayOperator: op,
         condition: { all: [...whereConditions(where), ...(leaf ? [leaf] : [])] },
       } as Condition;
     }
@@ -421,12 +433,11 @@ const collectionSeed = (lens: Lens, facet: Facet, opts: SurfaceOptions): Conditi
     { i: 0 },
     facet.where,
     facet.kind,
-    facet.arrayOperator ?? 'any',
     opts,
   ) ??
   ({
     field: facet.path,
-    arrayOperator: facet.arrayOperator ?? 'any',
+    arrayOperator: facet.defaultWhere?.[0] ?? 'any',
     condition: { all: [] },
   } as Condition);
 
@@ -559,8 +570,9 @@ export const matchFacet = (
       continue;
     }
     if (rec.field !== resolved.listPath) continue;
-    // Descend the upstream traversal nodes (each a single nested array child) to
-    // the destination, where the fixed `where` and value sit.
+    // Descend the traversal nodes (each a single nested array child) to the
+    // innermost, where the fixed `where` and value sit. Operators are editable
+    // defaults, not identity, so they are not checked — only path + `where`.
     let dest = rec;
     while (true) {
       const cs = (dest.condition as { all?: Condition[] } | undefined)?.all;
@@ -568,7 +580,6 @@ export const matchFacet = (
         dest = cs[0] as typeof rec;
       } else break;
     }
-    if (dest.arrayOperator !== (facet.arrayOperator ?? 'any')) continue;
     const lead = whereConditions(facet.where);
     if (lead.length === 0) return facet;
     const destConds = (dest.condition as { all?: Condition[] } | undefined)?.all ?? [];
@@ -580,8 +591,9 @@ export const matchFacet = (
 /**
  * Reject a decoration whose facets could collide on rehydration — the guarantee
  * that reverse-matching is deterministic. Returns human-readable violations
- * (empty = valid): unresolvable paths, duplicate ids, and — the important one —
- * two facets on the same target whose fixed `where`s are not prefix-free (a rule
+ * (empty = valid): unresolvable paths, duplicate ids, a `defaultWhere` whose
+ * length isn't the path's array-traversal count, and — the important one — two
+ * facets on the same target whose fixed `where`s are not prefix-free (a rule
  * authored under the specific one would also match the general one).
  */
 export const validateDecoration = (lens: Lens, decoration: Decoration): string[] => {
@@ -593,6 +605,13 @@ export const validateDecoration = (lens: Lens, decoration: Decoration): string[]
     if (!resolvePath(lens, facet.path)) {
       violations.push(`facet '${facet.path}' does not resolve against the lens`);
       continue;
+    }
+    if (facet.defaultWhere) {
+      const need = arrayTraversalCount(lens, facet.path);
+      if (facet.defaultWhere.length !== need)
+        violations.push(
+          `facet '${facet.path}' has ${facet.defaultWhere.length} traversal operator(s) but the path crosses ${need} array boundary(ies)`,
+        );
     }
     const id = facetId(facet);
     if (ids.has(id)) violations.push(`duplicate facet id '${id}'`);

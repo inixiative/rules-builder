@@ -201,10 +201,10 @@ A collection facet carries two things, kept distinct because only one is identit
 - **`where`** — **fixed, non-editable**: the facet's identity. It sits on the model
   its fields reference (the **destination** the path travels to) as the leading
   condition(s), and is the *only* thing rehydration matches on.
-- **`defaultWhere`** — the **upstream traversal layer**: a list of `ArrayOperator`s,
-  one per array boundary the path crosses *before* the destination, each defaulting
-  to `any` (the "contains" semantic). Just enough to cross the boundaries and get to
-  where the `where` sits. Not identity, never matched.
+- **`defaultWhere`** — the **array-traversal layer**: one `ArrayOperator` per array
+  boundary the path crosses to reach that model, each defaulting to `any` (the
+  "contains" semantic). Its length must equal the path's array-traversal count —
+  `validateDecoration` enforces it. Editable defaults, not identity, never matched.
 
 ```ts
 const decoration: Decoration = {
@@ -212,9 +212,9 @@ const decoration: Decoration = {
     // "NPS" = customFields where key='nps', reasoning over `value` as a number.
     { path: 'customFields.value', label: 'NPS', kind: 'Int',
       where: { field: 'key', operator: 'equals', value: 'nps' } },
-    // NPS across a user's orders — one boundary (`orders`) precedes the destination.
+    // NPS across a user's orders — two boundaries (`orders`, `customFields`).
     { path: 'orders.customFields.value', label: 'NPS across orders', kind: 'Int',
-      where: { field: 'key', operator: 'equals', value: 'nps' }, defaultWhere: ['any'] },
+      where: { field: 'key', operator: 'equals', value: 'nps' }, defaultWhere: ['any', 'any'] },
     { path: 'orders', label: 'Orders' }, // whole collection
   ],
 };
@@ -222,10 +222,10 @@ const decoration: Decoration = {
 
 Selecting "NPS" seeds `customFields any ( key='nps' AND value … )` — `any(key=nps AND value…)`
 is exactly "the NPS element matches." The multi-boundary one seeds
-`orders any ( customFields any ( key='nps' AND value … ) )` — the upstream `orders`
-crossing comes from `defaultWhere`, and the `where` lands on `CustomField`, whose
-fields it actually references. The **destination** `arrayOperator` defaults to `any`
-and is **editable but hidden** (`arrayOperator.hidden`); `kind` retypes an untyped
+`orders any ( customFields any ( key='nps' AND value … ) )` — both boundary operators
+come from `defaultWhere`, and the `where` lands on `CustomField`, whose fields it
+actually references. Every traversal operator is **editable but hidden**
+(`arrayOperator.hidden` on each array node); `kind` retypes an untyped
 EAV `value` column so its operators are right.
 
 **Move, not copy.** A facet that consumes a top-level field *wholesale* (a bare

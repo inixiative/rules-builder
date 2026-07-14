@@ -179,14 +179,13 @@ describe('describeFacets — collection facets', () => {
     expect(seed.filter).toBeUndefined();
   });
 
-  test('multi boundary: defaultWhere sets the upstream traversal ops; the where lands at the destination model', () => {
+  test('multi boundary: defaultWhere is one operator per array traversal; the where lands at the destination model', () => {
     const [f] = describeFacets(eav, {
       facets: [
         {
           path: 'orders.customFields.value',
           where: { field: 'key', operator: 'equals', value: 'nps' },
-          defaultWhere: ['all'], // the upstream `orders` boundary
-          arrayOperator: 'any', // the destination `customFields` boundary
+          defaultWhere: ['all', 'any'], // orders, then customFields
           kind: 'Int',
           label: 'NPS across orders',
         },
@@ -440,6 +439,19 @@ describe('validateDecoration — collision-free guarantee', () => {
     });
     expect(violations.length).toBeGreaterThan(0);
     expect(violations[0]).toContain('collide');
+  });
+
+  test('requires one traversal operator per array boundary', () => {
+    // two boundaries (orders, customFields) but one operator → violation.
+    const short = validateDecoration(eav, {
+      facets: [{ path: 'orders.customFields.value', defaultWhere: ['any'] }],
+    });
+    expect(short.some((v) => v.includes('traversal operator'))).toBe(true);
+    // the right count is accepted.
+    const ok = validateDecoration(eav, {
+      facets: [{ path: 'orders.customFields.value', defaultWhere: ['any', 'any'] }],
+    });
+    expect(ok).toEqual([]);
   });
 
   test('rejects a duplicate facet id and an unresolvable path', () => {
