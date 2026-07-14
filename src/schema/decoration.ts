@@ -25,8 +25,10 @@ export type Decor = { label?: string; icon?: string };
  *    the leading condition(s), and it is the only thing rehydration reverse-matches
  *    on ("if the first conditions match, this is that facet"). For EAV this is the
  *    `key = 'nps'` that makes the list read as one field "NPS".
- *  - `defaultWhere` — **prefilled but editable**, seeded after the fixed block for
- *    array traversal. Not part of the identity, so never matched.
+ *  - `defaultWhere` — **prefilled but editable**, seeded after the fixed block.
+ *    Purely for **array-traversal** (collection) facets — a starting point for
+ *    reasoning over the elements. Ignored by leaf and branch facets. Not part of
+ *    the identity, so never matched.
  *
  * `arrayOperator` defaults to `any`; `kind` overrides an untyped `value` column.
  * Purely presentational — the emitted rule is exactly what the engine runs.
@@ -270,11 +272,9 @@ const branchSeed = (
   opts: SurfaceOptions,
 ): Condition => {
   const [first] = branchFields(lens, resolved.prefix, resolved.target, opts);
-  const all = [
-    ...whereConditions(facet.where),
-    ...whereConditions(facet.defaultWhere),
-    ...(first ? [ruleForField(first)] : []),
-  ];
+  // `defaultWhere` is array-only (see its doc) — a branch takes only its fixed
+  // identity `where` plus a first blank leaf.
+  const all = [...whereConditions(facet.where), ...(first ? [ruleForField(first)] : [])];
   return { all } as Condition;
 };
 
