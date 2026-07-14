@@ -107,8 +107,8 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
 
   const commit = useCallback((next: Condition) => setTree(withIds(next)), []);
   const root = useMemo(
-    () => buildRoot(tree, lens, fields, maxDepth, commit),
-    [tree, lens, fields, maxDepth, commit],
+    () => buildRoot(tree, lens, fields, maxDepth, commit, { view: opts.view, surfaceOpts }),
+    [tree, lens, fields, maxDepth, commit, opts.view, surfaceOpts],
   );
   const value = useMemo(() => clean(tree), [tree, clean]);
 

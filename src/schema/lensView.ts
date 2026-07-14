@@ -14,21 +14,24 @@ export type LensDecor = { label?: string; icon?: string };
 /**
  * A pre-traversed entry point moved up to the builder's root selector.
  *
- * `path` is dotted from the lens anchor. Its shape decides the hoist kind:
- *  - no list relation crossed  → a **leaf**: emits `{ field: path }` directly.
- *  - the *first* segment is a list relation → a **collection**: seeds a top-level
- *    array node over that relation (json-rules can't evaluate a scalar operator
- *    over a list path, so it must be a node, not a flat field).
+ * `path` is dotted from the lens anchor and may traverse any number of to-one
+ * relations (including `map:Model` bridges). Its shape decides the hoist kind:
+ *  - reaches a scalar/enum through only to-one hops → a **leaf**: emits
+ *    `{ field: path }` directly.
+ *  - crosses a *list* relation → a **collection**: seeds a top-level array node
+ *    over that relation (json-rules can't evaluate a scalar operator over a list
+ *    path, so it must be a node, not a flat field).
  *
- * `slice` carves a named view out of a list (EAV `key`/`value`): it becomes the
- * array node's locked `filter`, so "customFields where key=nps" reads as one
- * field "NPS". `arrayOperator` defaults to `any` (has-a-matching-element). `kind`
- * overrides the element leaf's type for untyped `value` columns. Purely
- * presentational — the emitted rule is exactly what the engine already runs.
+ * `where` carves a named view out of a list (the EAV `key`/`value` pattern): it
+ * becomes the array node's locked `filter`, so "customFields where key=nps" reads
+ * as one field "NPS". It is authored, never customer-editable. `arrayOperator`
+ * defaults to `any` (has-a-matching-element); the builder keeps it editable but
+ * hidden. `kind` overrides the element leaf's type for untyped `value` columns.
+ * Purely presentational — the emitted rule is exactly what the engine runs.
  */
 export type LensViewRoot = {
   path: string;
-  slice?: Condition;
+  where?: Condition;
   arrayOperator?: ArrayOperator;
   kind?: FieldKind;
 } & LensDecor;
@@ -56,7 +59,9 @@ export type LensView = {
 type LeafResolved = { kind: 'leaf'; mapName: string; modelName: string; field: string };
 type CollectionResolved = {
   kind: 'collection';
+  listOwner: { mapName: string; modelName: string };
   listField: string;
+  listPath: string;
   target: { mapName: string; modelName: string };
   elementLeaf?: string;
 };
@@ -65,11 +70,10 @@ type Resolved = LeafResolved | CollectionResolved;
 const RELATION_KINDS = new Set(['object', 'bridge']);
 
 /**
- * Classify a hoist path against the lens graph. A path crossing a *list* relation
- * is a collection (must become an array node); one that reaches a scalar/enum
- * through only to-one relations is a leaf. Returns `undefined` — the entry is
- * dropped — for anything unresolvable or out of the single-hop v2 envelope:
- * a scalar mid-segment, a bare relation leaf, or a list not on the anchor model.
+ * Classify a hoist path against the lens graph. To-one hops are traversed freely;
+ * the first *list* relation makes it a collection anchored there, with the
+ * remainder as the element leaf. Returns `undefined` — the entry is dropped —
+ * for an unresolvable path or a bare relation leaf (not a value).
  */
 const resolvePath = (lens: Lens, path: string): Resolved | undefined => {
   const segments = path.split('.');
@@ -79,12 +83,13 @@ const resolvePath = (lens: Lens, path: string): Resolved | undefined => {
     const entry = lens.maps[mapName]?.models[modelName]?.fields[segments[i]];
     if (!entry) return undefined;
     if (entry.isList) {
-      if (i !== 0) return undefined; // single-hop: the list must be on the anchor
       const target = relationTarget(entry, mapName);
       if (!target) return undefined;
       return {
         kind: 'collection',
+        listOwner: { mapName, modelName },
         listField: segments[i],
+        listPath: segments.slice(0, i + 1).join('.'),
         target,
         elementLeaf: segments.slice(i + 1).join('.') || undefined,
       };
@@ -107,9 +112,9 @@ const pickDecor = (dict: Record<string, LensDecor> | undefined, ...keys: string[
 };
 
 /** A stable id for a hoisted entry — the selector option value and React key. A
- *  slice makes the same list yield several entries, so it folds into the id. */
-const rootId = (root: LensViewRoot): string =>
-  root.slice ? `${root.path}#${JSON.stringify(root.slice)}` : root.path;
+ *  `where` makes the same list yield several entries, so it folds into the id. */
+export const rootId = (root: LensViewRoot): string =>
+  root.where ? `${root.path}#${JSON.stringify(root.where)}` : root.path;
 
 const buildLeafField = (
   lens: Lens,
@@ -136,49 +141,46 @@ const buildLeafField = (
   };
 };
 
-const buildCollectionField = (
+/** The element leaf's descriptor, with any `kind` override applied — used both to
+ *  seed the value rule and (on rehydration) to retype the element surface. */
+export const overrideElementLeaf = (
+  lens: Lens,
+  resolved: CollectionResolved,
+  kind: FieldKind | undefined,
+  opts: SurfaceOptions,
+): BuilderField | undefined => {
+  if (!resolved.elementLeaf) return undefined;
+  const leaf = describeModelFields(
+    lens,
+    resolved.target.mapName,
+    resolved.target.modelName,
+    opts,
+  ).find((f) => f.name === resolved.elementLeaf);
+  if (!leaf) return undefined;
+  return kind ? { ...leaf, kind, operators: operatorsForKind(kind, opts.targets) } : leaf;
+};
+
+const collectionSeed = (
   lens: Lens,
   root: LensViewRoot,
   resolved: CollectionResolved,
   opts: SurfaceOptions,
-): BuilderField => {
-  const arrayOperator = root.arrayOperator ?? 'any';
-  let condition: Condition = { all: [] };
-  if (resolved.elementLeaf) {
-    let leaf = describeModelFields(
-      lens,
-      resolved.target.mapName,
-      resolved.target.modelName,
-      opts,
-    ).find((f) => f.name === resolved.elementLeaf);
-    if (leaf && root.kind)
-      leaf = { ...leaf, kind: root.kind, operators: operatorsForKind(root.kind, opts.targets) };
-    if (leaf) condition = { all: [ruleForField(leaf)] };
-  }
-  const seed: Condition = {
-    field: resolved.listField,
-    arrayOperator,
-    ...(root.slice ? { filter: { all: [root.slice] } } : {}),
-    condition,
-  } as Condition;
+): Condition => {
+  const leaf = overrideElementLeaf(lens, resolved, root.kind, opts);
   return {
-    name: rootId(root),
-    label: root.label ?? resolved.elementLeaf ?? resolved.listField,
-    icon: root.icon,
-    kind: root.kind ?? 'String',
-    isList: true,
-    isBridge: false,
-    operators: { field: [], date: [], array: [] },
-    seed,
-  };
+    field: resolved.listPath,
+    arrayOperator: root.arrayOperator ?? 'any',
+    ...(root.where ? { filter: { all: [root.where] } } : {}),
+    condition: leaf ? { all: [ruleForField(leaf)] } : { all: [] },
+  } as Condition;
 };
 
 /**
  * Resolve a view's `roots` into `BuilderField`s to concat onto the anchor
- * surface. Leaf entries emit their real path as the rule `field`; collection
- * entries carry a `seed` array node (with the slice as a locked `filter`) that
- * the selector inserts on select. Unresolvable / out-of-envelope entries are
- * dropped.
+ * surface. A leaf entry emits its real path as the rule `field`. A collection
+ * entry contributes a **selector** field (carrying the `seed` array node the
+ * picker inserts) and, when the array field isn't itself pickable, a non-pickable
+ * **resolver** field so the seeded node's dotted `field` resolves its relation.
  */
 export const describeHoistedFields = (
   lens: Lens,
@@ -187,38 +189,77 @@ export const describeHoistedFields = (
 ): BuilderField[] => {
   const out: BuilderField[] = [];
   const fieldDecor = view.labels?.fields;
+  const resolverFor = new Set<string>();
   for (const root of view.roots) {
     const resolved = resolvePath(lens, root.path);
     if (!resolved) continue;
-    const field =
-      resolved.kind === 'leaf'
-        ? buildLeafField(lens, root, resolved, fieldDecor, opts)
-        : buildCollectionField(lens, root, resolved, opts);
-    if (field) out.push(field);
+    if (resolved.kind === 'leaf') {
+      const field = buildLeafField(lens, root, resolved, fieldDecor, opts);
+      if (field) out.push(field);
+      continue;
+    }
+    const id = rootId(root);
+    const isWhole = id === resolved.listPath;
+    out.push({
+      name: id,
+      label: root.label ?? resolved.elementLeaf ?? resolved.listField,
+      icon: root.icon,
+      kind: root.kind ?? 'String',
+      isList: true,
+      isBridge: false,
+      relation: isWhole ? resolved.target : undefined,
+      operators: { field: [], date: [], array: [] },
+      seed: collectionSeed(lens, root, resolved, opts),
+    });
+    if (!isWhole && !resolverFor.has(resolved.listPath)) {
+      resolverFor.add(resolved.listPath);
+      const list = describeModelFields(
+        lens,
+        resolved.listOwner.mapName,
+        resolved.listOwner.modelName,
+        opts,
+      ).find((f) => f.name === resolved.listField);
+      if (list) out.push({ ...list, name: resolved.listPath, selectable: false, seed: undefined });
+    }
   }
   return out;
 };
 
 /** Top-level fields a view consumes *wholesale* — a bare relation/field hoist
- *  with no slice and no deeper leaf. These are removed from the root selector so
- *  a moved thing lives in exactly one place; sliced/partial/deep hoists leave
+ *  with no `where` and no deeper leaf. These are removed from the root selector so
+ *  a moved thing lives in exactly one place; `where`/partial/deep hoists leave
  *  their origin intact. */
 export const viewConsumedTopFields = (view: LensView | undefined): Set<string> => {
   const consumed = new Set<string>();
   for (const root of view?.roots ?? [])
-    if (!root.slice && !root.path.includes('.')) consumed.add(root.path);
+    if (!root.where && !root.path.includes('.')) consumed.add(root.path);
   return consumed;
 };
 
-const sliceOf = (filter: Condition | undefined): Condition | undefined => {
-  if (!filter) return undefined;
-  const all = (filter as { all?: Condition[] }).all;
-  return Array.isArray(all) ? all[0] : filter;
+const oneOf = (group: Condition | undefined): Condition | undefined => {
+  if (!group) return undefined;
+  const all = (group as { all?: Condition[] }).all;
+  return Array.isArray(all) ? all[0] : group;
+};
+
+// A rehydrated node carries builder/engine metadata the authored `where` never
+// has (coerceType from stampCoercions, _id/_groupId from the tree). Strip it and
+// sort keys so the structural comparison is order- and coercion-insensitive.
+const META = new Set(['coerceType', '_id', '_groupId']);
+const canonical = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort())
+      if (!META.has(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
+    return out;
+  }
+  return value;
 };
 
 /** The inverse of a hoist: recognize a saved node as one of the view's roots so a
- *  renderer can collapse it back to the named entry (and hide the locked slice)
- *  instead of showing a raw array node. Pure; returns `undefined` when no root
+ *  renderer (and `buildRoot`) can collapse it back to the named entry (hiding the
+ *  locked `where`) instead of a raw array node. Pure; `undefined` when no root
  *  matches. */
 export const matchNodeToRoot = (
   lens: Lens,
@@ -233,13 +274,25 @@ export const matchNodeToRoot = (
       if (rec.field === root.path && rec.arrayOperator === undefined) return root;
       continue;
     }
-    if (rec.field !== resolved.listField) continue;
-    const wantSlice = root.slice ? JSON.stringify(root.slice) : undefined;
-    const gotSlice = root.slice ? JSON.stringify(sliceOf(rec.filter)) : undefined;
-    if (wantSlice !== gotSlice) continue;
+    if (rec.field !== resolved.listPath) continue;
+    const want = root.where ? JSON.stringify(canonical(root.where)) : undefined;
+    const got = root.where ? JSON.stringify(canonical(oneOf(rec.filter))) : undefined;
+    if (want !== got) continue;
     if (rec.arrayOperator === (root.arrayOperator ?? 'any')) return root;
   }
   return undefined;
+};
+
+/** The resolved collection facts for a matched root — the element leaf (retyped)
+ *  a renderer/`buildRoot` needs when collapsing a rehydrated node. */
+export const collapsedElementLeaf = (
+  lens: Lens,
+  root: LensViewRoot,
+  opts: SurfaceOptions = {},
+): BuilderField | undefined => {
+  const resolved = resolvePath(lens, root.path);
+  if (resolved?.kind !== 'collection') return undefined;
+  return overrideElementLeaf(lens, resolved, root.kind, opts);
 };
 
 /** Flatten a view's field/value decor into `SurfaceOptions` label maps so

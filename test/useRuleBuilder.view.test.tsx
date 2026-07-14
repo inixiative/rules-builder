@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Bridge, Condition, FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
-import type { GroupNode, LeafNode } from '../src/builder/buildNodes';
+import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import type { LensView } from '../src/schema/lensView';
 
@@ -101,7 +101,7 @@ const npsView: LensView = {
   roots: [
     {
       path: 'customFields.value',
-      slice: { field: 'key', operator: 'equals', value: 'nps' },
+      where: { field: 'key', operator: 'equals', value: 'nps' },
       kind: 'Int',
       label: 'NPS',
     },
@@ -142,5 +142,59 @@ describe('useRuleBuilder — collection & sliced hoists', () => {
     expect(values).toContain('customFields'); // the hoist's own id is the path
     expect(row.field.options.filter((o) => o.value === 'customFields')).toHaveLength(1);
     expect(row.field.options.find((o) => o.value === 'customFields')?.label).toBe('Enrichments');
+  });
+});
+
+describe('useRuleBuilder — rehydration (detecting an aliased saved rule)', () => {
+  test('a saved leaf-hoist rule is recognized and badged with the entry label', () => {
+    const defaultValue: Condition = {
+      all: [{ field: 'salesforce:Contact.arr', operator: 'greaterThan', value: 1000 }],
+    };
+    const { result } = renderHook(() => useRuleBuilder({ source, view, defaultValue }));
+    const leaf = rootGroup(result.current).children[0] as LeafNode;
+    expect(leaf.hoist?.label).toBe('Annual Revenue');
+    expect(leaf.hoist?.icon).toBe('💰');
+  });
+
+  test('a saved sliced-collection rule collapses to the named entry, hidden op, locked where, retyped value', () => {
+    const defaultValue: Condition = {
+      all: [
+        {
+          field: 'customFields',
+          arrayOperator: 'any',
+          filter: { all: [{ field: 'key', operator: 'equals', value: 'nps' }] },
+          condition: { all: [{ field: 'value', operator: 'greaterThan', value: 5 }] },
+        },
+      ],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, view: npsView, defaultValue }),
+    );
+    const node = rootGroup(result.current).children[0] as ArrayNode;
+    expect(node.kind).toBe('array');
+    expect(node.hoist?.label).toBe('NPS');
+    expect(node.arrayOperator.hidden).toBe(true);
+    expect(node.whereLocked).toBe(true);
+    // the kind override flows into the element surface: `value` offers numeric ops.
+    const valueLeaf = node.condition?.children[0] as LeafNode;
+    expect(valueLeaf.operator?.options.map((o) => o.value)).toContain('greaterThan');
+  });
+
+  test('a non-aliased array node is left as a plain builder (no hoist badge)', () => {
+    const defaultValue: Condition = {
+      all: [
+        {
+          field: 'customFields',
+          arrayOperator: 'any',
+          condition: { all: [{ field: 'key', operator: 'equals', value: 'other' }] },
+        },
+      ],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, view: npsView, defaultValue }),
+    );
+    const node = rootGroup(result.current).children[0] as ArrayNode;
+    expect(node.hoist).toBeUndefined();
+    expect(node.arrayOperator.hidden).toBeUndefined();
   });
 });

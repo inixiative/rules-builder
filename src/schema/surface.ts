@@ -64,9 +64,12 @@ export type BuilderField = {
   isBridge: boolean;
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
   /** A hoisted collection entry seeds this whole `Condition` on select (an array
-   *  node with a pre-filled slice/operator) instead of the default `{field}` rule.
+   *  node with a pre-filled `where`/operator) instead of the default `{field}` rule.
    *  Set by {@link LensView}; absent for ordinary and leaf-hoisted fields. */
   seed?: import('@inixiative/json-rules').Condition;
+  /** False for a hoist *resolver* field — present only so a seeded array node's
+   *  dotted `field` resolves its relation, never offered in the picker. */
+  selectable?: boolean;
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
   /** Human-readable labels for enum/sourced option values (value → label). */

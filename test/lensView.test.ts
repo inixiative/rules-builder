@@ -130,8 +130,13 @@ const eav = exposedSurface(
             fields: {
               orders: { kind: 'object', type: 'Order', isList: true },
               customFields: { kind: 'object', type: 'CustomField', isList: true },
+              account: { kind: 'object', type: 'Account' },
             },
           },
+          Account: {
+            fields: { contracts: { kind: 'object', type: 'Contract', isList: true } },
+          },
+          Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
           Order: { fields: { total: { kind: 'scalar', type: 'Int' } } },
           CustomField: {
             fields: {
@@ -167,7 +172,7 @@ describe('describeHoistedFields — collection hoists', () => {
       roots: [
         {
           path: 'customFields.value',
-          slice: { field: 'key', operator: 'equals', value: 'nps' },
+          where: { field: 'key', operator: 'equals', value: 'nps' },
           kind: 'Int',
           label: 'NPS',
           icon: '📊',
@@ -191,7 +196,7 @@ describe('describeHoistedFields — collection hoists', () => {
       roots: [
         {
           path: 'customFields.value',
-          slice: { field: 'key', operator: 'equals', value: 'nps' },
+          where: { field: 'key', operator: 'equals', value: 'nps' },
           kind: 'Int',
         },
       ],
@@ -212,8 +217,21 @@ describe('describeHoistedFields — collection hoists', () => {
     expect(check(rule, { customFields: [{ key: 'nps', value: 3 }] })).not.toBe(true);
   });
 
-  test('defers a list not on the anchor (to-one → list is out of the single-hop envelope)', () => {
-    expect(describeHoistedFields(eav, { roots: [{ path: 'account.orders.total' }] })).toEqual([]);
+  test('multi-hop: reaches a list through a to-one relation and emits a resolver field', () => {
+    const out = describeHoistedFields(eav, {
+      roots: [{ path: 'account.contracts.amount', label: 'Contract value' }],
+    });
+    const selector = out.find((f) => f.seed);
+    expect(selector?.label).toBe('Contract value');
+    expect(selector?.seed).toMatchObject({
+      field: 'account.contracts',
+      arrayOperator: 'any',
+      condition: { all: [{ field: 'amount' }] },
+    });
+    // a non-pickable resolver carries the relation so the seeded node resolves.
+    const resolver = out.find((f) => f.name === 'account.contracts');
+    expect(resolver?.selectable).toBe(false);
+    expect(resolver?.relation).toMatchObject({ modelName: 'Contract' });
   });
 });
 
@@ -223,7 +241,7 @@ describe('viewConsumedTopFields — move, not copy', () => {
       roots: [
         { path: 'orders' }, // whole → consumed
         { path: 'orders.total' }, // deep leaf → leaves orders
-        { path: 'customFields.value', slice: { field: 'key', operator: 'equals', value: 'x' } }, // sliced → leaves
+        { path: 'customFields.value', where: { field: 'key', operator: 'equals', value: 'x' } }, // sliced → leaves
       ],
     });
     expect([...consumed]).toEqual(['orders']);
@@ -236,7 +254,7 @@ describe('matchNodeToRoot — round-trip', () => {
       { path: 'tier' },
       {
         path: 'customFields.value',
-        slice: { field: 'key', operator: 'equals', value: 'nps' },
+        where: { field: 'key', operator: 'equals', value: 'nps' },
         kind: 'Int',
         label: 'NPS',
       },

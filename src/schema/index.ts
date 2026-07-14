@@ -2,8 +2,10 @@ export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker'
 export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
 export type { LensDecor, LensView, LensViewRoot } from './lensView';
 export {
+  collapsedElementLeaf,
   describeHoistedFields,
   matchNodeToRoot,
+  rootId,
   useHoistedFields,
   viewConsumedTopFields,
   viewSurfaceOptions,

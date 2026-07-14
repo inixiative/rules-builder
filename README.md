@@ -186,7 +186,9 @@ The hoist kind is decided by the path's shape against the lens:
   json-rules can't evaluate a scalar operator over a list path (it silently
   mis-matches), so a list-crossing hoist *must* seed a node, not a flat field.
 
-A collection root can carry a **`slice`** — a locked `filter` that carves a named
+A path may traverse any number of to-one relations (including bridges) before it
+reaches its leaf or list — `account.contracts.amount` is fine. A collection root
+can carry a **`where`** — an authored, non-editable filter that carves a named
 view out of an EAV `key`/`value` list — plus a **`kind`** to type the otherwise
 untyped `value` column:
 
@@ -195,7 +197,7 @@ const view: LensView = {
   roots: [
     // "NPS" = customFields where key='nps', reasoning over `value` as a number.
     { path: 'customFields.value', label: 'NPS', kind: 'Int',
-      slice: { field: 'key', operator: 'equals', value: 'nps' } },
+      where: { field: 'key', operator: 'equals', value: 'nps' } },
     // whole collection — reason about orders directly.
     { path: 'orders', label: 'Orders' },
   ],
@@ -203,25 +205,30 @@ const view: LensView = {
 ```
 
 Selecting "NPS" seeds `{ field: 'customFields', arrayOperator: 'any', filter: {key='nps'}, condition: {value …} }`.
-`arrayOperator` defaults to `any` (has-a-matching-element).
+`arrayOperator` defaults to `any` (has-a-matching-element) and the builder keeps it
+**editable but hidden** — a renderer reveals it behind an "advanced" affordance
+(`arrayOperator.hidden`), so the common case reads as one clean field.
 
 **Move, not copy.** A hoist that consumes a top-level field *wholesale* (a bare
-relation, no slice, no deeper leaf) is removed from the root selector — a thing
-lives in one place. Sliced and deep-leaf hoists leave their origin (you only took
-a slice of it).
+relation, no `where`, no deeper leaf) is removed from the root selector — a thing
+lives in one place. `where`/deep-leaf hoists leave their origin (you only took a
+slice of it).
 
-**Round-trip.** A saved collection rule is a raw array node; `matchNodeToRoot(lens, view, node)`
-recognizes it as its named root so a renderer can collapse it back to the clean
-field (and hide the locked slice) instead of a raw array builder.
+**Rehydration.** A saved rule is a raw path/array node with no trace of the alias.
+The builder recognizes it via `matchNodeToRoot` and **collapses it back** to the
+named entry: a leaf node gets a `hoist` badge (label/icon); a collection node gets
+`hoist` + `whereLocked` (hide the slice) + `arrayOperator.hidden`, and the element
+surface is retyped by the entry's `kind`. So a reopened "NPS" reads as "NPS", not a
+raw array builder over `customFields`.
 
 `describeHoistedFields` is the pure function behind hoisting; `viewSurfaceOptions`
 folds the view's labels into the plain surface; `viewConsumedTopFields` is the
-move-not-copy set. Absent `view`, behavior is unchanged.
+move-not-copy set; `matchNodeToRoot` / `collapsedElementLeaf` drive rehydration.
+Absent `view`, behavior is unchanged.
 
-**Single-hop envelope (v2).** A collection's list must be on the anchor model;
-to-one→list paths (`account.orders.total`) and multi-list nesting are dropped for
-now. The array operator is authored/defaulted (`any`), not yet a customer-visible
-control — surfacing it (editable-but-hidden) is the next slice.
+**Envelope.** One list relation per hoist (with any to-one prefix/suffix);
+nested-list paths (`orders.items.sku`, two array levels) aren't collapsed yet. The
+locked `where` is presentation, not security — the lens gate doesn't enforce it.
 
 ## Serialization
 

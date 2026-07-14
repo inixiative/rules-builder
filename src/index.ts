@@ -72,11 +72,13 @@ export type {
   SurfaceOptions,
 } from './schema';
 export {
+  collapsedElementLeaf,
   describeHoistedFields,
   describeModelFields,
   lensValuePicker,
   matchNodeToRoot,
   resolve,
+  rootId,
   runSources,
   useHoistedFields,
   useLensValuePicker,
