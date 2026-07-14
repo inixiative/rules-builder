@@ -206,3 +206,60 @@ describe('useRuleBuilder — rehydration (detecting an aliased saved rule)', () 
     expect(node.arrayOperator.hidden).toBeUndefined();
   });
 });
+
+const branchMap: FieldMap = {
+  models: {
+    User: {
+      fields: {
+        tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
+        account: { kind: 'object', type: 'Account' },
+      },
+    },
+    Account: {
+      fields: {
+        industry: { kind: 'scalar', type: 'String' },
+        arr: { kind: 'scalar', type: 'Int' },
+        owner: { kind: 'object', type: 'User' },
+      },
+    },
+  },
+};
+const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+const asGroupNode = (n: unknown) => n as GroupNode;
+
+describe('useRuleBuilder — branch facets (a to-one relation as a scoped group)', () => {
+  const decoration: Decoration = { facets: [{ path: 'account', label: 'Company' }] };
+  const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
+
+  test('selecting a branch facet seeds a group scoped to the related model', () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: branchSource, decoration, defaultValue: seed }),
+    );
+    const row = rootGroup(result.current).children[0] as LeafNode;
+    const companyOption = row.field.options.find((o) => o.label === 'Company');
+    if (!companyOption) throw new Error('Company branch not offered');
+    act(() => row.field.set(companyOption.value));
+    // the row became a group whose first emitted leaf is an account.* dotted path.
+    const emitted = (result.current.value as { all: Condition[] }).all[0] as { all: Condition[] };
+    expect((emitted.all[0] as { field: string }).field).toMatch(/^account\./);
+  });
+
+  test('a saved account.* group rehydrates as the named branch, picker scoped + prefixed', () => {
+    const defaultValue: Condition = {
+      all: [{ all: [{ field: 'account.industry', operator: 'equals', value: 'tech' }] }],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: branchSource, decoration, defaultValue }),
+    );
+    const group = asGroupNode(rootGroup(result.current).children[0]);
+    expect(group.kind).toBe('group');
+    expect(group.hoist?.label).toBe('Company');
+    // the scoped picker offers the related model's fields as prefixed paths, and
+    // only scalars (the to-one `owner` relation is left out of v1's branch picker).
+    const inner = group.children[0] as LeafNode;
+    const values = inner.field?.options.map((o) => o.value) ?? [];
+    expect(values).toContain('account.industry');
+    expect(values).toContain('account.arr');
+    expect(values).not.toContain('account.owner');
+  });
+});

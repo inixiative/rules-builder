@@ -1,8 +1,10 @@
 export type { Decor, Decoration, Facet } from './decoration';
 export {
+  branchFields,
   consumedTopFields,
   decorationSurfaceOptions,
   describeFacets,
+  facetBranchScope,
   facetElementLeaf,
   facetId,
   facetLockedLeading,

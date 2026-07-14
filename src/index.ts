@@ -72,10 +72,12 @@ export type {
   SurfaceOptions,
 } from './schema';
 export {
+  branchFields,
   consumedTopFields,
   decorationSurfaceOptions,
   describeFacets,
   describeModelFields,
+  facetBranchScope,
   facetElementLeaf,
   facetId,
   facetLockedLeading,

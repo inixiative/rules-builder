@@ -69,7 +69,12 @@ type CollectionResolved = {
   target: { mapName: string; modelName: string };
   elementLeaf?: string;
 };
-type Resolved = LeafResolved | CollectionResolved;
+type BranchResolved = {
+  kind: 'branch';
+  prefix: string;
+  target: { mapName: string; modelName: string };
+};
+type Resolved = LeafResolved | CollectionResolved | BranchResolved;
 
 const RELATION_KINDS = new Set(['object', 'bridge']);
 
@@ -99,7 +104,11 @@ const resolvePath = (lens: Lens, path: string): Resolved | undefined => {
       };
     }
     if (i === segments.length - 1) {
-      if (RELATION_KINDS.has(entry.kind)) return undefined; // a bare to-one is not a value
+      if (RELATION_KINDS.has(entry.kind)) {
+        // a bare to-one relation → a branch (a scoped group of its `prefix.field` conditions).
+        const target = relationTarget(entry, mapName);
+        return target ? { kind: 'branch', prefix: path, target } : undefined;
+      }
       return { kind: 'leaf', mapName, modelName, field: segments[i] };
     }
     const target = relationTarget(entry, mapName);
@@ -202,6 +211,49 @@ export const facetElementLeaf = (
  *  occupies — a renderer hides exactly this many. */
 export const facetLockedLeading = (facet: Facet): number => whereConditions(facet.where).length;
 
+/** The branch model's scalar/enum fields, each re-`name`d to its `prefix.field`
+ *  dotted path so a leaf built inside the branch group emits the real path. To-one
+ *  and list relations *within* the branch are left out of v1's scoped picker. */
+export const branchFields = (
+  lens: Lens,
+  prefix: string,
+  target: { mapName: string; modelName: string },
+  opts: SurfaceOptions = {},
+): BuilderField[] =>
+  describeModelFields(lens, target.mapName, target.modelName, opts)
+    .filter((f) => !f.relation)
+    .map((f) => ({ ...f, name: `${prefix}.${f.name}` }));
+
+/** The scope a branch facet's group is authored against — its `prefix` and the
+ *  prefixed field surface. `undefined` when the facet isn't a branch. */
+export const facetBranchScope = (
+  lens: Lens,
+  facet: Facet,
+  opts: SurfaceOptions = {},
+): { prefix: string; fields: BuilderField[] } | undefined => {
+  const resolved = resolvePath(lens, facet.path);
+  if (resolved?.kind !== 'branch') return undefined;
+  return {
+    prefix: resolved.prefix,
+    fields: branchFields(lens, resolved.prefix, resolved.target, opts),
+  };
+};
+
+const branchSeed = (
+  lens: Lens,
+  facet: Facet,
+  resolved: BranchResolved,
+  opts: SurfaceOptions,
+): Condition => {
+  const [first] = branchFields(lens, resolved.prefix, resolved.target, opts);
+  const all = [
+    ...whereConditions(facet.where),
+    ...whereConditions(facet.defaultWhere),
+    ...(first ? [ruleForField(first)] : []),
+  ];
+  return { all } as Condition;
+};
+
 const collectionSeed = (
   lens: Lens,
   facet: Facet,
@@ -242,6 +294,19 @@ export const describeFacets = (
     if (resolved.kind === 'leaf') {
       const field = buildLeafField(lens, facet, resolved, fieldDecor, opts);
       if (field) out.push(field);
+      continue;
+    }
+    if (resolved.kind === 'branch') {
+      out.push({
+        name: facetId(facet),
+        label: facet.label ?? resolved.prefix,
+        icon: facet.icon,
+        kind: 'String',
+        isList: false,
+        isBridge: false,
+        operators: { field: [], date: [], array: [] },
+        seed: branchSeed(lens, facet, resolved, opts),
+      });
       continue;
     }
     const id = facetId(facet);
@@ -298,17 +363,42 @@ const facetTarget = (lens: Lens, facet: Facet): string | undefined => {
  * equals the facet's fixed `where` (order/coercion-insensitive). Pure; `undefined`
  * when none matches.
  */
+const groupChildren = (node: Condition): Condition[] | undefined => {
+  const rec = node as { all?: Condition[]; any?: Condition[] };
+  return Array.isArray(rec.all) ? rec.all : Array.isArray(rec.any) ? rec.any : undefined;
+};
+
 export const matchFacet = (
   lens: Lens,
   decoration: Decoration,
   node: Condition,
 ): Facet | undefined => {
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
+  const children = groupChildren(node);
   for (const facet of decoration.facets) {
     const resolved = resolvePath(lens, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
       if (rec.field === facet.path && rec.arrayOperator === undefined) return facet;
+      continue;
+    }
+    if (resolved.kind === 'branch') {
+      // A branch is a group. Prefer the fixed `where` as identity; absent one, a
+      // group whose leaf fields all sit under `prefix.` is the branch.
+      if (!children) continue;
+      const lead = whereConditions(facet.where);
+      if (lead.length > 0) {
+        if (isLeadingPrefix(lead, children)) return facet;
+        continue;
+      }
+      const leaves = children.filter((c) => c && typeof c === 'object' && 'field' in c);
+      if (
+        leaves.length > 0 &&
+        leaves.every((c) =>
+          String((c as { field: string }).field).startsWith(`${resolved.prefix}.`),
+        )
+      )
+        return facet;
       continue;
     }
     if (rec.field !== resolved.listPath) continue;

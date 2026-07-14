@@ -183,10 +183,14 @@ The facet kind is decided by the path's shape against the lens (a path may
 traverse any number of to-one relations/bridges first — `account.contracts.amount`
 is fine):
 
-- **Leaf** (no list relation crossed) → a directly rule-able field; emits `{ field: path }`.
+- **Leaf** (ends at a scalar/enum) → a directly rule-able field; emits `{ field: path }`.
 - **Collection** (a list relation crossed) → a top-level **array node**. json-rules
   can't evaluate a scalar operator over a list path (it silently mis-matches), so a
   list-crossing facet *must* seed a node, not a flat field.
+- **Branch** (ends at a to-one relation, e.g. `account`) → a top-level **scoped
+  group**. Its field picker is scoped to the related model and emits `account.*`
+  dotted paths; a saved `account.*` group rehydrates as the named branch. Its
+  `hoist`/`lockedLeading` live on the `GroupNode`.
 
 ### Two `where`s
 
@@ -237,10 +241,11 @@ folds labels into the plain surface; `consumedTopFields` is the move-not-copy se
 `matchFacet` / `facetElementLeaf` / `facetLockedLeading` drive rehydration. Absent
 `decoration`, behavior is unchanged.
 
-**Envelope.** One list relation per facet (any to-one prefix/suffix); nested-list
-paths (`orders.items.sku`, two array levels) and branch facets (hoisting a to-one
-relation as a scoped group) aren't in yet. The fixed `where` is presentation, not
-security — the lens gate doesn't enforce it.
+**Envelope.** One list relation per facet (any to-one prefix/suffix). A branch's
+scoped picker is scalar/enum fields of the related model — nested branches (a
+to-one *inside* a branch) and nested-list paths (`orders.items.sku`, two array
+levels) aren't in yet. The fixed `where` is presentation, not security — the lens
+gate doesn't enforce it.
 
 ## Serialization
 

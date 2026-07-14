@@ -11,6 +11,7 @@ import { switchGroupOperator } from '../core/decorate';
 import { addRule, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   type Decoration,
+  facetBranchScope,
   facetElementLeaf,
   facetId,
   facetLockedLeading,
@@ -104,6 +105,13 @@ export type GroupNode = {
   addRule: () => void;
   addGroup: () => void;
   canAddGroup: boolean;
+  /** Set when this group is a hoisted **branch** facet (a to-one relation surfaced
+   *  as a scoped group) — its field picker is scoped to the related model and a
+   *  renderer shows the entry's name. */
+  hoist?: HoistBadge;
+  /** Leading `children` that are the branch facet's fixed, non-editable `where` —
+   *  a renderer hides exactly this many (the identity block). */
+  lockedLeading?: number;
   remove?: () => void;
 };
 
@@ -473,23 +481,44 @@ const buildGroup = (
   depth: number,
   ctx: Ctx,
   scope: Scope,
-): GroupNode => ({
-  kind: 'group',
-  id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
-  path,
-  depth,
-  operator: {
-    value: groupOperatorOf(node),
-    set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),
-  },
-  children: groupChildrenOf(node).map((child, i) =>
-    buildNode(child, [...path, i], depth + 1, ctx, scope),
-  ),
-  addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(scope.fields))),
-  addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
-  canAddGroup: depth < ctx.maxDepth,
-  remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
-});
+): GroupNode => {
+  // A hoisted branch facet: a to-one relation surfaced as a scoped group. Its field
+  // picker is scoped to the related model's `prefix.field` surface.
+  const branchFacet =
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
+      : undefined;
+  const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
+  const groupScope: Scope = branch ? { lens: scope.lens, fields: branch.fields } : scope;
+  const branchHoist: HoistBadge | undefined =
+    branchFacet && branch
+      ? {
+          id: facetId(branchFacet),
+          label: branchFacet.label ?? branch.prefix,
+          icon: branchFacet.icon,
+        }
+      : undefined;
+
+  return {
+    kind: 'group',
+    id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
+    path,
+    depth,
+    operator: {
+      value: groupOperatorOf(node),
+      set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),
+    },
+    children: groupChildrenOf(node).map((child, i) =>
+      buildNode(child, [...path, i], depth + 1, ctx, groupScope),
+    ),
+    addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(groupScope.fields))),
+    addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
+    canAddGroup: depth < ctx.maxDepth,
+    hoist: branchHoist,
+    lockedLeading: branchFacet && branch ? facetLockedLeading(branchFacet) || undefined : undefined,
+    remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
+  };
+};
 
 const buildNode = (
   node: Condition,

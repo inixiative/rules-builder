@@ -266,6 +266,51 @@ describe('consumedTopFields / matchFacet', () => {
   });
 });
 
+describe('describeFacets / matchFacet — branch facets', () => {
+  const branchLens = exposedSurface(
+    createLens({
+      maps: {
+        app: {
+          models: {
+            User: { fields: { account: { kind: 'object', type: 'Account' } } },
+            Account: {
+              fields: {
+                industry: { kind: 'scalar', type: 'String' },
+                tier: { kind: 'scalar', type: 'String' },
+              },
+            },
+          },
+        },
+      },
+      mapName: 'app',
+      model: 'User',
+    }),
+  );
+
+  test('a to-one relation seeds a group of prefixed conditions', () => {
+    const [f] = describeFacets(branchLens, { facets: [{ path: 'account', label: 'Company' }] });
+    expect(f.seed).toMatchObject({ all: [{ field: 'account.industry' }] });
+  });
+
+  test('recognizes a saved account.* group as the branch, by prefix', () => {
+    const decoration: Decoration = { facets: [{ path: 'account', label: 'Company' }] };
+    const node = {
+      all: [{ field: 'account.tier', operator: 'equals', value: 'gold' }],
+    } as Condition;
+    expect(matchFacet(branchLens, decoration, node)?.label).toBe('Company');
+  });
+
+  test('validateDecoration rejects two whereless branches on the same relation', () => {
+    const violations = validateDecoration(branchLens, {
+      facets: [
+        { path: 'account', label: 'Company' },
+        { path: 'account', label: 'Org' },
+      ],
+    });
+    expect(violations.length).toBeGreaterThan(0);
+  });
+});
+
 describe('validateDecoration — collision-free guarantee', () => {
   test('accepts prefix-free facets on the same list', () => {
     const violations = validateDecoration(eav, {
