@@ -32,6 +32,8 @@ const firstOperator = (
 
 export const ruleForField = (field: BuilderField, keepId?: string): Condition => {
   const id = keepId ? { _id: keepId } : {};
+  // A hoisted collection entry carries its own seed (array node + slice/operator).
+  if (field.seed) return { ...(field.seed as object), ...id } as Condition;
   // A list/relation field is an array rule: a predicate/count/presence over its elements.
   if (field.isList) return { field: field.name, arrayOperator: 'notEmpty', ...id } as Condition;
   const first = firstOperator(field);

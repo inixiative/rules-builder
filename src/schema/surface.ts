@@ -56,11 +56,20 @@ export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): L
 export type BuilderField = {
   name: string;
   label: string;
+  /** Optional display glyph, carried from a {@link Decoration} hoisted entry. */
+  icon?: string;
   kind: FieldKind;
   isList: boolean;
   relation?: { mapName: string; modelName: string };
   isBridge: boolean;
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
+  /** A hoisted collection entry seeds this whole `Condition` on select (an array
+   *  node with a pre-filled `where`/operator) instead of the default `{field}` rule.
+   *  Set by {@link Decoration}; absent for ordinary and leaf-hoisted fields. */
+  seed?: import('@inixiative/json-rules').Condition;
+  /** False for a hoist *resolver* field — present only so a seeded array node's
+   *  dotted `field` resolves its relation, never offered in the picker. */
+  selectable?: boolean;
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
   /** Human-readable labels for enum/sourced option values (value → label). */
@@ -139,6 +148,17 @@ const mergeOptionLabels = (
   const merged = { ...fromOptions, ...overrides };
   return Object.keys(merged).length ? merged : undefined;
 };
+
+/** The operator sets a non-relation field of `kind` offers, intersected across
+ *  `targets`. Exposed so a hoist can recompute them when it overrides a leaf's
+ *  kind (e.g. an untyped EAV `value` column declared as `Int`). */
+export const operatorsForKind = (
+  kind: FieldKind,
+  targets?: RuleTarget[],
+): BuilderField['operators'] => ({
+  ...fieldAndDateOperators(kind, targets),
+  array: [] as ArrayOperator[],
+});
 
 export const describeModelFields = (
   lens: Lens,

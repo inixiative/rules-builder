@@ -1,3 +1,21 @@
+export type { Decor, Decoration, Facet } from './decoration';
+export {
+  branchFields,
+  consumedTopFields,
+  decorationSurfaceOptions,
+  describeFacets,
+  facetBranchScope,
+  facetElementLeaf,
+  facetId,
+  isPreset,
+  leadingWhereCount,
+  matchFacet,
+  modelDecor,
+  relabelRelations,
+  useFacetFields,
+  validateDecoration,
+  whereConditions,
+} from './decoration';
 export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker';
 export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
 export type { SourceRows, SourceValues } from './sources';

@@ -9,7 +9,18 @@ import {
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
 import { addRule, type RulePath, removeNode, setNode } from '../core/tree';
-import type { BuilderField } from '../schema/surface';
+import {
+  type Decoration,
+  facetBranchScope,
+  facetElementLeaf,
+  facetId,
+  isPreset,
+  leadingWhereCount,
+  matchFacet,
+  modelDecor,
+  relabelRelations,
+} from '../schema/decoration';
+import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import { describeModelFields, valueShapeForOperator } from '../schema/surface';
 import {
   defaultRule,
@@ -20,7 +31,7 @@ import {
   ruleForField,
 } from './nodes';
 
-export type PickOption = { value: string; label: string };
+export type PickOption = { value: string; label: string; icon?: string };
 
 export type FieldControl = {
   value?: string;
@@ -75,10 +86,20 @@ export type LeafNode = {
   field?: FieldControl;
   operator?: OperatorControl;
   value?: ValueControl;
+  /** Set when this leaf is a hoisted alias (a {@link Decoration} leaf facet) — a
+   *  renderer shows the entry's label/icon instead of the raw path. */
+  hoist?: HoistBadge;
+  /** Set when this node is a **preset** alias — a renderer shows only the name; the
+   *  whole condition is opaque, with no field/operator/value pickers. */
+  atomic?: boolean;
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
   valid: boolean;
   remove: () => void;
 };
+
+/** Marks a node the builder recognized as a hoisted {@link Decoration} facet, so a
+ *  renderer collapses it to the named field instead of raw internals. */
+export type HoistBadge = { id: string; label: string; icon?: string };
 
 export type GroupNode = {
   kind: 'group';
@@ -90,6 +111,20 @@ export type GroupNode = {
   addRule: () => void;
   addGroup: () => void;
   canAddGroup: boolean;
+  /** A display name for the group's model — the retagged **root/anchor** (from
+   *  `labels.models`) at the top level, or a branch facet's label. A renderer may
+   *  show it as a header. */
+  label?: string;
+  /** Set when this group is a hoisted **branch** facet (a to-one relation surfaced
+   *  as a scoped group) — its field picker is scoped to the related model and a
+   *  renderer shows the entry's name. */
+  hoist?: HoistBadge;
+  /** Set when this group is a **preset** alias — a renderer shows only the name;
+   *  the whole condition is opaque, with no pickers or add-rule. */
+  atomic?: boolean;
+  /** Leading `children` that are the branch facet's fixed, non-editable `where` —
+   *  a renderer hides exactly this many (the identity block). */
+  lockedLeading?: number;
   remove?: () => void;
 };
 
@@ -109,7 +144,21 @@ export type ArrayNode = {
     value?: string;
     options: PickOption[];
     set: (op: string) => void;
+    /** Editable but hidden by default — a hoisted collection ships a sensible
+     *  default (`any`); a renderer reveals this control behind an "advanced"
+     *  affordance rather than showing it inline. */
+    hidden?: boolean;
   };
+  /** Set when this array node is a hoisted alias (a {@link Decoration} facet) — a
+   *  renderer collapses it to the named field. */
+  hoist?: HoistBadge;
+  /** Set when this node is a **preset** alias — a renderer shows only the name; the
+   *  whole condition is opaque, with no pickers. */
+  atomic?: boolean;
+  /** The count of leading `condition` children that are the facet's fixed,
+   *  non-editable `where` — a renderer hides exactly this many (the identity
+   *  block), leaving the rest editable. */
+  lockedLeading?: number;
   /** The related model the elements belong to (present for relation lists). */
   relation?: { mapName: string; modelName: string };
   /** Count operators (atLeast/atMost/exactly) → a numeric threshold. */
@@ -132,6 +181,11 @@ type Ctx = {
   root: Condition;
   maxDepth: number;
   commit: (c: Condition) => void;
+  /** The anchor lens + decoration, constant across the tree — used to recognize a
+   *  node as a hoisted {@link Decoration} facet and collapse it. */
+  anchorLens: Lens;
+  decoration?: Decoration;
+  surfaceOpts: SurfaceOptions;
 };
 /** What a node sees: the surface to validate against + its selectable fields. On
  *  descent into an array node's elements, this swaps to the related model. */
@@ -146,7 +200,7 @@ const arrayCat = (op: string | undefined): ArrayCat =>
 /** Scalars, enums, json, and list relations are directly rule-able; a to-one
  *  relation is not (you traverse it via a dotted path or its own array node). */
 const selectableFields = (fields: BuilderField[]): BuilderField[] =>
-  fields.filter((f) => f.isList || !f.relation);
+  fields.filter((f) => f.selectable !== false && (f.isList || !f.relation));
 
 const idOf = (n: Condition, index: number): string => {
   const r = n as Rec;
@@ -217,6 +271,13 @@ const buildLeaf = (
   })();
   const valueMode: 'value' | 'path' | 'bind' =
     rec.bind !== undefined ? 'bind' : rec.path !== undefined ? 'path' : 'value';
+  const leafMatch =
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
+      : undefined;
+  const leafHoist: HoistBadge | undefined = leafMatch
+    ? { id: facetId(leafMatch), label: leafMatch.label ?? baseName ?? '', icon: leafMatch.icon }
+    : undefined;
 
   return {
     kind: 'leaf',
@@ -230,6 +291,7 @@ const buildLeaf = (
       options: selectableFields(scope.fields).map((f) => ({
         value: f.name,
         label: f.label,
+        icon: f.icon,
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
@@ -303,6 +365,8 @@ const buildLeaf = (
             }
           : undefined,
     },
+    hoist: leafHoist,
+    atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
     valid: checkRuleAgainstLens(node, scope.lens).ok,
     remove,
   };
@@ -322,6 +386,16 @@ const buildArray = (
   const cat = arrayCat(op);
   const rel = field?.relation;
 
+  // A hoisted collection facet: recognize the node so it renders as its named
+  // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
+  const matchedFacet =
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
+      : undefined;
+  const overrideLeaf = matchedFacet
+    ? facetElementLeaf(ctx.anchorLens, matchedFacet, ctx.surfaceOpts)
+    : undefined;
+
   // Elements belong to the related model → author condition/filter against its surface.
   const relScope: Scope = rel
     ? (() => {
@@ -332,9 +406,15 @@ const buildArray = (
             model: rel.modelName,
           }),
         );
+        const relFields = relabelRelations(
+          describeModelFields(relLens, rel.mapName, rel.modelName),
+          ctx.decoration,
+        );
         return {
           lens: relLens,
-          fields: describeModelFields(relLens, rel.mapName, rel.modelName),
+          fields: overrideLeaf
+            ? relFields.map((f) => (f.name === overrideLeaf.name ? { ...f, ...overrideLeaf } : f))
+            : relFields,
         };
       })()
     : scope;
@@ -344,8 +424,8 @@ const buildArray = (
   const buildSub = (key: 'condition' | 'filter'): GroupNode => {
     const subRoot = asGroupRoot((rec[key] as Condition | undefined) ?? { all: [] });
     const subCtx: Ctx = {
+      ...ctx,
       root: subRoot,
-      maxDepth: ctx.maxDepth,
       commit: (next) => ctx.commit(setNode(ctx.root, path, { ...rec, [key]: next } as Condition)),
     };
     return buildGroup(subRoot, [], depth + 1, subCtx, relScope);
@@ -362,6 +442,7 @@ const buildArray = (
       options: selectableFields(scope.fields).map((f) => ({
         value: f.name,
         label: f.label,
+        icon: f.icon,
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
@@ -370,12 +451,22 @@ const buildArray = (
       },
       valid: field !== undefined,
     },
+    hoist: matchedFacet
+      ? {
+          id: facetId(matchedFacet),
+          label: matchedFacet.label ?? fieldName ?? '',
+          icon: matchedFacet.icon,
+        }
+      : undefined,
+    lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
+    atomic: matchedFacet && isPreset(matchedFacet) ? true : undefined,
     arrayOperator: {
       value: op,
       options: (field?.operators.array ?? []).map((o) => ({
         value: o,
         label: o,
       })),
+      hidden: matchedFacet ? true : undefined,
       set: (nextOp) => {
         const nextCat = arrayCat(nextOp);
         const { count, condition, ...restRec } = rec;
@@ -413,23 +504,61 @@ const buildGroup = (
   depth: number,
   ctx: Ctx,
   scope: Scope,
-): GroupNode => ({
-  kind: 'group',
-  id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
-  path,
-  depth,
-  operator: {
-    value: groupOperatorOf(node),
-    set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),
-  },
-  children: groupChildrenOf(node).map((child, i) =>
-    buildNode(child, [...path, i], depth + 1, ctx, scope),
-  ),
-  addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(scope.fields))),
-  addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
-  canAddGroup: depth < ctx.maxDepth,
-  remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
-});
+): GroupNode => {
+  const matched =
+    ctx.decoration && ctx.anchorLens === scope.lens
+      ? matchFacet(ctx.anchorLens, ctx.decoration, node)
+      : undefined;
+  const preset = matched !== undefined && isPreset(matched);
+  // A branch is a to-one relation surfaced as a scoped group, and always a *nested*
+  // group — gating on `path.length` stops the whereless prefix heuristic from
+  // capturing the root (and swapping its picker to the branch scope). A preset,
+  // by contrast, is recognized anywhere including the root.
+  const branchFacet = matched && !preset && path.length > 0 ? matched : undefined;
+  const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
+  const groupScope: Scope = branch
+    ? { lens: scope.lens, fields: relabelRelations(branch.fields, ctx.decoration) }
+    : scope;
+  // The facet actually applied to this group: a preset (anywhere) or a branch (nested).
+  const groupFacet = preset ? matched : branchFacet;
+  const groupHoist: HoistBadge | undefined = groupFacet
+    ? {
+        id: facetId(groupFacet),
+        label: groupFacet.label ?? branch?.prefix ?? '',
+        icon: groupFacet.icon,
+      }
+    : undefined;
+
+  // The root/anchor group can be retagged via `labels.models`; a facet shows its name.
+  const groupLabel =
+    groupHoist?.label ??
+    (path.length === 0
+      ? modelDecor(ctx.decoration, ctx.anchorLens.mapName, ctx.anchorLens.model).label
+      : undefined);
+
+  return {
+    kind: 'group',
+    id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
+    path,
+    depth,
+    label: groupLabel,
+    operator: {
+      value: groupOperatorOf(node),
+      set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),
+    },
+    children: groupChildrenOf(node).map((child, i) =>
+      buildNode(child, [...path, i], depth + 1, ctx, groupScope),
+    ),
+    addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(groupScope.fields))),
+    addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
+    canAddGroup: depth < ctx.maxDepth,
+    hoist: groupHoist,
+    atomic: preset ? true : undefined,
+    lockedLeading:
+      branchFacet && branch ? leadingWhereCount(branchFacet, node) || undefined : undefined,
+    remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
+  };
+};
 
 const buildNode = (
   node: Condition,
@@ -467,8 +596,16 @@ export const buildRoot = (
   fields: BuilderField[],
   maxDepth: number,
   commit: (next: Condition) => void,
+  opts: { decoration?: Decoration; surfaceOpts?: SurfaceOptions } = {},
 ): BuilderNode => {
   const normalized = asRoot(root);
-  const ctx: Ctx = { root: normalized, maxDepth, commit };
+  const ctx: Ctx = {
+    root: normalized,
+    maxDepth,
+    commit,
+    anchorLens: lens,
+    decoration: opts.decoration,
+    surfaceOpts: opts.surfaceOpts ?? {},
+  };
   return buildNode(normalized, [], 0, ctx, { lens, fields });
 };

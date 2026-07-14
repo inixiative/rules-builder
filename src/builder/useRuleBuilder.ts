@@ -9,6 +9,13 @@ import {
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
+import {
+  consumedTopFields,
+  type Decoration,
+  decorationSurfaceOptions,
+  relabelRelations,
+  useFacetFields,
+} from '../schema/decoration';
 import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
@@ -29,6 +36,10 @@ export type UseRuleBuilderOptions = {
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
   valueLabels?: Record<string, Record<string, string>>;
+  /** A display decoration: hoists pre-traversed lens paths up to the root selector
+   *  (additive) and relabels the surface. Purely presentational — the emitted
+   *  rule and everything the engine runs are unchanged. */
+  decoration?: Decoration;
   /** Max group nesting depth — a group at this depth hides "add group" (`canAddGroup`). Default 4. */
   maxDepth?: number;
 };
@@ -53,14 +64,26 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     () => resolve(opts.source, { sourceValues: opts.sourceValues }),
     [opts.source, opts.sourceValues],
   );
+  const surfaceOpts = useMemo(() => {
+    const fromDecoration = decorationSurfaceOptions(opts.decoration);
+    return {
+      targets: opts.targets,
+      labels: { ...fromDecoration.labels, ...opts.labels },
+      valueLabels: { ...fromDecoration.valueLabels, ...opts.valueLabels },
+    };
+  }, [opts.decoration, opts.targets, opts.labels, opts.valueLabels]);
+  const anchorFields = useMemo(() => {
+    const all = relabelRelations(
+      describeModelFields(lens, lens.mapName, lens.model, surfaceOpts),
+      opts.decoration,
+    );
+    const consumed = consumedTopFields(opts.decoration);
+    return consumed.size ? all.filter((f) => !consumed.has(f.name)) : all;
+  }, [lens, surfaceOpts, opts.decoration]);
+  const hoisted = useFacetFields(lens, opts.decoration, surfaceOpts);
   const fields = useMemo(
-    () =>
-      describeModelFields(lens, lens.mapName, lens.model, {
-        targets: opts.targets,
-        labels: opts.labels,
-        valueLabels: opts.valueLabels,
-      }),
-    [lens, opts.targets, opts.labels, opts.valueLabels],
+    () => (hoisted.length ? [...anchorFields, ...hoisted] : anchorFields),
+    [anchorFields, hoisted],
   );
   const maxDepth = opts.maxDepth ?? 4;
 
@@ -88,8 +111,9 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
 
   const commit = useCallback((next: Condition) => setTree(withIds(next)), []);
   const root = useMemo(
-    () => buildRoot(tree, lens, fields, maxDepth, commit),
-    [tree, lens, fields, maxDepth, commit],
+    () =>
+      buildRoot(tree, lens, fields, maxDepth, commit, { decoration: opts.decoration, surfaceOpts }),
+    [tree, lens, fields, maxDepth, commit, opts.decoration, surfaceOpts],
   );
   const value = useMemo(() => clean(tree), [tree, clean]);
 

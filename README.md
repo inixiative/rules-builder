@@ -150,6 +150,163 @@ over its elements:
 `node.condition` and `node.filter` are nested `GroupNode`s scoped to the **related
 model's** surface — author them exactly like the top-level tree.
 
+## Decoration — hoisting, relabeling & aliasing
+
+By default the root selector offers only the anchor model's own fields; to reach
+anything else you traverse relations. A **`Decoration`** pre-traverses for you: it
+moves chosen lens locations *up* to the root selector as named **facets** and
+relabels them. It is purely presentational — the lens stays the source of truth,
+and every facet emits its real dotted path (bridges included) as the rule's
+`field`, so nothing the engine runs changes.
+
+```ts
+import { useRuleBuilder, type Decoration } from '@inixiative/rules-builder';
+
+const decoration: Decoration = {
+  // any path from the anchor, additive to the anchor's own fields.
+  // crosses `map:Model` bridge segments — reach other sources at the root.
+  facets: [
+    { path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' },
+    { path: 'account.industry', label: 'Industry' },
+  ],
+  // relabel keyed structurally (`Model.field`) or by path — path wins on conflict.
+  labels: {
+    fields: { 'account.industry': { label: 'Industry' } },
+    values: { tier: { gold: { label: 'Gold tier' } } },
+  },
+};
+
+useRuleBuilder({ source, decoration }); // facets now appear in the root selector
+```
+
+The facet kind is decided by the path's shape against the lens (a path may
+traverse any number of to-one relations/bridges first — `account.contracts.amount`
+is fine):
+
+- **Leaf** (ends at a scalar/enum) → a directly rule-able field; emits `{ field: path }`.
+- **Collection** (a list relation crossed) → a top-level **array node**. json-rules
+  can't evaluate a scalar operator over a list path (it silently mis-matches), so a
+  list-crossing facet *must* seed a node, not a flat field.
+- **Branch** (ends at a to-one relation, e.g. `account`) → a top-level **scoped
+  group**. Its field picker is scoped to the related model and emits `account.*`
+  dotted paths; a saved `account.*` group rehydrates as the named branch. Its
+  `hoist`/`lockedLeading` live on the `GroupNode`. The scoped picker reaches
+  **nested** to-one fields (`account.owner.email`) and offers list relations
+  (`account.contracts`) as nested array nodes.
+
+A facet can instead be a **preset** — `condition` in place of `path`: a named alias
+for a *complete* pre-authored `Condition` (`{ label: 'Mature', condition: {…} }`).
+Selecting it drops the whole condition in as one **atomic** node (`GroupNode.atomic`
+/ `LeafNode.atomic`) — no field/operator/value pickers, it just *is* a rule — and a
+saved node equal to the condition collapses back to the name. `validateDecoration`
+checks the preset is a valid rule against the lens.
+
+### Two `where`s
+
+A collection facet carries two things, kept distinct because only one is identity:
+
+- **`where`** — **fixed, non-editable**: the facet's identity. It sits on the model
+  its fields reference (the **destination** the path travels to) as the leading
+  condition(s), and is the *only* thing rehydration matches on.
+- **`defaultWhere`** — the **array-traversal layer**: one `ArrayOperator` per array
+  boundary the path crosses to reach that model, each defaulting to `any` (the
+  "contains" semantic). Its length must equal the path's array-traversal count —
+  `validateDecoration` enforces it. Editable defaults, not identity, never matched.
+
+```ts
+const decoration: Decoration = {
+  facets: [
+    // "NPS" = customFields where key='nps', reasoning over `value` as a number.
+    { path: 'customFields.value', label: 'NPS', kind: 'Int',
+      where: { field: 'key', operator: 'equals', value: 'nps' } },
+    // NPS across a user's orders — two boundaries (`orders`, `customFields`).
+    { path: 'orders.customFields.value', label: 'NPS across orders', kind: 'Int',
+      where: { field: 'key', operator: 'equals', value: 'nps' }, defaultWhere: ['any', 'any'] },
+    { path: 'orders', label: 'Orders' }, // whole collection
+  ],
+};
+```
+
+Selecting "NPS" seeds `customFields any ( key='nps' AND value … )` — `any(key=nps AND value…)`
+is exactly "the NPS element matches." The multi-boundary one seeds
+`orders any ( customFields any ( key='nps' AND value … ) )` — both boundary operators
+come from `defaultWhere`, and the `where` lands on `CustomField`, whose fields it
+actually references. Every traversal operator is **editable but hidden**
+(`arrayOperator.hidden` on each array node); `kind` retypes an untyped
+EAV `value` column so its operators are right.
+
+**Move, not copy.** A facet that consumes a top-level field *wholesale* (a bare
+relation, no `where`, no deeper leaf) is removed from the root selector — a thing
+lives in one place. `where`/deep facets leave their origin.
+
+**Rehydration.** A saved rule is a raw path/array node with no trace of the alias.
+The builder recognizes it via `matchFacet` — a leaf by `field`, a collection when
+its **leading condition block equals the facet's fixed `where`** — and **collapses
+it back** to the named entry: a leaf gets a `hoist` badge; a collection gets
+`hoist` + `lockedLeading` (how many leading conditions to hide) + `arrayOperator.hidden`,
+with the element surface retyped by `kind`. So a reopened "NPS" reads as "NPS."
+
+**No collisions.** Because rehydration matches on the leading `where`, the facet set
+must be collision-free. `validateDecoration(lens, decoration)` returns violations
+(empty = valid): unresolvable paths, duplicate ids, and — the key guarantee — two
+facets on the same target whose fixed `where`s aren't prefix-free (a rule under the
+specific one would also match the general one). Validate at construction.
+
+`describeFacets` is the pure function behind hoisting; `decorationSurfaceOptions`
+folds labels into the plain surface; `consumedTopFields` is the move-not-copy set;
+`matchFacet` / `facetElementLeaf` / `facetLockedLeading` drive rehydration. Absent
+`decoration`, behavior is unchanged.
+
+**Nesting.** Fully recursive. A collection path crossing several lists
+(`orders.items.sku`) seeds **nested array nodes** (`orders any (items any (sku …))`)
+— a flat two-list path would silently mis-evaluate. A branch's scoped picker
+descends nested to-one relations (`account.owner.email`) and surfaces lists as
+nested array nodes. The fixed `where` is presentation, not security — the lens
+gate doesn't enforce it.
+
+### Splitting one relation into tagged sources
+
+A single physical relation often carries rows from several integrations — a shared
+EAV/enrichment table (`customFields`, `enrichments`) discriminated by a `system` /
+`source` slug: "here are Salesforce's custom fields, here are Gong's." Because a
+facet is just a `where`-slice of a relation, this needs **no new primitive** — point
+several facets at the *same* path, each leading its `where` with a different slug,
+and give each its own tag (`label` + `icon`):
+
+```ts
+const source = (system: string, label: string, icon: string) => ({
+  path: 'customFields.value', kind: 'Int', label, icon,
+  where: { all: [
+    { field: 'system', operator: 'equals', value: system },
+    { field: 'key', operator: 'equals', value: 'nps' },
+  ] },
+});
+const decoration: Decoration = {
+  facets: [source('a', 'System A', '🔵'), source('b', 'System B', '🟢'), source('c', 'System C', '🟠')],
+};
+```
+
+Each source seeds its slug as a leading, locked condition, so it evaluates only on
+its own integration's rows and rehydrates back to its own name. And since each is a
+slice of the *same* relation, **the relation can be adjoined N times in one rule** —
+one slice per source, each traversed independently:
+
+```
+{ all: [
+    customFields any (system='a' AND key='nps' AND value … ),   // System A
+    customFields any (system='b' AND key='nps' AND value … ),   // System B
+    customFields any (system='c' AND key='nps' AND value … ),   // System C
+] }
+```
+
+The slices are collision-free (`validateDecoration` enforces prefix-free `where`s),
+compose for free, and each stays independently tagged. See
+[`test/multiSourceAdjoin.test.ts`](./test/multiSourceAdjoin.test.ts). What's *not*
+provided yet is ergonomic sugar — declaring `system='a'` once as a named scope and
+grouping the picker into "System A/B/C" sections; that deferred `scope` concept and
+its limits (sources carry a `where` filter but no provenance, so auto-*discovery* of
+the sources is a separate problem) are in [docs/OPEN_QUESTIONS.md](./docs/OPEN_QUESTIONS.md).
+
 ## Serialization
 
 A rule loses meaning without its binding. `SavedRule` packages the rule with a
