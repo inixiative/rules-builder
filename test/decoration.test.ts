@@ -126,7 +126,13 @@ const eav = exposedSurface(
             fields: { contracts: { kind: 'object', type: 'Contract', isList: true } },
           },
           Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
-          Order: { fields: { total: { kind: 'scalar', type: 'Int' } } },
+          Order: {
+            fields: {
+              total: { kind: 'scalar', type: 'Int' },
+              items: { kind: 'object', type: 'Item', isList: true },
+            },
+          },
+          Item: { fields: { sku: { kind: 'scalar', type: 'String' } } },
           CustomField: {
             fields: {
               key: { kind: 'scalar', type: 'String' },
@@ -204,6 +210,27 @@ describe('describeFacets — collection facets', () => {
       }),
     ).toBe(true);
     expect(check(rule, { customFields: [{ key: 'nps', value: 3 }] })).not.toBe(true);
+  });
+
+  test('nested lists seed nested array nodes (never a flat two-list path) and evaluate', () => {
+    const [f] = describeFacets(eav, { facets: [{ path: 'orders.items.sku', label: 'SKU' }] });
+    expect(f.seed).toMatchObject({
+      field: 'orders',
+      arrayOperator: 'any',
+      condition: {
+        all: [{ field: 'items', arrayOperator: 'any', condition: { all: [{ field: 'sku' }] } }],
+      },
+    });
+    const seed = f.seed as { condition: { all: [{ condition: { all: [Condition] } }] } };
+    const inner = seed.condition.all[0];
+    const rule = {
+      ...(f.seed as object),
+      condition: {
+        all: [{ ...inner, condition: { all: [{ field: 'sku', operator: 'equals', value: 'x' }] } }],
+      },
+    } as Condition;
+    expect(check(rule, { orders: [{ items: [{ sku: 'y' }, { sku: 'x' }] }] })).toBe(true);
+    expect(check(rule, { orders: [{ items: [{ sku: 'y' }] }] })).not.toBe(true);
   });
 
   test('multi-hop: reaches a list through a to-one relation and emits a resolver field', () => {

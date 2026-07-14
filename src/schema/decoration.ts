@@ -211,18 +211,50 @@ export const facetElementLeaf = (
  *  occupies — a renderer hides exactly this many. */
 export const facetLockedLeading = (facet: Facet): number => whereConditions(facet.where).length;
 
-/** The branch model's scalar/enum fields, each re-`name`d to its `prefix.field`
- *  dotted path so a leaf built inside the branch group emits the real path. To-one
- *  and list relations *within* the branch are left out of v1's scoped picker. */
+/** How many *to-one* hops a branch's scoped picker reaches (`account.owner.email`
+ *  is depth 1). List relations are surfaced as array selectables, never descended
+ *  for leaves — a flat path over a list would silently mis-evaluate. */
+const BRANCH_DEPTH = 3;
+
+/**
+ * The field surface a branch facet's group is authored against, each re-`name`d to
+ * its `prefix.…` dotted path so a leaf emits the real path. It reaches, cycle-safe:
+ *  - scalar/enum values of the branch model **and its nested to-one relations**
+ *    (up to {@link BRANCH_DEPTH}) — the nested-branch case as flattened deep paths;
+ *  - **list relations** at each level, kept selectable so they build a nested array
+ *    node (`account.contracts …`) rather than a broken flat leaf.
+ */
 export const branchFields = (
   lens: Lens,
   prefix: string,
   target: { mapName: string; modelName: string },
   opts: SurfaceOptions = {},
-): BuilderField[] =>
-  describeModelFields(lens, target.mapName, target.modelName, opts)
-    .filter((f) => !f.relation)
-    .map((f) => ({ ...f, name: `${prefix}.${f.name}` }));
+): BuilderField[] => {
+  const out: BuilderField[] = [];
+  const walk = (
+    mapName: string,
+    modelName: string,
+    at: string,
+    depth: number,
+    seen: Set<string>,
+  ) => {
+    const key = `${mapName}:${modelName}`;
+    if (seen.has(key)) return;
+    const nextSeen = new Set([...seen, key]);
+    for (const f of describeModelFields(lens, mapName, modelName, opts)) {
+      const name = `${at}.${f.name}`;
+      if (f.isList) {
+        out.push({ ...f, name }); // a list → an array node, never descended flat
+      } else if (f.relation) {
+        if (depth > 0) walk(f.relation.mapName, f.relation.modelName, name, depth - 1, nextSeen);
+      } else {
+        out.push({ ...f, name });
+      }
+    }
+  };
+  walk(target.mapName, target.modelName, prefix, BRANCH_DEPTH, new Set());
+  return out;
+};
 
 /** The scope a branch facet's group is authored against — its `prefix` and the
  *  prefixed field surface. `undefined` when the facet isn't a branch. */
@@ -254,17 +286,83 @@ const branchSeed = (
   return { all } as Condition;
 };
 
+/**
+ * Build the inner content of a collection's `condition` from the segments after
+ * its outer list. Walking `segments` from `(mapName, modelName)`: a further *list*
+ * becomes a **nested array node** (recursing into its elements), so a two-list
+ * path like `orders.items.sku` seeds `orders any (items any (sku …))` — a flat
+ * `items.sku` would silently mis-evaluate. A scalar leaf (possibly via to-one
+ * hops) becomes the value rule, retyped by `kind`. Returns `null` for a whole
+ * collection (no remainder).
+ */
+const collectionInner = (
+  lens: Lens,
+  mapName: string,
+  modelName: string,
+  segments: string[],
+  kind: FieldKind | undefined,
+  opts: SurfaceOptions,
+): Condition | null => {
+  let m = mapName;
+  let mod = modelName;
+  for (let i = 0; i < segments.length; i++) {
+    const entry = lens.maps[m]?.models[mod]?.fields[segments[i]];
+    if (!entry) return null;
+    if (entry.isList) {
+      const target = relationTarget(entry, m);
+      if (!target) return null;
+      const inner = collectionInner(
+        lens,
+        target.mapName,
+        target.modelName,
+        segments.slice(i + 1),
+        kind,
+        opts,
+      );
+      return {
+        field: segments.slice(0, i + 1).join('.'),
+        arrayOperator: 'any',
+        condition: { all: inner ? [inner] : [] },
+      } as Condition;
+    }
+    if (i === segments.length - 1) {
+      const found = describeModelFields(lens, m, mod, opts).find((f) => f.name === segments[i]);
+      if (!found) return null;
+      const leaf: BuilderField = {
+        ...found,
+        name: segments.join('.'),
+        ...(kind ? { kind, operators: operatorsForKind(kind, opts.targets) } : {}),
+      };
+      return ruleForField(leaf);
+    }
+    const target = relationTarget(entry, m);
+    if (!target) return null;
+    m = target.mapName;
+    mod = target.modelName;
+  }
+  return null;
+};
+
 const collectionSeed = (
   lens: Lens,
   facet: Facet,
   resolved: CollectionResolved,
   opts: SurfaceOptions,
 ): Condition => {
-  const leaf = facetElementLeaf(lens, facet, opts);
+  const inner = resolved.elementLeaf
+    ? collectionInner(
+        lens,
+        resolved.target.mapName,
+        resolved.target.modelName,
+        resolved.elementLeaf.split('.'),
+        facet.kind,
+        opts,
+      )
+    : null;
   const all = [
     ...whereConditions(facet.where),
     ...whereConditions(facet.defaultWhere),
-    ...(leaf ? [ruleForField(leaf)] : []),
+    ...(inner ? [inner] : []),
   ];
   return {
     field: resolved.listPath,

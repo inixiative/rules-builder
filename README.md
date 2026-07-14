@@ -190,7 +190,9 @@ is fine):
 - **Branch** (ends at a to-one relation, e.g. `account`) → a top-level **scoped
   group**. Its field picker is scoped to the related model and emits `account.*`
   dotted paths; a saved `account.*` group rehydrates as the named branch. Its
-  `hoist`/`lockedLeading` live on the `GroupNode`.
+  `hoist`/`lockedLeading` live on the `GroupNode`. The scoped picker reaches
+  **nested** to-one fields (`account.owner.email`) and offers list relations
+  (`account.contracts`) as nested array nodes.
 
 ### Two `where`s
 
@@ -241,10 +243,11 @@ folds labels into the plain surface; `consumedTopFields` is the move-not-copy se
 `matchFacet` / `facetElementLeaf` / `facetLockedLeading` drive rehydration. Absent
 `decoration`, behavior is unchanged.
 
-**Envelope.** One list relation per facet (any to-one prefix/suffix). A branch's
-scoped picker is scalar/enum fields of the related model — nested branches (a
-to-one *inside* a branch) and nested-list paths (`orders.items.sku`, two array
-levels) aren't in yet. The fixed `where` is presentation, not security — the lens
+**Nesting.** Fully recursive. A collection path crossing several lists
+(`orders.items.sku`) seeds **nested array nodes** (`orders any (items any (sku …))`)
+— a flat two-list path would silently mis-evaluate. A branch's scoped picker
+descends nested to-one relations (`account.owner.email`) and surfaces lists as
+nested array nodes. The fixed `where` is presentation, not security — the lens
 gate doesn't enforce it.
 
 ## Serialization

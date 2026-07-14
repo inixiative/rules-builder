@@ -219,9 +219,12 @@ const branchMap: FieldMap = {
       fields: {
         industry: { kind: 'scalar', type: 'String' },
         arr: { kind: 'scalar', type: 'Int' },
-        owner: { kind: 'object', type: 'User' },
+        owner: { kind: 'object', type: 'Contact' },
+        contracts: { kind: 'object', type: 'Contract', isList: true },
       },
     },
+    Contact: { fields: { email: { kind: 'scalar', type: 'String' } } },
+    Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
   },
 };
 const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
@@ -260,6 +263,31 @@ describe('useRuleBuilder — branch facets (a to-one relation as a scoped group)
     const values = inner.field?.options.map((o) => o.value) ?? [];
     expect(values).toContain('account.industry');
     expect(values).toContain('account.arr');
+    // nested branch: a to-one inside the branch is descended, its leaves flattened.
+    expect(values).toContain('account.owner.email');
+    // a to-one relation itself is not a pickable value.
     expect(values).not.toContain('account.owner');
+    // a list inside the branch is offered (it builds a nested array node).
+    expect(values).toContain('account.contracts');
+  });
+
+  test('picking a list inside a branch builds a nested array node', () => {
+    const defaultValue: Condition = {
+      all: [{ all: [{ field: 'account.industry', operator: 'equals', value: 'tech' }] }],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: branchSource, decoration, defaultValue }),
+    );
+    const group = asGroupNode(rootGroup(result.current).children[0]);
+    const inner = group.children[0] as LeafNode;
+    const contracts = inner.field?.options.find((o) => o.value === 'account.contracts');
+    if (!contracts) throw new Error('nested list not offered in branch');
+    act(() => inner.field?.set('account.contracts'));
+    const emitted = (result.current.value as { all: [{ all: [Condition] }] }).all[0].all[0] as {
+      field: string;
+      arrayOperator: string;
+    };
+    expect(emitted.field).toBe('account.contracts');
+    expect(emitted.arrayOperator).toBeDefined();
   });
 });
