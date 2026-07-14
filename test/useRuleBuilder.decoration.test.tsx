@@ -54,8 +54,19 @@ describe('useRuleBuilder — view (hoisted roots)', () => {
     const option = leaf.field.options.find((o) => o.value === 'salesforce:Contact.arr');
     expect(option).toBeDefined();
     expect(option?.label).toBe('Annual Revenue');
+    expect(option?.icon).toBe('💰'); // the icon reaches the picker menu, not just the collapsed node
     // the anchor model's own field is still offered — additive, not a replace.
     expect(leaf.field.options.some((o) => o.value === 'tier')).toBe(true);
+  });
+
+  test('a facet icon rides onto the collapsed node after selection', () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source, decoration: view, defaultValue: seed }),
+    );
+    const leaf = rootGroup(result.current).children[0] as LeafNode;
+    act(() => leaf.field.set('salesforce:Contact.arr'));
+    const selected = rootGroup(result.current).children[0] as LeafNode;
+    expect(selected.hoist?.icon).toBe('💰');
   });
 
   test('selecting a hoisted root emits the real dotted path as the rule field', () => {

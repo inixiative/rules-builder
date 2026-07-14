@@ -31,7 +31,7 @@ import {
   ruleForField,
 } from './nodes';
 
-export type PickOption = { value: string; label: string };
+export type PickOption = { value: string; label: string; icon?: string };
 
 export type FieldControl = {
   value?: string;
@@ -291,6 +291,7 @@ const buildLeaf = (
       options: selectableFields(scope.fields).map((f) => ({
         value: f.name,
         label: f.label,
+        icon: f.icon,
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
@@ -441,6 +442,7 @@ const buildArray = (
       options: selectableFields(scope.fields).map((f) => ({
         value: f.name,
         label: f.label,
+        icon: f.icon,
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
