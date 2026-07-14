@@ -56,6 +56,8 @@ export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): L
 export type BuilderField = {
   name: string;
   label: string;
+  /** Optional display glyph, carried from a {@link LensView} hoisted entry. */
+  icon?: string;
   kind: FieldKind;
   isList: boolean;
   relation?: { mapName: string; modelName: string };

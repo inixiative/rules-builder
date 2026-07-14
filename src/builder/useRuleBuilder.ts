@@ -9,6 +9,7 @@ import {
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
+import { type LensView, useHoistedFields, viewSurfaceOptions } from '../schema/lensView';
 import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
@@ -29,6 +30,10 @@ export type UseRuleBuilderOptions = {
   onChange?: (clean: Condition) => void;
   labels?: Record<string, string>;
   valueLabels?: Record<string, Record<string, string>>;
+  /** A display view: hoists pre-traversed lens paths up to the root selector
+   *  (additive) and relabels the surface. Purely presentational — the emitted
+   *  rule and everything the engine runs are unchanged. */
+  view?: LensView;
   /** Max group nesting depth — a group at this depth hides "add group" (`canAddGroup`). Default 4. */
   maxDepth?: number;
 };
@@ -53,14 +58,22 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     () => resolve(opts.source, { sourceValues: opts.sourceValues }),
     [opts.source, opts.sourceValues],
   );
+  const surfaceOpts = useMemo(() => {
+    const fromView = viewSurfaceOptions(opts.view);
+    return {
+      targets: opts.targets,
+      labels: { ...fromView.labels, ...opts.labels },
+      valueLabels: { ...fromView.valueLabels, ...opts.valueLabels },
+    };
+  }, [opts.view, opts.targets, opts.labels, opts.valueLabels]);
+  const anchorFields = useMemo(
+    () => describeModelFields(lens, lens.mapName, lens.model, surfaceOpts),
+    [lens, surfaceOpts],
+  );
+  const hoisted = useHoistedFields(lens, opts.view, surfaceOpts);
   const fields = useMemo(
-    () =>
-      describeModelFields(lens, lens.mapName, lens.model, {
-        targets: opts.targets,
-        labels: opts.labels,
-        valueLabels: opts.valueLabels,
-      }),
-    [lens, opts.targets, opts.labels, opts.valueLabels],
+    () => (hoisted.length ? [...anchorFields, ...hoisted] : anchorFields),
+    [anchorFields, hoisted],
   );
   const maxDepth = opts.maxDepth ?? 4;
 

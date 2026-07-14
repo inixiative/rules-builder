@@ -150,6 +150,40 @@ over its elements:
 `node.condition` and `node.filter` are nested `GroupNode`s scoped to the **related
 model's** surface — author them exactly like the top-level tree.
 
+## Display view — hoisting & relabeling
+
+By default the root selector offers only the anchor model's own fields; to reach
+anything else you traverse relations. A **`view`** pre-traverses for you: it moves
+chosen lens locations *up* to the root selector and relabels them. It is purely
+presentational — the lens stays the source of truth, and a hoisted entry emits its
+real dotted path (bridges included) as the rule's `field`, so nothing the engine
+runs changes.
+
+```ts
+import { useRuleBuilder, type LensView } from '@inixiative/rules-builder';
+
+const view: LensView = {
+  // any path from the anchor, additive to the anchor's own fields.
+  // crosses `map:Model` bridge segments — reach other sources at the root.
+  roots: [
+    { path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' },
+    { path: 'account.industry', label: 'Industry' },
+  ],
+  // relabel keyed structurally (`Model.field`) or by path — path wins on conflict.
+  labels: {
+    fields: { 'account.industry': { label: 'Industry' } },
+    values: { tier: { gold: { label: 'Gold tier' } } },
+  },
+};
+
+useRuleBuilder({ source, view }); // hoisted entries now appear in the root selector
+```
+
+A `roots` entry pointing at a scalar/enum becomes a directly rule-able field
+(operators, enum values, JSON sub-path all resolved from the lens). `describeHoistedFields`
+is the pure function behind it; `viewSurfaceOptions` folds the view's labels into
+the plain surface. Absent `view`, behavior is unchanged.
+
 ## Serialization
 
 A rule loses meaning without its binding. `SavedRule` packages the rule with a

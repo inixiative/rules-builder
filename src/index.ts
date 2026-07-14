@@ -60,8 +60,11 @@ export {
 } from './permissions';
 export type {
   BuilderField,
+  LensDecor,
   LensValueOption,
   LensValuePickerOptions,
+  LensView,
+  LensViewRoot,
   ResolveOptions,
   RuleBuilderSource,
   SourceRows,
@@ -69,12 +72,15 @@ export type {
   SurfaceOptions,
 } from './schema';
 export {
+  describeHoistedFields,
   describeModelFields,
   lensValuePicker,
   resolve,
   runSources,
+  useHoistedFields,
   useLensValuePicker,
   valueShapeForOperator,
+  viewSurfaceOptions,
 } from './schema';
 export type { SavedRule } from './serialize';
 export { parseSavedRule, stringifySavedRule } from './serialize';
