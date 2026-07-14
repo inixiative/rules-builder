@@ -25,18 +25,21 @@ export type Decor = { label?: string; icon?: string };
  *    the leading condition(s), and it is the only thing rehydration reverse-matches
  *    on ("if the first conditions match, this is that facet"). For EAV this is the
  *    `key = 'nps'` that makes the list read as one field "NPS".
- *  - `defaultWhere` — **prefilled but editable**, seeded after the fixed block.
- *    Purely for **array-traversal** (collection) facets — a starting point for
- *    reasoning over the elements. Ignored by leaf and branch facets. Not part of
- *    the identity, so never matched.
+ *  - `defaultWhere` — the **upstream array-traversal layer**: the operators for the
+ *    array boundaries the path crosses *before* it reaches the model the `where`
+ *    sits on. Just a list of {@link ArrayOperator}s (one per preceding boundary),
+ *    each defaulting to `any` (the "contains" semantic) — enough to cross the
+ *    boundaries and get to where the path has traveled to. Collection-only; not
+ *    part of the identity, so never matched.
  *
- * `arrayOperator` defaults to `any`; `kind` overrides an untyped `value` column.
- * Purely presentational — the emitted rule is exactly what the engine runs.
+ * `arrayOperator` is the operator of the **destination** boundary (the one whose
+ * element holds the `where` + value), default `any`; `kind` overrides an untyped
+ * `value` column. Purely presentational — the emitted rule is what the engine runs.
  */
 export type Facet = {
   path: string;
   where?: Condition;
-  defaultWhere?: Condition;
+  defaultWhere?: ArrayOperator[];
   arrayOperator?: ArrayOperator;
   kind?: FieldKind;
 } & Decor;
@@ -209,9 +212,19 @@ export const facetElementLeaf = (
     : leaf;
 };
 
-/** The number of leading condition children a rehydrated facet's fixed `where`
- *  occupies — a renderer hides exactly this many. */
-export const facetLockedLeading = (facet: Facet): number => whereConditions(facet.where).length;
+/** How many of a matched `node`'s leading conditions are the facet's fixed `where`
+ *  (0 when it isn't at this node — e.g. an upstream traversal node whose `where`
+ *  lives deeper). A renderer hides exactly this many. Reads an array node's
+ *  `condition.all` or a group's own `all`/`any`. */
+export const leadingWhereCount = (facet: Facet, node: Condition): number => {
+  const lead = whereConditions(facet.where);
+  if (lead.length === 0) return 0;
+  const rec = node as { condition?: Condition; all?: Condition[]; any?: Condition[] };
+  const conds = rec.condition
+    ? ((rec.condition as { all?: Condition[] }).all ?? [])
+    : (rec.all ?? rec.any ?? []);
+  return isLeadingPrefix(lead, conds) ? lead.length : 0;
+};
 
 /**
  * The field surface a branch facet's group is authored against, each re-`name`d to
@@ -278,21 +291,77 @@ const branchSeed = (
   return { all } as Condition;
 };
 
-/**
- * Build the inner content of a collection's `condition` from the segments after
- * its outer list. Walking `segments` from `(mapName, modelName)`: a further *list*
- * becomes a **nested array node** (recursing into its elements), so a two-list
- * path like `orders.items.sku` seeds `orders any (items any (sku …))` — a flat
- * `items.sku` would silently mis-evaluate. A scalar leaf (possibly via to-one
- * hops) becomes the value rule, retyped by `kind`. Returns `null` for a whole
- * collection (no remainder).
- */
-const collectionInner = (
+/** Whether a path from `(mapName, modelName)` crosses a list relation. */
+const pathHasList = (
+  lens: Lens,
+  mapName: string,
+  modelName: string,
+  segments: string[],
+): boolean => {
+  let m = mapName;
+  let mod = modelName;
+  for (const seg of segments) {
+    const entry = lens.maps[m]?.models[mod]?.fields[seg];
+    if (!entry) return false;
+    if (entry.isList) return true;
+    const target = relationTarget(entry, m);
+    if (!target) return false;
+    m = target.mapName;
+    mod = target.modelName;
+  }
+  return false;
+};
+
+/** The value rule at the end of a to-one-only path within an element model. */
+const leafRuleAt = (
   lens: Lens,
   mapName: string,
   modelName: string,
   segments: string[],
   kind: FieldKind | undefined,
+  opts: SurfaceOptions,
+): Condition | null => {
+  let m = mapName;
+  let mod = modelName;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const entry = lens.maps[m]?.models[mod]?.fields[segments[i]];
+    const target = entry && relationTarget(entry, m);
+    if (!target) return null;
+    m = target.mapName;
+    mod = target.modelName;
+  }
+  const found = describeModelFields(lens, m, mod, opts).find(
+    (f) => f.name === segments[segments.length - 1],
+  );
+  if (!found) return null;
+  const leaf: BuilderField = {
+    ...found,
+    name: segments.join('.'),
+    ...(kind ? { kind, operators: operatorsForKind(kind, opts.targets) } : {}),
+  };
+  return ruleForField(leaf);
+};
+
+/**
+ * Build the array-node structure for a collection path. Each list boundary the
+ * path crosses becomes an array node; the boundaries *before* the destination
+ * (the last list, whose element holds the `where` + value) are the upstream
+ * traversal layer — their operators come from `defaultWhere` in order, defaulting
+ * to `any`. The destination uses `arrayOp` and carries the fixed `where` and the
+ * value leaf. So `orders.customFields.value` with `where key=nps` seeds
+ * `orders any ( customFields <op> ( key=nps AND value ) )` — the `where` lands on
+ * the model whose fields it actually references, not the outer list.
+ */
+const buildCollection = (
+  lens: Lens,
+  mapName: string,
+  modelName: string,
+  segments: string[],
+  defaultOps: ArrayOperator[],
+  opIndex: { i: number },
+  where: Condition | undefined,
+  kind: FieldKind | undefined,
+  arrayOp: ArrayOperator,
   opts: SurfaceOptions,
 ): Condition | null => {
   let m = mapName;
@@ -303,29 +372,36 @@ const collectionInner = (
     if (entry.isList) {
       const target = relationTarget(entry, m);
       if (!target) return null;
-      const inner = collectionInner(
-        lens,
-        target.mapName,
-        target.modelName,
-        segments.slice(i + 1),
-        kind,
-        opts,
-      );
+      const listField = segments.slice(0, i + 1).join('.');
+      const rest = segments.slice(i + 1);
+      if (pathHasList(lens, target.mapName, target.modelName, rest)) {
+        const op = defaultOps[opIndex.i++] ?? 'any';
+        const inner = buildCollection(
+          lens,
+          target.mapName,
+          target.modelName,
+          rest,
+          defaultOps,
+          opIndex,
+          where,
+          kind,
+          arrayOp,
+          opts,
+        );
+        return {
+          field: listField,
+          arrayOperator: op,
+          condition: { all: inner ? [inner] : [] },
+        } as Condition;
+      }
+      const leaf = rest.length
+        ? leafRuleAt(lens, target.mapName, target.modelName, rest, kind, opts)
+        : null;
       return {
-        field: segments.slice(0, i + 1).join('.'),
-        arrayOperator: 'any',
-        condition: { all: inner ? [inner] : [] },
+        field: listField,
+        arrayOperator: arrayOp,
+        condition: { all: [...whereConditions(where), ...(leaf ? [leaf] : [])] },
       } as Condition;
-    }
-    if (i === segments.length - 1) {
-      const found = describeModelFields(lens, m, mod, opts).find((f) => f.name === segments[i]);
-      if (!found) return null;
-      const leaf: BuilderField = {
-        ...found,
-        name: segments.join('.'),
-        ...(kind ? { kind, operators: operatorsForKind(kind, opts.targets) } : {}),
-      };
-      return ruleForField(leaf);
     }
     const target = relationTarget(entry, m);
     if (!target) return null;
@@ -335,33 +411,24 @@ const collectionInner = (
   return null;
 };
 
-const collectionSeed = (
-  lens: Lens,
-  facet: Facet,
-  resolved: CollectionResolved,
-  opts: SurfaceOptions,
-): Condition => {
-  const inner = resolved.elementLeaf
-    ? collectionInner(
-        lens,
-        resolved.target.mapName,
-        resolved.target.modelName,
-        resolved.elementLeaf.split('.'),
-        facet.kind,
-        opts,
-      )
-    : null;
-  const all = [
-    ...whereConditions(facet.where),
-    ...whereConditions(facet.defaultWhere),
-    ...(inner ? [inner] : []),
-  ];
-  return {
-    field: resolved.listPath,
+const collectionSeed = (lens: Lens, facet: Facet, opts: SurfaceOptions): Condition =>
+  buildCollection(
+    lens,
+    lens.mapName,
+    lens.model,
+    facet.path.split('.'),
+    facet.defaultWhere ?? [],
+    { i: 0 },
+    facet.where,
+    facet.kind,
+    facet.arrayOperator ?? 'any',
+    opts,
+  ) ??
+  ({
+    field: facet.path,
     arrayOperator: facet.arrayOperator ?? 'any',
-    condition: { all },
-  } as Condition;
-};
+    condition: { all: [] },
+  } as Condition);
 
 /**
  * Resolve a decoration's `facets` into `BuilderField`s to concat onto the anchor
@@ -410,7 +477,7 @@ export const describeFacets = (
       isBridge: false,
       relation: isWhole ? resolved.target : undefined,
       operators: { field: [], date: [], array: [] },
-      seed: collectionSeed(lens, facet, resolved, opts),
+      seed: collectionSeed(lens, facet, opts),
     });
     if (!isWhole && !resolverFor.has(resolved.listPath)) {
       resolverFor.add(resolved.listPath);
@@ -492,10 +559,20 @@ export const matchFacet = (
       continue;
     }
     if (rec.field !== resolved.listPath) continue;
-    if (rec.arrayOperator !== (facet.arrayOperator ?? 'any')) continue;
+    // Descend the upstream traversal nodes (each a single nested array child) to
+    // the destination, where the fixed `where` and value sit.
+    let dest = rec;
+    while (true) {
+      const cs = (dest.condition as { all?: Condition[] } | undefined)?.all;
+      if (cs?.length === 1 && cs[0] && typeof cs[0] === 'object' && 'arrayOperator' in cs[0]) {
+        dest = cs[0] as typeof rec;
+      } else break;
+    }
+    if (dest.arrayOperator !== (facet.arrayOperator ?? 'any')) continue;
     const lead = whereConditions(facet.where);
     if (lead.length === 0) return facet;
-    if (isLeadingPrefix(lead, whereConditions(rec.condition))) return facet;
+    const destConds = (dest.condition as { all?: Condition[] } | undefined)?.all ?? [];
+    if (isLeadingPrefix(lead, destConds)) return facet;
   }
   return undefined;
 };

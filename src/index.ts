@@ -80,7 +80,7 @@ export {
   facetBranchScope,
   facetElementLeaf,
   facetId,
-  facetLockedLeading,
+  leadingWhereCount,
   lensValuePicker,
   matchFacet,
   resolve,

@@ -7,7 +7,7 @@ export {
   facetBranchScope,
   facetElementLeaf,
   facetId,
-  facetLockedLeading,
+  leadingWhereCount,
   matchFacet,
   useFacetFields,
   validateDecoration,

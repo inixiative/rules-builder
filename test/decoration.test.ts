@@ -130,6 +130,7 @@ const eav = exposedSurface(
             fields: {
               total: { kind: 'scalar', type: 'Int' },
               items: { kind: 'object', type: 'Item', isList: true },
+              customFields: { kind: 'object', type: 'CustomField', isList: true },
             },
           },
           Item: { fields: { sku: { kind: 'scalar', type: 'String' } } },
@@ -160,13 +161,12 @@ describe('describeFacets — collection facets', () => {
     });
   });
 
-  test('the fixed `where` leads the condition block; `defaultWhere` + value follow', () => {
+  test('single boundary: the fixed `where` leads the destination condition, value follows', () => {
     const [f] = describeFacets(eav, {
       facets: [
         {
           path: 'customFields.value',
           where: { field: 'key', operator: 'equals', value: 'nps' },
-          defaultWhere: { field: 'status', operator: 'equals', value: 'active' },
           kind: 'Int',
           label: 'NPS',
         },
@@ -174,10 +174,54 @@ describe('describeFacets — collection facets', () => {
     });
     const seed = f.seed as { condition: { all: Condition[] }; filter?: unknown };
     expect(seed.condition.all[0]).toMatchObject({ field: 'key', value: 'nps' });
-    expect(seed.condition.all[1]).toMatchObject({ field: 'status', value: 'active' });
-    expect(seed.condition.all[2]).toMatchObject({ field: 'value' });
-    // no window filter any more — the fixed where is a leading condition.
+    expect(seed.condition.all[1]).toMatchObject({ field: 'value' });
+    // no window filter — the fixed where is a leading condition.
     expect(seed.filter).toBeUndefined();
+  });
+
+  test('multi boundary: defaultWhere sets the upstream traversal ops; the where lands at the destination model', () => {
+    const [f] = describeFacets(eav, {
+      facets: [
+        {
+          path: 'orders.customFields.value',
+          where: { field: 'key', operator: 'equals', value: 'nps' },
+          defaultWhere: ['all'], // the upstream `orders` boundary
+          arrayOperator: 'any', // the destination `customFields` boundary
+          kind: 'Int',
+          label: 'NPS across orders',
+        },
+      ],
+    });
+    // outer = the upstream traversal `orders`, crossed with the given `all`.
+    const seed = f.seed as {
+      field: string;
+      arrayOperator: string;
+      condition: { all: Condition[] };
+    };
+    expect(seed.field).toBe('orders');
+    expect(seed.arrayOperator).toBe('all');
+    // its single child is the destination `customFields` node, where the where sits.
+    const dest = seed.condition.all[0] as {
+      field: string;
+      arrayOperator: string;
+      condition: { all: Condition[] };
+    };
+    expect(dest.field).toBe('customFields');
+    expect(dest.arrayOperator).toBe('any');
+    expect(dest.condition.all[0]).toMatchObject({ field: 'key', value: 'nps' });
+    expect(dest.condition.all[1]).toMatchObject({ field: 'value' });
+  });
+
+  test('the upstream traversal defaults to `any` when defaultWhere is omitted', () => {
+    const [f] = describeFacets(eav, {
+      facets: [
+        {
+          path: 'orders.customFields.value',
+          where: { field: 'key', operator: 'equals', value: 'nps' },
+        },
+      ],
+    });
+    expect((f.seed as { arrayOperator: string }).arrayOperator).toBe('any');
   });
 
   test('the seeded fixed-where node evaluates as "the NPS element > 5"', () => {
@@ -281,6 +325,40 @@ describe('consumedTopFields / matchFacet', () => {
       },
     } as Condition;
     expect(matchFacet(eav, npsDecoration, node)?.label).toBe('NPS');
+  });
+
+  test('recognizes a multi-boundary saved node by descending to the destination where', () => {
+    const decoration: Decoration = {
+      facets: [
+        {
+          path: 'orders.customFields.value',
+          where: { field: 'key', operator: 'equals', value: 'nps' },
+          kind: 'Int',
+          label: 'NPS across orders',
+        },
+      ],
+    };
+    const [f] = describeFacets(eav, decoration);
+    // round-trip the emitted seed: it should collapse back to its facet.
+    expect(matchFacet(eav, decoration, f.seed as Condition)?.label).toBe('NPS across orders');
+    // and it evaluates as "some order has an nps custom field > 5".
+    const seed = f.seed as { condition: { all: [{ condition: { all: [Condition, Condition] } }] } };
+    const dest = seed.condition.all[0];
+    const rule = {
+      ...(f.seed as object),
+      condition: {
+        all: [
+          {
+            ...dest,
+            condition: {
+              all: [dest.condition.all[0], { field: 'value', operator: 'greaterThan', value: 5 }],
+            },
+          },
+        ],
+      },
+    } as Condition;
+    expect(check(rule, { orders: [{ customFields: [{ key: 'nps', value: 9 }] }] })).toBe(true);
+    expect(check(rule, { orders: [{ customFields: [{ key: 'nps', value: 1 }] }] })).not.toBe(true);
   });
 
   test('a different leading where is not the NPS facet', () => {

@@ -14,7 +14,7 @@ import {
   facetBranchScope,
   facetElementLeaf,
   facetId,
-  facetLockedLeading,
+  leadingWhereCount,
   matchFacet,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
@@ -436,7 +436,7 @@ const buildArray = (
           icon: matchedFacet.icon,
         }
       : undefined,
-    lockedLeading: matchedFacet ? facetLockedLeading(matchedFacet) || undefined : undefined,
+    lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
     arrayOperator: {
       value: op,
       options: (field?.operators.array ?? []).map((o) => ({
@@ -515,7 +515,8 @@ const buildGroup = (
     addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
     canAddGroup: depth < ctx.maxDepth,
     hoist: branchHoist,
-    lockedLeading: branchFacet && branch ? facetLockedLeading(branchFacet) || undefined : undefined,
+    lockedLeading:
+      branchFacet && branch ? leadingWhereCount(branchFacet, node) || undefined : undefined,
     remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
   };
 };

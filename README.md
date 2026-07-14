@@ -196,13 +196,15 @@ is fine):
 
 ### Two `where`s
 
-A facet can carry two authored filters — kept distinct because only one is
-identity:
+A collection facet carries two things, kept distinct because only one is identity:
 
-- **`where`** — **fixed, non-editable**: the facet's identity. It is prepended as
-  the **leading condition(s)** and is the *only* thing rehydration matches on.
-- **`defaultWhere`** — **prefilled but editable**: an array-traversal starting
-  point, seeded after the fixed block. Not identity, never matched.
+- **`where`** — **fixed, non-editable**: the facet's identity. It sits on the model
+  its fields reference (the **destination** the path travels to) as the leading
+  condition(s), and is the *only* thing rehydration matches on.
+- **`defaultWhere`** — the **upstream traversal layer**: a list of `ArrayOperator`s,
+  one per array boundary the path crosses *before* the destination, each defaulting
+  to `any` (the "contains" semantic). Just enough to cross the boundaries and get to
+  where the `where` sits. Not identity, never matched.
 
 ```ts
 const decoration: Decoration = {
@@ -210,16 +212,21 @@ const decoration: Decoration = {
     // "NPS" = customFields where key='nps', reasoning over `value` as a number.
     { path: 'customFields.value', label: 'NPS', kind: 'Int',
       where: { field: 'key', operator: 'equals', value: 'nps' } },
+    // NPS across a user's orders — one boundary (`orders`) precedes the destination.
+    { path: 'orders.customFields.value', label: 'NPS across orders', kind: 'Int',
+      where: { field: 'key', operator: 'equals', value: 'nps' }, defaultWhere: ['any'] },
     { path: 'orders', label: 'Orders' }, // whole collection
   ],
 };
 ```
 
-Selecting "NPS" seeds `{ field: 'customFields', arrayOperator: 'any', condition: { all: [ {key='nps'}, {value …} ] } }`
-— `any(key=nps AND value…)` is exactly "the NPS element matches." `arrayOperator`
-defaults to `any` and is **editable but hidden** (`arrayOperator.hidden`), revealed
-behind an "advanced" affordance so the common case reads as one clean field. `kind`
-retypes an untyped EAV `value` column so its operators are right.
+Selecting "NPS" seeds `customFields any ( key='nps' AND value … )` — `any(key=nps AND value…)`
+is exactly "the NPS element matches." The multi-boundary one seeds
+`orders any ( customFields any ( key='nps' AND value … ) )` — the upstream `orders`
+crossing comes from `defaultWhere`, and the `where` lands on `CustomField`, whose
+fields it actually references. The **destination** `arrayOperator` defaults to `any`
+and is **editable but hidden** (`arrayOperator.hidden`); `kind` retypes an untyped
+EAV `value` column so its operators are right.
 
 **Move, not copy.** A facet that consumes a top-level field *wholesale* (a bare
 relation, no `where`, no deeper leaf) is removed from the root selector — a thing
