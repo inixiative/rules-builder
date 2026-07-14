@@ -9,7 +9,12 @@ import {
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripMeta, trimEmptyGroups, withIds } from '../core/decorate';
-import { type LensView, useHoistedFields, viewSurfaceOptions } from '../schema/lensView';
+import {
+  type LensView,
+  useHoistedFields,
+  viewConsumedTopFields,
+  viewSurfaceOptions,
+} from '../schema/lensView';
 import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
@@ -66,10 +71,11 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
       valueLabels: { ...fromView.valueLabels, ...opts.valueLabels },
     };
   }, [opts.view, opts.targets, opts.labels, opts.valueLabels]);
-  const anchorFields = useMemo(
-    () => describeModelFields(lens, lens.mapName, lens.model, surfaceOpts),
-    [lens, surfaceOpts],
-  );
+  const anchorFields = useMemo(() => {
+    const all = describeModelFields(lens, lens.mapName, lens.model, surfaceOpts);
+    const consumed = viewConsumedTopFields(opts.view);
+    return consumed.size ? all.filter((f) => !consumed.has(f.name)) : all;
+  }, [lens, surfaceOpts, opts.view]);
   const hoisted = useHoistedFields(lens, opts.view, surfaceOpts);
   const fields = useMemo(
     () => (hoisted.length ? [...anchorFields, ...hoisted] : anchorFields),

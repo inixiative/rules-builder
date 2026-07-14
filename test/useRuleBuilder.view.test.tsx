@@ -79,3 +79,68 @@ describe('useRuleBuilder — view (hoisted roots)', () => {
     expect(leaf.valid).toBe(true);
   });
 });
+
+const eavMap: FieldMap = {
+  models: {
+    User: {
+      fields: {
+        tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
+        customFields: { kind: 'object', type: 'CustomField', isList: true },
+      },
+    },
+    CustomField: {
+      fields: {
+        key: { kind: 'scalar', type: 'String' },
+        value: { kind: 'scalar', type: 'String' },
+      },
+    },
+  },
+};
+const eavSource = { maps: { app: eavMap }, mapName: 'app', model: 'User' };
+const npsView: LensView = {
+  roots: [
+    {
+      path: 'customFields.value',
+      slice: { field: 'key', operator: 'equals', value: 'nps' },
+      kind: 'Int',
+      label: 'NPS',
+    },
+  ],
+};
+
+describe('useRuleBuilder — collection & sliced hoists', () => {
+  test('selecting a sliced hoist seeds a locked-filter array node reasoning over the value', () => {
+    const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, view: npsView, defaultValue: seed }),
+    );
+    const row = rootGroup(result.current).children[0] as LeafNode;
+    const npsOption = row.field.options.find((o) => o.label === 'NPS');
+    if (!npsOption) throw new Error('NPS option not offered');
+    act(() => row.field.set(npsOption.value));
+    const node = (result.current.value as { all: Condition[] }).all[0] as {
+      field: string;
+      arrayOperator: string;
+      filter: unknown;
+    };
+    expect(node.field).toBe('customFields');
+    expect(node.arrayOperator).toBe('any');
+    expect(node.filter).toMatchObject({
+      all: [{ field: 'key', operator: 'equals', value: 'nps' }],
+    });
+  });
+
+  test('a wholesale-hoisted top relation is removed from the root selector (move, not copy)', () => {
+    const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
+    const view: LensView = { roots: [{ path: 'customFields', label: 'Enrichments' }] };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, view, defaultValue: seed }),
+    );
+    const row = rootGroup(result.current).children[0] as LeafNode;
+    const values = row.field.options.map((o) => o.value);
+    // the hoisted "Enrichments" entry is present; the raw `customFields` is gone.
+    expect(values).toContain('customFields'); // the hoist's own id is the path
+    expect(row.field.options.filter((o) => o.value === 'customFields')).toHaveLength(1);
+    expect(row.field.options.find((o) => o.value === 'customFields')?.label).toBe('Enrichments');
+  });
+});

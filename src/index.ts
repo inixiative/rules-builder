@@ -75,11 +75,13 @@ export {
   describeHoistedFields,
   describeModelFields,
   lensValuePicker,
+  matchNodeToRoot,
   resolve,
   runSources,
   useHoistedFields,
   useLensValuePicker,
   valueShapeForOperator,
+  viewConsumedTopFields,
   viewSurfaceOptions,
 } from './schema';
 export type { SavedRule } from './serialize';

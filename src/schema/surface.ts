@@ -63,6 +63,10 @@ export type BuilderField = {
   relation?: { mapName: string; modelName: string };
   isBridge: boolean;
   operators: { field: Operator[]; date: DateOperator[]; array: ArrayOperator[] };
+  /** A hoisted collection entry seeds this whole `Condition` on select (an array
+   *  node with a pre-filled slice/operator) instead of the default `{field}` rule.
+   *  Set by {@link LensView}; absent for ordinary and leaf-hoisted fields. */
+  seed?: import('@inixiative/json-rules').Condition;
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
   /** Human-readable labels for enum/sourced option values (value → label). */
@@ -141,6 +145,17 @@ const mergeOptionLabels = (
   const merged = { ...fromOptions, ...overrides };
   return Object.keys(merged).length ? merged : undefined;
 };
+
+/** The operator sets a non-relation field of `kind` offers, intersected across
+ *  `targets`. Exposed so a hoist can recompute them when it overrides a leaf's
+ *  kind (e.g. an untyped EAV `value` column declared as `Int`). */
+export const operatorsForKind = (
+  kind: FieldKind,
+  targets?: RuleTarget[],
+): BuilderField['operators'] => ({
+  ...fieldAndDateOperators(kind, targets),
+  array: [] as ArrayOperator[],
+});
 
 export const describeModelFields = (
   lens: Lens,

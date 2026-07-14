@@ -1,6 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { type Bridge, createLens, exposedSurface, type FieldMap } from '@inixiative/json-rules';
-import { describeHoistedFields, type LensView } from '../src/schema/lensView';
+import {
+  type Bridge,
+  type Condition,
+  check,
+  createLens,
+  exposedSurface,
+  type FieldMap,
+} from '@inixiative/json-rules';
+import {
+  describeHoistedFields,
+  type LensView,
+  matchNodeToRoot,
+  viewConsumedTopFields,
+} from '../src/schema/lensView';
 
 const prisma: FieldMap = {
   models: {
@@ -107,22 +119,147 @@ describe('describeHoistedFields', () => {
     });
     expect(out).toEqual([]);
   });
+});
 
-  test('drops a path that crosses a list relation — a scalar hoist would silently mis-evaluate', () => {
-    const withList = exposedSurface(
-      createLens({
-        maps: {
-          prisma: {
-            models: {
-              User: { fields: { orders: { kind: 'object', type: 'Order', isList: true } } },
-              Order: { fields: { total: { kind: 'scalar', type: 'Int' } } },
+const eav = exposedSurface(
+  createLens({
+    maps: {
+      prisma: {
+        models: {
+          User: {
+            fields: {
+              orders: { kind: 'object', type: 'Order', isList: true },
+              customFields: { kind: 'object', type: 'CustomField', isList: true },
+            },
+          },
+          Order: { fields: { total: { kind: 'scalar', type: 'Int' } } },
+          CustomField: {
+            fields: {
+              key: { kind: 'scalar', type: 'String' },
+              value: { kind: 'scalar', type: 'String' },
             },
           },
         },
-        mapName: 'prisma',
-        model: 'User',
+      },
+    },
+    mapName: 'prisma',
+    model: 'User',
+  }),
+);
+
+describe('describeHoistedFields — collection hoists', () => {
+  test('a list-crossing path seeds an array node (never a broken flat leaf)', () => {
+    const [f] = describeHoistedFields(eav, {
+      roots: [{ path: 'orders.total', label: 'Order total' }],
+    });
+    expect(f.label).toBe('Order total');
+    expect(f.isList).toBe(true);
+    expect(f.seed).toMatchObject({
+      field: 'orders',
+      arrayOperator: 'any',
+      condition: { all: [{ field: 'total' }] },
+    });
+    expect((f.seed as { filter?: unknown }).filter).toBeUndefined();
+  });
+
+  test('a sliced hoist bakes the slice into a locked filter and reasons over the value leaf', () => {
+    const [f] = describeHoistedFields(eav, {
+      roots: [
+        {
+          path: 'customFields.value',
+          slice: { field: 'key', operator: 'equals', value: 'nps' },
+          kind: 'Int',
+          label: 'NPS',
+          icon: '📊',
+        },
+      ],
+    });
+    expect(f.label).toBe('NPS');
+    expect(f.icon).toBe('📊');
+    expect(f.seed).toMatchObject({
+      field: 'customFields',
+      arrayOperator: 'any',
+      filter: { all: [{ field: 'key', operator: 'equals', value: 'nps' }] },
+    });
+    // kind override gives the value leaf numeric operators.
+    const cond = (f.seed as { condition: { all: { operator: string }[] } }).condition;
+    expect(cond.all[0]).toMatchObject({ field: 'value' });
+  });
+
+  test('the seeded sliced node evaluates correctly against real data', () => {
+    const [f] = describeHoistedFields(eav, {
+      roots: [
+        {
+          path: 'customFields.value',
+          slice: { field: 'key', operator: 'equals', value: 'nps' },
+          kind: 'Int',
+        },
+      ],
+    });
+    const seed = f.seed as Condition;
+    const rule = {
+      ...seed,
+      condition: { all: [{ field: 'value', operator: 'greaterThan', value: 5 }] },
+    } as Condition;
+    expect(
+      check(rule, {
+        customFields: [
+          { key: 'nps', value: 9 },
+          { key: 'tier', value: 1 },
+        ],
       }),
-    );
-    expect(describeHoistedFields(withList, { roots: [{ path: 'orders.total' }] })).toEqual([]);
+    ).toBe(true);
+    expect(check(rule, { customFields: [{ key: 'nps', value: 3 }] })).not.toBe(true);
+  });
+
+  test('defers a list not on the anchor (to-one → list is out of the single-hop envelope)', () => {
+    expect(describeHoistedFields(eav, { roots: [{ path: 'account.orders.total' }] })).toEqual([]);
+  });
+});
+
+describe('viewConsumedTopFields — move, not copy', () => {
+  test('a whole-relation hoist consumes its top field; sliced/deep hoists leave the origin', () => {
+    const consumed = viewConsumedTopFields({
+      roots: [
+        { path: 'orders' }, // whole → consumed
+        { path: 'orders.total' }, // deep leaf → leaves orders
+        { path: 'customFields.value', slice: { field: 'key', operator: 'equals', value: 'x' } }, // sliced → leaves
+      ],
+    });
+    expect([...consumed]).toEqual(['orders']);
+  });
+});
+
+describe('matchNodeToRoot — round-trip', () => {
+  const view: LensView = {
+    roots: [
+      { path: 'tier' },
+      {
+        path: 'customFields.value',
+        slice: { field: 'key', operator: 'equals', value: 'nps' },
+        kind: 'Int',
+        label: 'NPS',
+      },
+    ],
+  };
+
+  test('recognizes a saved sliced array node as its named root', () => {
+    const node = {
+      field: 'customFields',
+      arrayOperator: 'any',
+      filter: { all: [{ field: 'key', operator: 'equals', value: 'nps' }] },
+      condition: { all: [{ field: 'value', operator: 'greaterThan', value: 5 }] },
+    } as Condition;
+    expect(matchNodeToRoot(eav, view, node)?.label).toBe('NPS');
+  });
+
+  test('does not match a different slice of the same relation', () => {
+    const node = {
+      field: 'customFields',
+      arrayOperator: 'any',
+      filter: { all: [{ field: 'key', operator: 'equals', value: 'tier' }] },
+      condition: { all: [{ field: 'value', operator: 'equals', value: 'gold' }] },
+    } as Condition;
+    expect(matchNodeToRoot(eav, view, node)).toBeUndefined();
   });
 });
