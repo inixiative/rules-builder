@@ -1,4 +1,10 @@
-import type { ArrayOperator, Condition, FieldKind, Lens } from '@inixiative/json-rules';
+import {
+  type ArrayOperator,
+  type Condition,
+  checkRuleAgainstLens,
+  type FieldKind,
+  type Lens,
+} from '@inixiative/json-rules';
 import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
 import {
@@ -12,15 +18,16 @@ import {
 export type Decor = { label?: string; icon?: string };
 
 /**
- * A pre-traversed entry point moved up to the builder's root selector.
+ * A named entry moved up to the builder's root selector. Two forms:
  *
- * `path` is dotted from the lens anchor and may traverse any number of to-one
- * relations (including `map:Model` bridges). Its shape decides the facet kind:
+ * **Path facet** — a pre-traversed entry point. `path` is dotted from the lens
+ * anchor and may traverse any number of to-one relations (including `map:Model`
+ * bridges). Its shape decides the kind:
  *  - reaches a scalar/enum through only to-one hops → a **leaf**: `{ field: path }`.
  *  - crosses a *list* relation → a **collection**: a top-level array node (a
  *    scalar operator over a list path silently mis-evaluates, so it must be a node).
  *
- * Two distinct pieces, both authored:
+ * Plus, on a path facet:
  *  - `where` — **fixed**, non-editable, the facet's *identity*. It sits on the model
  *    its fields reference (where the path travels to), as the leading condition(s),
  *    and it is the only thing rehydration reverse-matches on. For EAV this is the
@@ -28,18 +35,29 @@ export type Decor = { label?: string; icon?: string };
  *  - `defaultWhere` — the **array-traversal layer**: one {@link ArrayOperator} per
  *    array boundary the path crosses to reach that model. Its length must equal the
  *    path's array-traversal count ({@link validateDecoration} enforces it); each
- *    defaults to `any` (the "contains" semantic). Editable defaults, not identity —
- *    never matched.
+ *    defaults to `any` (the "contains" semantic). Editable defaults, not identity.
+ *  - `kind` overrides an untyped `value` column.
  *
- * `kind` overrides an untyped `value` column. Purely presentational — the emitted
- * rule is exactly what the engine runs.
+ * **Preset facet** — `condition` instead of `path`: a named alias for a *complete*
+ * pre-authored `Condition` (e.g. "Mature" = arr > 1M AND employees > 500 AND …).
+ * Selecting it drops the whole condition in as one **atomic** node — no field,
+ * operator, or value pickers; it just *is* a rule. A saved node equal to the
+ * condition collapses back to the name.
+ *
+ * Purely presentational — the emitted rule is exactly what the engine runs.
  */
 export type Facet = {
-  path: string;
+  path?: string;
   where?: Condition;
   defaultWhere?: ArrayOperator[];
   kind?: FieldKind;
+  /** A preset: the complete pre-authored condition this facet aliases. When set,
+   *  `path` and the traversal fields are ignored. */
+  condition?: Condition;
 } & Decor;
+
+/** A preset facet aliases a whole pre-authored condition (atomic; no pickers). */
+export const isPreset = (facet: Facet): boolean => facet.condition !== undefined;
 
 /**
  * A display decoration over a lens: hoisted facets plus structural/path
@@ -87,7 +105,8 @@ const RELATION_KINDS = new Set(['object', 'bridge']);
  * remainder as the element leaf. Returns `undefined` — the facet is dropped — for
  * an unresolvable path or a bare relation leaf (not a value).
  */
-const resolvePath = (lens: Lens, path: string): Resolved | undefined => {
+const resolvePath = (lens: Lens, path: string | undefined): Resolved | undefined => {
+  if (!path) return undefined;
   const segments = path.split('.');
   let mapName = lens.mapName;
   let modelName = lens.model;
@@ -162,8 +181,12 @@ export const relabelRelations = (
  *  folds in (it is identity); `defaultWhere` is editable, so it never does. The
  *  `where` is canonicalized (like every comparison here) so key order doesn't
  *  yield different ids for structurally identical wheres. */
-export const facetId = (facet: Facet): string =>
-  facet.where ? `${facet.path}#${JSON.stringify(canonical(facet.where))}` : facet.path;
+export const facetId = (facet: Facet): string => {
+  if (facet.condition !== undefined) return `#preset:${JSON.stringify(canonical(facet.condition))}`;
+  return facet.where
+    ? `${facet.path}#${JSON.stringify(canonical(facet.where))}`
+    : (facet.path ?? '');
+};
 
 // A rehydrated node carries metadata the authored `where` never has (coerceType
 // from stampCoercions, _id/_groupId from the tree). Strip it and sort keys so the
@@ -196,6 +219,7 @@ const buildLeafField = (
   fieldDecor: Record<string, Decor> | undefined,
   opts: SurfaceOptions,
 ): BuilderField | undefined => {
+  if (facet.path === undefined) return undefined;
   const base = describeModelFields(lens, resolved.mapName, resolved.modelName, opts).find(
     (f) => f.name === resolved.field,
   );
@@ -367,7 +391,8 @@ const leafRuleAt = (
 
 /** How many array boundaries a path crosses — the number of traversal operators
  *  it needs (see {@link validateDecoration}). */
-export const arrayTraversalCount = (lens: Lens, path: string): number => {
+export const arrayTraversalCount = (lens: Lens, path: string | undefined): number => {
+  if (!path) return 0;
   const segments = path.split('.');
   let m = lens.mapName;
   let mod = lens.model;
@@ -454,7 +479,7 @@ const collectionSeed = (lens: Lens, facet: Facet, opts: SurfaceOptions): Conditi
     lens,
     lens.mapName,
     lens.model,
-    facet.path.split('.'),
+    (facet.path ?? '').split('.'),
     facet.defaultWhere ?? [],
     { i: 0 },
     facet.where,
@@ -483,6 +508,20 @@ export const describeFacets = (
   const fieldDecor = decoration.labels?.fields;
   const resolverFor = new Set<string>();
   for (const facet of decoration.facets) {
+    if (facet.condition !== undefined) {
+      // A preset: select it and its whole condition drops in as one atomic node.
+      out.push({
+        name: facetId(facet),
+        label: facet.label ?? 'preset',
+        icon: facet.icon,
+        kind: 'String',
+        isList: false,
+        isBridge: false,
+        operators: { field: [], date: [], array: [] },
+        seed: facet.condition,
+      });
+      continue;
+    }
     const resolved = resolvePath(lens, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
@@ -537,7 +576,7 @@ export const describeFacets = (
 export const consumedTopFields = (decoration: Decoration | undefined): Set<string> => {
   const consumed = new Set<string>();
   for (const facet of decoration?.facets ?? [])
-    if (!facet.where && !facet.path.includes('.')) consumed.add(facet.path);
+    if (facet.path && !facet.where && !facet.path.includes('.')) consumed.add(facet.path);
   return consumed;
 };
 
@@ -569,7 +608,13 @@ export const matchFacet = (
 ): Facet | undefined => {
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
   const children = groupChildren(node);
+  const nodeKey = JSON.stringify(canonical(node));
   for (const facet of decoration.facets) {
+    if (facet.condition !== undefined) {
+      // A preset matches a node equal to its whole condition (coercion/order-insensitive).
+      if (nodeKey === JSON.stringify(canonical(facet.condition))) return facet;
+      continue;
+    }
     const resolved = resolvePath(lens, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
@@ -641,6 +686,15 @@ export const validateDecoration = (lens: Lens, decoration: Decoration): string[]
   const byTarget = new Map<string, { facet: Facet; lead: Condition[] }[]>();
 
   for (const facet of decoration.facets) {
+    if (facet.condition !== undefined) {
+      // A preset must be a valid rule against the lens (it works as-is, no pickers).
+      const id = facetId(facet);
+      if (ids.has(id)) violations.push(`duplicate facet id '${id}'`);
+      ids.add(id);
+      if (!checkRuleAgainstLens(facet.condition, lens).ok)
+        violations.push(`preset '${facet.label ?? id}' is not a valid rule against the lens`);
+      continue;
+    }
     const resolved = resolvePath(lens, facet.path);
     if (!resolved) {
       violations.push(`facet '${facet.path}' does not resolve against the lens`);

@@ -84,6 +84,38 @@ describe('a decoration facet compiles to a rule that passes the lens gate and ev
     expect(check(emitted, { customFields: [{ key: 'csat', value: 9 }] })).not.toBe(true);
   });
 
+  test('preset facet — a named alias for a complete pre-authored condition', () => {
+    const mature: Condition = {
+      all: [
+        { field: 'tier', operator: 'equals', value: 'gold' },
+        { field: 'account.industry', operator: 'equals', value: 'tech' },
+      ],
+    };
+    const decoration: Decoration = { facets: [{ label: 'Mature', condition: mature }] };
+    const { result } = renderHook(() => useRuleBuilder({ source, decoration, defaultValue: seed }));
+
+    const row = rootGroup(result.current).children[0] as LeafNode;
+    const opt = row.field?.options.find((o) => o.label === 'Mature');
+    if (!opt) throw new Error('Mature not offered');
+    act(() => row.field?.set(opt.value));
+
+    // the whole condition dropped in as one atomic node — a renderer shows just the name.
+    const group = rootGroup(result.current).children[0] as GroupNode;
+    expect(group.atomic).toBe(true);
+    expect(group.hoist?.label).toBe('Mature');
+
+    const emitted = result.current.value;
+    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(check(emitted, { tier: 'gold', account: { industry: 'tech' } })).toBe(true);
+    expect(check(emitted, { tier: 'silver', account: { industry: 'tech' } })).not.toBe(true);
+
+    // and a saved rule equal to the preset rehydrates as the atomic "Mature" node.
+    const reopened = renderHook(() => useRuleBuilder({ source, decoration, defaultValue: mature }));
+    const root = reopened.result.current.root as GroupNode;
+    expect(root.atomic).toBe(true);
+    expect(root.hoist?.label).toBe('Mature');
+  });
+
   test('branch facet — a scoped group over the related model', () => {
     const decoration: Decoration = { facets: [{ path: 'account', label: 'Company' }] };
     const { result } = renderHook(() => useRuleBuilder({ source, decoration, defaultValue: seed }));

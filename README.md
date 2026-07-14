@@ -194,6 +194,13 @@ is fine):
   **nested** to-one fields (`account.owner.email`) and offers list relations
   (`account.contracts`) as nested array nodes.
 
+A facet can instead be a **preset** — `condition` in place of `path`: a named alias
+for a *complete* pre-authored `Condition` (`{ label: 'Mature', condition: {…} }`).
+Selecting it drops the whole condition in as one **atomic** node (`GroupNode.atomic`
+/ `LeafNode.atomic`) — no field/operator/value pickers, it just *is* a rule — and a
+saved node equal to the condition collapses back to the name. `validateDecoration`
+checks the preset is a valid rule against the lens.
+
 ### Two `where`s
 
 A collection facet carries two things, kept distinct because only one is identity:

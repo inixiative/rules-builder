@@ -7,6 +7,7 @@ export {
   facetBranchScope,
   facetElementLeaf,
   facetId,
+  isPreset,
   leadingWhereCount,
   matchFacet,
   modelDecor,

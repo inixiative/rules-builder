@@ -14,6 +14,7 @@ import {
   facetBranchScope,
   facetElementLeaf,
   facetId,
+  isPreset,
   leadingWhereCount,
   matchFacet,
   modelDecor,
@@ -88,6 +89,9 @@ export type LeafNode = {
   /** Set when this leaf is a hoisted alias (a {@link Decoration} leaf facet) — a
    *  renderer shows the entry's label/icon instead of the raw path. */
   hoist?: HoistBadge;
+  /** Set when this node is a **preset** alias — a renderer shows only the name; the
+   *  whole condition is opaque, with no field/operator/value pickers. */
+  atomic?: boolean;
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
   valid: boolean;
   remove: () => void;
@@ -115,6 +119,9 @@ export type GroupNode = {
    *  as a scoped group) — its field picker is scoped to the related model and a
    *  renderer shows the entry's name. */
   hoist?: HoistBadge;
+  /** Set when this group is a **preset** alias — a renderer shows only the name;
+   *  the whole condition is opaque, with no pickers or add-rule. */
+  atomic?: boolean;
   /** Leading `children` that are the branch facet's fixed, non-editable `where` —
    *  a renderer hides exactly this many (the identity block). */
   lockedLeading?: number;
@@ -145,6 +152,9 @@ export type ArrayNode = {
   /** Set when this array node is a hoisted alias (a {@link Decoration} facet) — a
    *  renderer collapses it to the named field. */
   hoist?: HoistBadge;
+  /** Set when this node is a **preset** alias — a renderer shows only the name; the
+   *  whole condition is opaque, with no pickers. */
+  atomic?: boolean;
   /** The count of leading `condition` children that are the facet's fixed,
    *  non-editable `where` — a renderer hides exactly this many (the identity
    *  block), leaving the rest editable. */
@@ -355,6 +365,7 @@ const buildLeaf = (
           : undefined,
     },
     hoist: leafHoist,
+    atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
     valid: checkRuleAgainstLens(node, scope.lens).ok,
     remove,
   };
@@ -446,6 +457,7 @@ const buildArray = (
         }
       : undefined,
     lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
+    atomic: matchedFacet && isPreset(matchedFacet) ? true : undefined,
     arrayOperator: {
       value: op,
       options: (field?.operators.array ?? []).map((o) => ({
@@ -491,31 +503,33 @@ const buildGroup = (
   ctx: Ctx,
   scope: Scope,
 ): GroupNode => {
-  // A hoisted branch facet: a to-one relation surfaced as a scoped group. A branch
-  // is always a *nested* group, never the root — gating on `path.length` stops the
-  // whereless prefix heuristic from capturing the root group (and swapping its
-  // picker to the branch scope) when every root rule happens to sit under one relation.
-  const branchFacet =
-    ctx.decoration && ctx.anchorLens === scope.lens && path.length > 0
+  const matched =
+    ctx.decoration && ctx.anchorLens === scope.lens
       ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
+  const preset = matched !== undefined && isPreset(matched);
+  // A branch is a to-one relation surfaced as a scoped group, and always a *nested*
+  // group — gating on `path.length` stops the whereless prefix heuristic from
+  // capturing the root (and swapping its picker to the branch scope). A preset,
+  // by contrast, is recognized anywhere including the root.
+  const branchFacet = matched && !preset && path.length > 0 ? matched : undefined;
   const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
   const groupScope: Scope = branch
     ? { lens: scope.lens, fields: relabelRelations(branch.fields, ctx.decoration) }
     : scope;
-  const branchHoist: HoistBadge | undefined =
-    branchFacet && branch
-      ? {
-          id: facetId(branchFacet),
-          label: branchFacet.label ?? branch.prefix,
-          icon: branchFacet.icon,
-        }
-      : undefined;
+  // The facet actually applied to this group: a preset (anywhere) or a branch (nested).
+  const groupFacet = preset ? matched : branchFacet;
+  const groupHoist: HoistBadge | undefined = groupFacet
+    ? {
+        id: facetId(groupFacet),
+        label: groupFacet.label ?? branch?.prefix ?? '',
+        icon: groupFacet.icon,
+      }
+    : undefined;
 
-  // The root/anchor group can be retagged via `labels.models`; a branch shows its
-  // facet name.
+  // The root/anchor group can be retagged via `labels.models`; a facet shows its name.
   const groupLabel =
-    branchHoist?.label ??
+    groupHoist?.label ??
     (path.length === 0
       ? modelDecor(ctx.decoration, ctx.anchorLens.mapName, ctx.anchorLens.model).label
       : undefined);
@@ -536,7 +550,8 @@ const buildGroup = (
     addRule: () => ctx.commit(addRule(ctx.root, path, defaultRule(groupScope.fields))),
     addGroup: () => ctx.commit(addRule(ctx.root, path, { all: [] })),
     canAddGroup: depth < ctx.maxDepth,
-    hoist: branchHoist,
+    hoist: groupHoist,
+    atomic: preset ? true : undefined,
     lockedLeading:
       branchFacet && branch ? leadingWhereCount(branchFacet, node) || undefined : undefined,
     remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
