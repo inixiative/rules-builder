@@ -83,6 +83,8 @@ export {
   leadingWhereCount,
   lensValuePicker,
   matchFacet,
+  modelDecor,
+  relabelRelations,
   resolve,
   runSources,
   useFacetFields,

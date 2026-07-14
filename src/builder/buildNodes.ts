@@ -16,6 +16,8 @@ import {
   facetId,
   leadingWhereCount,
   matchFacet,
+  modelDecor,
+  relabelRelations,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import { describeModelFields, valueShapeForOperator } from '../schema/surface';
@@ -105,6 +107,10 @@ export type GroupNode = {
   addRule: () => void;
   addGroup: () => void;
   canAddGroup: boolean;
+  /** A display name for the group's model — the retagged **root/anchor** (from
+   *  `labels.models`) at the top level, or a branch facet's label. A renderer may
+   *  show it as a header. */
+  label?: string;
   /** Set when this group is a hoisted **branch** facet (a to-one relation surfaced
    *  as a scoped group) — its field picker is scoped to the related model and a
    *  renderer shows the entry's name. */
@@ -388,7 +394,10 @@ const buildArray = (
             model: rel.modelName,
           }),
         );
-        const relFields = describeModelFields(relLens, rel.mapName, rel.modelName);
+        const relFields = relabelRelations(
+          describeModelFields(relLens, rel.mapName, rel.modelName),
+          ctx.decoration,
+        );
         return {
           lens: relLens,
           fields: overrideLeaf
@@ -491,7 +500,9 @@ const buildGroup = (
       ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
   const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
-  const groupScope: Scope = branch ? { lens: scope.lens, fields: branch.fields } : scope;
+  const groupScope: Scope = branch
+    ? { lens: scope.lens, fields: relabelRelations(branch.fields, ctx.decoration) }
+    : scope;
   const branchHoist: HoistBadge | undefined =
     branchFacet && branch
       ? {
@@ -501,11 +512,20 @@ const buildGroup = (
         }
       : undefined;
 
+  // The root/anchor group can be retagged via `labels.models`; a branch shows its
+  // facet name.
+  const groupLabel =
+    branchHoist?.label ??
+    (path.length === 0
+      ? modelDecor(ctx.decoration, ctx.anchorLens.mapName, ctx.anchorLens.model).label
+      : undefined);
+
   return {
     kind: 'group',
     id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
     path,
     depth,
+    label: groupLabel,
     operator: {
       value: groupOperatorOf(node),
       set: (op) => ctx.commit(setNode(ctx.root, path, switchGroupOperator(node, op))),

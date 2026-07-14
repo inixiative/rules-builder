@@ -291,6 +291,27 @@ describe('useRuleBuilder — branch facets (a to-one relation as a scoped group)
     expect(emitted.arrayOperator).toBeDefined();
   });
 
+  test('retags the root and list relations via labels.models', () => {
+    const decoration: Decoration = {
+      labels: {
+        models: {
+          'app:User': { label: 'Customer' }, // the root/anchor
+          CustomField: { label: 'Enrichments' }, // a (list) relation target
+        },
+      },
+      facets: [],
+    };
+    const seed: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, decoration, defaultValue: seed }),
+    );
+    const root = asGroupNode(result.current.root as unknown);
+    expect(root.label).toBe('Customer'); // the root is retagged
+    const row = root.children[0] as LeafNode;
+    // the `customFields` list relation reads as its target model's label.
+    expect(row.field?.options.find((o) => o.value === 'customFields')?.label).toBe('Enrichments');
+  });
+
   test('the ROOT group is never captured by a whereless branch facet', () => {
     // repro: branch `account` (no where) + leaf hoist `account.industry`; a rule
     // whose only leaf sits under `account.` must not turn the root into the branch.

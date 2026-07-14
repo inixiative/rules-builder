@@ -50,9 +50,10 @@ export type Facet = {
 export type Decoration = {
   facets: Facet[];
   labels?: {
-    /** map decor — `"salesforce"`. (Rendered by model/bridge drill-down; reserved.) */
+    /** map decor — `"salesforce"`. (Reserved.) */
     maps?: Record<string, Decor>;
-    /** model / bridge-badge decor — `"salesforce:Contact"` or `"Contact"`. (Reserved.) */
+    /** model decor, keyed `map:Model` or `Model` — retags the **root/anchor**
+     *  (`GroupNode.label`) and any relation field by its target model. */
     models?: Record<string, Decor>;
     /** field decor, keyed by full path from the anchor, or structurally
      *  (`map:Model.field` / `Model.field`). Path key wins over structural. */
@@ -132,6 +133,29 @@ export const whereConditions = (where: Condition | undefined): Condition[] => {
 const pickDecor = (dict: Record<string, Decor> | undefined, ...keys: string[]): Decor => {
   if (dict) for (const key of keys) if (dict[key]) return dict[key];
   return {};
+};
+
+/** The label/icon for a model (or bridge target), keyed `map:Model` or `Model`.
+ *  This is how the **root/anchor** and any relation get retagged — a to-one or
+ *  list field reads as its target's friendly name. */
+export const modelDecor = (
+  decoration: Decoration | undefined,
+  mapName: string,
+  modelName: string,
+): Decor => pickDecor(decoration?.labels?.models, `${mapName}:${modelName}`, modelName);
+
+/** Retag relation fields (to-one and list) by their target model's `labels.models`
+ *  entry, so a field surface reads in customer terms wherever it's shown. */
+export const relabelRelations = (
+  fields: BuilderField[],
+  decoration: Decoration | undefined,
+): BuilderField[] => {
+  if (!decoration?.labels?.models) return fields;
+  return fields.map((f) => {
+    if (!f.relation) return f;
+    const decor = modelDecor(decoration, f.relation.mapName, f.relation.modelName);
+    return decor.label ? { ...f, label: decor.label, icon: f.icon ?? decor.icon } : f;
+  });
 };
 
 /** A stable id — the selector option value and React key. Only the *fixed* `where`

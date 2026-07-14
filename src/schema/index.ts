@@ -9,6 +9,8 @@ export {
   facetId,
   leadingWhereCount,
   matchFacet,
+  modelDecor,
+  relabelRelations,
   useFacetFields,
   validateDecoration,
   whereConditions,

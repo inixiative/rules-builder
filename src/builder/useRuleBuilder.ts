@@ -13,6 +13,7 @@ import {
   consumedTopFields,
   type Decoration,
   decorationSurfaceOptions,
+  relabelRelations,
   useFacetFields,
 } from '../schema/decoration';
 import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
@@ -72,7 +73,10 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     };
   }, [opts.decoration, opts.targets, opts.labels, opts.valueLabels]);
   const anchorFields = useMemo(() => {
-    const all = describeModelFields(lens, lens.mapName, lens.model, surfaceOpts);
+    const all = relabelRelations(
+      describeModelFields(lens, lens.mapName, lens.model, surfaceOpts),
+      opts.decoration,
+    );
     const consumed = consumedTopFields(opts.decoration);
     return consumed.size ? all.filter((f) => !consumed.has(f.name)) : all;
   }, [lens, surfaceOpts, opts.decoration]);
