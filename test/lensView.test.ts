@@ -107,4 +107,22 @@ describe('describeHoistedFields', () => {
     });
     expect(out).toEqual([]);
   });
+
+  test('drops a path that crosses a list relation — a scalar hoist would silently mis-evaluate', () => {
+    const withList = exposedSurface(
+      createLens({
+        maps: {
+          prisma: {
+            models: {
+              User: { fields: { orders: { kind: 'object', type: 'Order', isList: true } } },
+              Order: { fields: { total: { kind: 'scalar', type: 'Int' } } },
+            },
+          },
+        },
+        mapName: 'prisma',
+        model: 'User',
+      }),
+    );
+    expect(describeHoistedFields(withList, { roots: [{ path: 'orders.total' }] })).toEqual([]);
+  });
 });

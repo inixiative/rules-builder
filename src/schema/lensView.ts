@@ -42,7 +42,13 @@ type Owner = { mapName: string; modelName: string; field: string };
 
 /** Walk a dotted path from the anchor to the model that owns its final segment.
  *  Every non-final segment must be a relation/bridge; a scalar mid-path is not
- *  traversable and yields `undefined` (the entry is dropped). */
+ *  traversable and yields `undefined` (the entry is dropped).
+ *
+ *  A path crossing a *list* relation (`isList`) cannot be flattened to a leaf:
+ *  json-rules silently mis-evaluates a scalar operator over a list path (it must
+ *  be an array node instead), and `checkRuleAgainstLens` does not catch it. Such
+ *  paths yield `undefined` here so slice-1 never emits a broken flat leaf; array
+ *  hoisting is a separate node kind. */
 const walkToOwner = (lens: Lens, path: string): Owner | undefined => {
   const segments = path.split('.');
   const field = segments.pop();
@@ -52,6 +58,7 @@ const walkToOwner = (lens: Lens, path: string): Owner | undefined => {
   for (const segment of segments) {
     const entry = lens.maps[mapName]?.models[modelName]?.fields[segment];
     if (!entry) return undefined;
+    if (entry.isList) return undefined;
     const target = relationTarget(entry, mapName);
     if (!target) return undefined;
     mapName = target.mapName;
