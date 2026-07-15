@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.1 — facets lead the picker
+
+- **Facets sort ahead of the anchor model's raw fields** in `useRuleBuilder`'s field list (`[...hoisted, ...anchorFields]`, was the reverse). They are the named, curated entries a decoration exists to surface — the "pre-root" picking layer — so a decorated builder opens on them.
+- Example drop-in renderers now demonstrate the renderer contract the types already spec: an array/group with `hoist` collapses to its facet badge (icon + label), `lockedLeading` identity conditions are hidden, and a group's `label` (retagged root or branch-facet name) renders as its title.
+
 ## 0.18.0 — `Decoration`/`Facet`: hoist & relabel lens paths into the root selector
 
 - **`Decoration`** — a presentation-only layer over a lens. Each **`Facet`** pre-traverses the lens graph and raises a chosen location up to the builder's root field selector, additive to the anchor model's own fields. Every facet emits its real dotted path (bridges included) as the rule `field`, so json-rules resolves it unchanged — the lens stays the sole source of truth, and absent a `decoration` the surface is byte-for-byte identical.

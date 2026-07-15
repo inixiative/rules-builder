@@ -3,6 +3,7 @@ import { useState } from 'react';
 import {
   type ArrayNode,
   type BuilderNode,
+  type Decoration,
   type GroupNode,
   type LeafNode,
   type RuleBuilderSource,
@@ -10,6 +11,11 @@ import {
   type ValueControl,
 } from '../src';
 import { Badge, Button, Input, MultiSelect, Select } from './shadcn';
+
+/** Fold a field option's icon into its label — the shadcn <Select> renders plain
+ *  <option>s, so a {@link Decoration}'s icon rides along in the text. */
+const iconize = (options: readonly { value: string; label: string; icon?: string }[]) =>
+  options.map((o) => ({ value: o.value, label: o.icon ? `${o.icon}  ${o.label}` : o.label }));
 
 /**
  * shadcn-style drop-in renderer for the headless rule builder — the SAME `root`
@@ -143,7 +149,7 @@ const Leaf = ({ node }: { node: LeafNode }) => (
           <Select
             aria-label="field"
             placeholder="field"
-            options={node.field.options}
+            options={iconize(node.field.options)}
             value={node.field.value ?? ''}
             onChange={node.field.set}
           />
@@ -183,20 +189,31 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
     aria-invalid={!node.valid}
   >
     <div className="flex flex-wrap items-center gap-2">
-      <Select
-        aria-label="field"
-        placeholder="field"
-        options={node.field.options}
-        value={node.field.value ?? ''}
-        onChange={node.field.set}
-      />
-      <Select
-        aria-label="array operator"
-        placeholder="operator"
-        options={node.arrayOperator.options}
-        value={node.arrayOperator.value ?? ''}
-        onChange={node.arrayOperator.set}
-      />
+      {node.hoist ? (
+        // A hoisted facet collapses to its name — the fixed `where` is its identity,
+        // so there is nothing to pick; the badge IS the field.
+        <span className="text-sm font-medium">
+          {node.hoist.icon ? `${node.hoist.icon}  ` : ''}
+          {node.hoist.label}
+        </span>
+      ) : (
+        <>
+          <Select
+            aria-label="field"
+            placeholder="field"
+            options={iconize(node.field.options)}
+            value={node.field.value ?? ''}
+            onChange={node.field.set}
+          />
+          <Select
+            aria-label="array operator"
+            placeholder="operator"
+            options={node.arrayOperator.options}
+            value={node.arrayOperator.value ?? ''}
+            onChange={node.arrayOperator.set}
+          />
+        </>
+      )}
       {node.count && (
         <Input
           aria-label="count"
@@ -208,7 +225,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           }
         />
       )}
-      {node.relation && (
+      {!node.hoist && node.relation && (
         <span className="text-xs text-violet-600">↪ {node.relation.modelName}</span>
       )}
       {!node.valid && <Badge tone="danger">✗</Badge>}
@@ -262,6 +279,11 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
 
 const Group = ({ node }: { node: GroupNode }) => {
   const [collapsed, setCollapsed] = useState(false);
+  // A group's display name: its facet's label (a hoisted branch) or the retagged
+  // root/anchor model (`labels.models`). A facet's fixed `where` is identity, not
+  // user content — `lockedLeading` says how many leading children to hide.
+  const title = node.hoist?.label ?? node.label;
+  const visible = node.lockedLeading ? node.children.slice(node.lockedLeading) : node.children;
   return (
     <div
       className={`rounded-lg border border-border border-l-2 p-3 ${node.depth ? 'ml-4 border-l-muted-foreground/40 bg-muted/30' : 'border-l-primary'}`}
@@ -275,6 +297,7 @@ const Group = ({ node }: { node: GroupNode }) => {
         >
           {collapsed ? '▸' : '▾'}
         </Button>
+        {title && <span className="text-sm font-medium">{title}</span>}
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           conditions — match
         </span>
@@ -295,7 +318,7 @@ const Group = ({ node }: { node: GroupNode }) => {
       </div>
       {!collapsed && (
         <div className="mt-2 grid gap-2">
-          {node.children.map((c) => (
+          {visible.map((c) => (
             <Node key={c.id} node={c} />
           ))}
           <div className="flex gap-2">
@@ -331,12 +354,14 @@ export const RuleEditorShadcn = ({
   rule,
   onChange,
   maxDepth,
+  decoration,
 }: {
   source: RuleBuilderSource;
   sourceValues?: SourceValues[];
   rule?: Condition;
   onChange?: (rule: Condition) => void;
   maxDepth?: number;
+  decoration?: Decoration;
 }) => {
   const { root } = useRuleBuilder({
     source,
@@ -344,6 +369,7 @@ export const RuleEditorShadcn = ({
     defaultValue: rule,
     onChange,
     maxDepth,
+    decoration,
   });
   return <RuleTreeShadcn root={root} />;
 };

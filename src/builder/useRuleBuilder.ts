@@ -81,8 +81,10 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     return consumed.size ? all.filter((f) => !consumed.has(f.name)) : all;
   }, [lens, surfaceOpts, opts.decoration]);
   const hoisted = useFacetFields(lens, opts.decoration, surfaceOpts);
+  // Facets lead the picker: they are the named, curated entries a decoration exists
+  // to surface, so they sort ahead of the anchor model's raw fields.
   const fields = useMemo(
-    () => (hoisted.length ? [...anchorFields, ...hoisted] : anchorFields),
+    () => (hoisted.length ? [...hoisted, ...anchorFields] : anchorFields),
     [anchorFields, hoisted],
   );
   const maxDepth = opts.maxDepth ?? 4;

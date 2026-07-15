@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { type RuleBuilderSource, runSources } from '../../src';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
-import { sampleRows } from '../samples';
+import { sampleRows, segmentDecoration } from '../samples';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
@@ -30,6 +30,7 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
 
   const [sourceKey, setSourceKey] = useState('');
   const [renderer, setRenderer] = useState<'plain' | 'shadcn'>('shadcn');
+  const [decorated, setDecorated] = useState(true);
   const [ruleName, setRuleName] = useState('');
   const choice = choices.find((c) => c.key === sourceKey) ?? choices[0];
 
@@ -135,6 +136,16 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
               { value: 'plain', label: 'plain' },
             ]}
           />
+          <label style={{ fontSize: 13, color: tokens.textMuted }}>Surface:</label>
+          <Select
+            ariaLabel="surface"
+            value={decorated ? 'decorated' : 'raw'}
+            onChange={(v) => setDecorated(v === 'decorated')}
+            options={[
+              { value: 'decorated', label: 'Decorated (names + icons)' },
+              { value: 'raw', label: 'Raw (backend names)' },
+            ]}
+          />
           <span style={{ fontSize: 12, color: tokens.textMuted }}>
             depth {ws.maxDepth} · set in Settings
           </span>
@@ -146,21 +157,23 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
           <Badge tone="danger">{analysis.error}</Badge>
         ) : analysis?.source && renderer === 'shadcn' ? (
           <RuleEditorShadcn
-            key={choice.key}
+            key={`${choice.key}:${decorated}`}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
             maxDepth={ws.maxDepth}
             rule={ws.rule}
             onChange={(rule) => patch({ rule })}
+            decoration={decorated ? segmentDecoration : undefined}
           />
         ) : analysis?.source ? (
           <RuleEditor
-            key={choice.key}
+            key={`${choice.key}:${decorated}`}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
             maxDepth={ws.maxDepth}
             rule={ws.rule}
             onChange={(rule) => patch({ rule })}
+            decoration={decorated ? segmentDecoration : undefined}
           />
         ) : null}
       </Panel>

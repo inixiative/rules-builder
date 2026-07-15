@@ -1,4 +1,5 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
+import type { Decoration } from '../src';
 import type { SavedLens, SavedNarrowing, Workspace } from './workspace';
 import { emptyWorkspace } from './workspace';
 
@@ -18,6 +19,16 @@ export const sampleMaps: Record<string, FieldMap> = {
           createdAt: { kind: 'scalar', type: 'DateTime' },
           accountId: { kind: 'scalar', type: 'Int' },
           orders: { kind: 'object', type: 'Order', isList: true },
+          // The real advocacy data lives here: an EAV key/value list. Raw, this
+          // reads as "enrichments → key/value" — the backend-name regression. A
+          // Decoration collapses `enrichments where key='nps'` into one field "NPS".
+          enrichments: { kind: 'object', type: 'Enrichment', isList: true },
+        },
+      },
+      Enrichment: {
+        fields: {
+          key: { kind: 'scalar', type: 'String' },
+          value: { kind: 'scalar', type: 'String' }, // untyped column; a facet `kind` override types it
         },
       },
       Order: {
@@ -87,6 +98,10 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       createdAt: '2026-01-15T09:00:00.000Z',
       metadata: { theme: 'dark' },
       orders: [{ id: 11, total: 120.5, status: 'paid', placedAt: '2026-02-01T00:00:00.000Z' }],
+      enrichments: [
+        { key: 'nps', value: '9' },
+        { key: 'persona', value: 'champion' },
+      ],
     },
     {
       id: 2,
@@ -98,6 +113,10 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       createdAt: '2026-03-20T14:30:00.000Z',
       metadata: { theme: 'light' },
       orders: [{ id: 12, total: 40, status: 'pending', placedAt: '2026-03-21T00:00:00.000Z' }],
+      enrichments: [
+        { key: 'nps', value: '3' },
+        { key: 'persona', value: 'end-user' },
+      ],
     },
     {
       id: 3,
@@ -144,6 +163,67 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
 /** A cross-map lens: anchored at app.User with the bridge attached, so app + crm are both reachable. */
 export const sampleLenses: Record<string, SavedLens> = {
   'app-users': { mapName: 'app', model: 'User', maps: ['app', 'crm'], bridges: sampleBridges },
+};
+
+/**
+ * The pre-#1470 experience, rebuilt as a *presentation-only* Decoration over the
+ * `app-users` lens. Nothing here changes what the engine runs — every entry emits
+ * its real dotted path; this only renames what the picker offers and hoists other
+ * sources up to the root. It reproduces the three regressions #1470 introduced:
+ *
+ *  1. **Other sources at the root** — Salesforce (`crm:Account.*`, reached across the
+ *     bridge) is selectable directly, not buried behind a relation walk.
+ *  2. **Customer-facing names** — raw column names become the labels admins knew.
+ *  3. **EAV as one field** — `enrichments where key='nps'` reads as a single "NPS
+ *     Score" field (with a `kind` override so it gets numeric operators), instead of
+ *     a raw key/value array builder.
+ *
+ * NOTE: the labels/icons below are illustrative. At port time into the app, swap
+ * them for the exact pre-#1470 display strings + source icons (Salesforce,
+ * UserEvidence, Advocacy, Gong) so the copy matches what customers saw before.
+ */
+export const segmentDecoration: Decoration = {
+  facets: [
+    // EAV enrichments collapsed to named fields — the marquee fix.
+    {
+      path: 'enrichments.value',
+      where: { field: 'key', operator: 'equals', value: 'nps' },
+      kind: 'Int',
+      label: 'NPS Score',
+      icon: '📈',
+    },
+    {
+      path: 'enrichments.value',
+      where: { field: 'key', operator: 'equals', value: 'persona' },
+      label: 'Persona',
+      icon: '🧭',
+    },
+    // Salesforce fields, hoisted to the root across the bridge (other sources reachable).
+    { path: 'crm:Account.industry', label: 'Industry', icon: '💼' },
+    { path: 'crm:Account.name', label: 'Account Name', icon: '💼' },
+    { path: 'crm:Account.tier', label: 'Account Tier', icon: '💼' },
+  ],
+  labels: {
+    models: {
+      'app:User': { label: 'Advocate', icon: '⭐' },
+      'crm:Account': { label: 'Salesforce Account', icon: '💼' },
+    },
+    fields: {
+      'User.tier': { label: 'Plan', icon: '⭐' },
+      'User.email': { label: 'Email', icon: '⭐' },
+      'User.role': { label: 'Role', icon: '⭐' },
+      'User.active': { label: 'Active', icon: '⭐' },
+      'User.createdAt': { label: 'Signup Date', icon: '⭐' },
+      'User.enrichments': { label: 'Custom Fields (raw)' },
+    },
+    values: {
+      'User.role': {
+        admin: { label: 'Administrator' },
+        member: { label: 'Member' },
+        guest: { label: 'Guest' },
+      },
+    },
+  },
 };
 
 /** Two narrowings: one off the lens, one chained off that narrowing — each only restricts further. */

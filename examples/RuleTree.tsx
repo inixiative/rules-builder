@@ -2,12 +2,19 @@ import { useState } from 'react';
 import {
   type ArrayNode,
   type BuilderNode,
+  type Decoration,
   type GroupNode,
   type LeafNode,
   type RuleBuilderSource,
   useRuleBuilder,
   type ValueControl,
 } from '../src';
+
+/** Fold a picker option's icon into its label so a native <select> renders it
+ *  (an <option> can't hold arbitrary markup). Field options carry `icon` from a
+ *  {@link Decoration}; everywhere else it's absent and labels pass through. */
+const iconize = (options: readonly { value: string; label: string; icon?: string }[]) =>
+  options.map((o) => ({ value: o.value, label: o.icon ? `${o.icon}  ${o.label}` : o.label }));
 
 /**
  * Reference renderer for the headless rule builder. Copy this file, swap the
@@ -193,7 +200,7 @@ const Leaf = ({ node }: { node: LeafNode }) => (
           <Picker
             ariaLabel="field"
             value={node.field.value}
-            options={node.field.options}
+            options={iconize(node.field.options)}
             onChange={node.field.set}
           />
           {node.field.acceptsSubPath && node.field.setSubPath && (
@@ -255,7 +262,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
       <Picker
         ariaLabel="field"
         value={node.field.value}
-        options={node.field.options}
+        options={iconize(node.field.options)}
         onChange={node.field.set}
       />
       <Picker
@@ -430,12 +437,14 @@ export const RuleEditor = ({
   rule,
   onChange,
   maxDepth,
+  decoration,
 }: {
   source: RuleBuilderSource;
   sourceValues?: import('@inixiative/json-rules').SourceValues[];
   rule?: import('@inixiative/json-rules').Condition;
   onChange?: (rule: import('@inixiative/json-rules').Condition) => void;
   maxDepth?: number;
+  decoration?: Decoration;
 }) => {
   const { root } = useRuleBuilder({
     source,
@@ -443,6 +452,7 @@ export const RuleEditor = ({
     defaultValue: rule,
     onChange,
     maxDepth,
+    decoration,
   });
   return <RuleTree root={root} />;
 };
