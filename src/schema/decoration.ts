@@ -51,6 +51,10 @@ export type Facet = {
   where?: Condition;
   defaultWhere?: ArrayOperator[];
   kind?: FieldKind;
+  /** Pin the facet's value picker to ONE partition of a grouped source: only
+   *  options whose `group` equals this survive. Presentation only — the group
+   *  never enters the rule; identity and rehydration stay path + `where`. */
+  group?: string;
   /** A preset: the complete pre-authored condition this facet aliases. When set,
    *  `path` and the traversal fields are ignored. */
   condition?: Condition;
@@ -212,6 +216,14 @@ const sameConditions = (a: Condition[], b: Condition[]): boolean =>
 const isLeadingPrefix = (lead: Condition[], conds: Condition[]): boolean =>
   lead.length <= conds.length && sameConditions(lead, conds.slice(0, lead.length));
 
+/** Narrow a field's option set to a grouped source's partition. `enumLabels`
+ *  stays whole — it is keyed by value, so out-of-partition entries are inert. */
+const pinPartition = (field: BuilderField, group: string | undefined): BuilderField => {
+  if (group === undefined || !field.options) return field;
+  const options = field.options.filter((o) => o.group === group);
+  return { ...field, options, enumValues: options.map((o) => o.value) };
+};
+
 const buildLeafField = (
   lens: Lens,
   facet: Facet,
@@ -230,12 +242,15 @@ const buildLeafField = (
     `${resolved.mapName}:${resolved.modelName}.${resolved.field}`,
     `${resolved.modelName}.${resolved.field}`,
   );
-  return {
-    ...base,
-    name: facet.path,
-    label: facet.label ?? decor.label ?? base.label,
-    icon: facet.icon ?? decor.icon,
-  };
+  return pinPartition(
+    {
+      ...base,
+      name: facet.path,
+      label: facet.label ?? decor.label ?? base.label,
+      icon: facet.icon ?? decor.icon,
+    },
+    facet.group,
+  );
 };
 
 /** The element leaf's descriptor with any `kind` override applied — used to seed
@@ -254,9 +269,10 @@ export const facetElementLeaf = (
     opts,
   ).find((f) => f.name === resolved.elementLeaf);
   if (!leaf) return undefined;
-  return facet.kind
+  const retyped = facet.kind
     ? { ...leaf, kind: facet.kind, operators: operatorsForKind(facet.kind, opts.targets) }
     : leaf;
+  return pinPartition(retyped, facet.group);
 };
 
 /** How many of a matched `node`'s leading conditions are the facet's fixed `where`

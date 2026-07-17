@@ -31,7 +31,7 @@ import {
   ruleForField,
 } from './nodes';
 
-export type PickOption = { value: string; label: string; icon?: string };
+export type PickOption = { value: string; label: string; icon?: string; group?: string };
 
 export type FieldControl = {
   value?: string;
@@ -257,10 +257,16 @@ const buildLeaf = (
       }))
     : [];
   const shape: ValueShape = operator ? valueShapeForOperator(operator as never) : 'none';
-  const valueOptions = field?.enumValues?.map((v) => ({
-    value: v,
-    label: field.enumLabels?.[v] ?? v,
-  }));
+  const valueOptions = field?.options
+    ? field.options.map((o) => ({
+        value: o.value,
+        label: field.enumLabels?.[o.value] ?? o.label ?? o.value,
+        group: o.group,
+      }))
+    : field?.enumValues?.map((v) => ({
+        value: v,
+        label: field.enumLabels?.[v] ?? v,
+      }));
   const fieldValid = field !== undefined;
   const valueValid = ((): boolean => {
     const allowed = field?.enumValues;

@@ -15,6 +15,7 @@ import {
   type LensNarrowing,
   type Operator,
   type RuleTarget,
+  type SourceOption,
   type SourceValues,
   type ValueShape,
 } from '@inixiative/json-rules';
@@ -70,6 +71,10 @@ export type BuilderField = {
   /** False for a hoist *resolver* field — present only so a seeded array node's
    *  dotted `field` resolves its relation, never offered in the picker. */
   selectable?: boolean;
+  /** The surface's option set verbatim — a grouped source's options carry their
+   *  partition in `group` (json-rules 2.17). `enumValues`/`enumLabels` stay the
+   *  flattened view for renderers that don't partition. */
+  options?: readonly SourceOption[];
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
   /** Human-readable labels for enum/sourced option values (value → label). */
@@ -191,6 +196,7 @@ export const describeModelFields = (
       isBridge: entry.kind === 'bridge',
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
+      options: entry.options,
       enumValues: entry.options?.map((o) => o.value) ?? entry.values,
       enumLabels: mergeOptionLabels(
         entry.options,

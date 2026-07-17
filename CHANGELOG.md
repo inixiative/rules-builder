@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.0 — grouped sources reach the picker
+
+- **`BuilderField.options`** — `describeModelFields` now carries the surface's option set verbatim (`{value, label?, group?}`, json-rules ≥ 2.17) instead of flattening it into `enumValues`/`enumLabels` (which remain, derived, for renderers that don't partition). A leaf's `ValueControl.options` carries `group` too, so an undecorated grouped field renders as one sectioned select.
+- **`Facet.group`** — a facet may pin its value picker to ONE partition of a grouped source: only options whose `group` matches survive (`options` filtered, `enumValues` re-derived). Presentation only — the group never enters the rule, and identity/rehydration stay path + fixed `where`. This completes the 2-level EAV flow: one facet per custom field, its dropdown auto-populated with exactly that field's values. Multi-group membership is row multiplicity (one option per `(group, value)` pair), never a group array.
+- Peer dep raised to `@inixiative/json-rules ^2.17.1` (`SourceOption.group`).
+
 ## 0.18.1 — facets lead the picker
 
 - **Facets sort ahead of the anchor model's raw fields** in `useRuleBuilder`'s field list (`[...hoisted, ...anchorFields]`, was the reverse). They are the named, curated entries a decoration exists to surface — the "pre-root" picking layer — so a decorated builder opens on them.
