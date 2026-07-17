@@ -51,10 +51,12 @@ export type Facet = {
   where?: Condition;
   defaultWhere?: ArrayOperator[];
   kind?: FieldKind;
-  /** Pin the facet's value picker to ONE partition of a grouped source: only
-   *  options whose `group` equals this survive. Presentation only — the group
-   *  never enters the rule; identity and rehydration stay path + `where`. */
-  group?: string;
+  /** Declared inner selector rows (e.g. the field picker inside a source
+   *  container): ordinary editable conditions on these fields that a renderer
+   *  draws as dedicated dropdowns ("Field: [Any ▾]") instead of hardcoding the
+   *  paths. Surfaced verbatim on a matched node. Options for the row come from
+   *  the field's own source; a grouped value leaf pins off these siblings. */
+  selectors?: { field: string; label?: string; anyLabel?: string }[];
   /** A preset: the complete pre-authored condition this facet aliases. When set,
    *  `path` and the traversal fields are ignored. */
   condition?: Condition;
@@ -216,12 +218,19 @@ const sameConditions = (a: Condition[], b: Condition[]): boolean =>
 const isLeadingPrefix = (lead: Condition[], conds: Condition[]): boolean =>
   lead.length <= conds.length && sameConditions(lead, conds.slice(0, lead.length));
 
-/** Narrow a field's option set to a grouped source's partition. `enumLabels`
- *  stays whole — it is keyed by value, so out-of-partition entries are inert. */
-const pinPartition = (field: BuilderField, group: string | undefined): BuilderField => {
-  if (group === undefined || !field.options) return field;
-  const options = field.options.filter((o) => o.group === group);
-  return { ...field, options, enumValues: options.map((o) => o.value) };
+/** Every `lead` clause appears somewhere in `conds` (order-tolerant identity).
+ *  Multiset containment over canonicalized clauses — an AI- or hand-authored
+ *  block that carries the identity clauses in any order still matches. */
+const isSubset = (lead: Condition[], conds: Condition[]): boolean => {
+  if (lead.length > conds.length) return false;
+  const pool = conds.map((c) => JSON.stringify(canonical(c)));
+  for (const clause of lead) {
+    const key = JSON.stringify(canonical(clause));
+    const at = pool.indexOf(key);
+    if (at < 0) return false;
+    pool.splice(at, 1);
+  }
+  return true;
 };
 
 const buildLeafField = (
@@ -242,15 +251,12 @@ const buildLeafField = (
     `${resolved.mapName}:${resolved.modelName}.${resolved.field}`,
     `${resolved.modelName}.${resolved.field}`,
   );
-  return pinPartition(
-    {
-      ...base,
-      name: facet.path,
-      label: facet.label ?? decor.label ?? base.label,
-      icon: facet.icon ?? decor.icon,
-    },
-    facet.group,
-  );
+  return {
+    ...base,
+    name: facet.path,
+    label: facet.label ?? decor.label ?? base.label,
+    icon: facet.icon ?? decor.icon,
+  };
 };
 
 /** The element leaf's descriptor with any `kind` override applied — used to seed
@@ -269,10 +275,9 @@ export const facetElementLeaf = (
     opts,
   ).find((f) => f.name === resolved.elementLeaf);
   if (!leaf) return undefined;
-  const retyped = facet.kind
+  return facet.kind
     ? { ...leaf, kind: facet.kind, operators: operatorsForKind(facet.kind, opts.targets) }
     : leaf;
-  return pinPartition(retyped, facet.group);
 };
 
 /** How many of a matched `node`'s leading conditions are the facet's fixed `where`
@@ -625,6 +630,10 @@ export const matchFacet = (
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
   const children = groupChildren(node);
   const nodeKey = JSON.stringify(canonical(node));
+  // Collection identities are subset-matched (order-tolerant); when several
+  // facets' identities are contained in one block, the most specific wins.
+  let best: Facet | undefined;
+  let bestLead = -1;
   for (const facet of decoration.facets) {
     if (facet.condition !== undefined) {
       // A preset matches a node equal to its whole condition (coercion/order-insensitive).
@@ -673,19 +682,24 @@ export const matchFacet = (
       // A whereless collection has no identity block, so require the element leaf to
       // actually appear — otherwise any array node on this field would mislabel as
       // this facet. A whole-collection facet (no leaf) has nothing to require.
-      if (!resolved.elementLeaf) return facet;
-      const leafName = resolved.elementLeaf.split('.').pop();
-      if (
+      const leafName = resolved.elementLeaf?.split('.').pop();
+      const applies =
+        !resolved.elementLeaf ||
         destConds.some(
           (c) => c && typeof c === 'object' && (c as { field?: string }).field === leafName,
-        )
-      )
-        return facet;
+        );
+      if (applies && bestLead < 0) {
+        best = facet;
+        bestLead = 0;
+      }
       continue;
     }
-    if (isLeadingPrefix(lead, destConds)) return facet;
+    if (isSubset(lead, destConds) && lead.length > bestLead) {
+      best = facet;
+      bestLead = lead.length;
+    }
   }
-  return undefined;
+  return best;
 };
 
 /**

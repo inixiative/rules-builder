@@ -72,9 +72,12 @@ export type BuilderField = {
    *  dotted `field` resolves its relation, never offered in the picker. */
   selectable?: boolean;
   /** The surface's option set verbatim — a grouped source's options carry their
-   *  partition in `group` (json-rules 2.17). `enumValues`/`enumLabels` stay the
-   *  flattened view for renderers that don't partition. */
+   *  partition keys in `groups` (index-aligned with `groupBy`). `enumValues`/
+   *  `enumLabels` stay the flattened view for renderers that don't partition. */
   options?: readonly SourceOption[];
+  /** The source's partition axes (dotted paths on this model, json-rules 2.18) —
+   *  a sibling clause on an axis pins this field's options to that partition. */
+  groupBy?: readonly string[];
   /** Present for enums and pseudo-enums (value-bearing fields) → render a select. */
   enumValues?: readonly string[];
   /** Human-readable labels for enum/sourced option values (value → label). */
@@ -197,6 +200,7 @@ export const describeModelFields = (
       relation: isRelation ? relationTarget(entry, mapName) : undefined,
       operators,
       options: entry.options,
+      groupBy: entry.groupBy,
       enumValues: entry.options?.map((o) => o.value) ?? entry.values,
       enumLabels: mergeOptionLabels(
         entry.options,

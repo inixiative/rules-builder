@@ -38,8 +38,8 @@ const sourceValues: SourceValues[] = [
     model: 'User',
     field: 'tier',
     options: [
-      { value: 'gold', group: 'level' },
-      { value: 'apac', label: 'APAC', group: 'region' },
+      { value: 'gold', groups: ['level'] },
+      { value: 'apac', label: 'APAC', groups: ['region'] },
       { value: 'plain' },
     ],
   },
@@ -52,8 +52,8 @@ const tier = fields.find((f) => f.name === 'tier');
 describe('describeModelFields — grouped source options keep their provenance', () => {
   test('field.options carries the surface options verbatim, group included', () => {
     expect(tier?.options).toEqual([
-      { value: 'gold', group: 'level' },
-      { value: 'apac', label: 'APAC', group: 'region' },
+      { value: 'gold', groups: ['level'] },
+      { value: 'apac', label: 'APAC', groups: ['region'] },
       { value: 'plain' },
     ]);
   });
@@ -74,8 +74,8 @@ describe('leaf ValueControl — options carry group', () => {
     const root = buildRoot(cond, lens, fields, 4, () => {});
     const leaf = (root as { children: LeafNode[] }).children[0];
     expect(leaf.value?.options).toEqual([
-      { value: 'gold', label: 'gold', group: 'level' },
-      { value: 'apac', label: 'APAC', group: 'region' },
+      { value: 'gold', label: 'gold', groups: ['level'] },
+      { value: 'apac', label: 'APAC', groups: ['region'] },
       { value: 'plain', label: 'plain' },
     ]);
   });

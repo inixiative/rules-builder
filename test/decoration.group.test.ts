@@ -1,12 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap, SourceValues } from '@inixiative/json-rules';
-import { describeFacets, describeModelFields, resolve } from '../src';
-import { type ArrayNode, buildRoot, type LeafNode } from '../src/builder/buildNodes';
-import { type Decoration, facetElementLeaf } from '../src/schema/decoration';
+import { describeModelFields, resolve } from '../src';
+import {
+  type ArrayNode,
+  buildRoot,
+  type GroupNode,
+  type LeafNode,
+} from '../src/builder/buildNodes';
+import { type Decoration, matchFacet } from '../src/schema/decoration';
 
-// Facet.group: a facet may pin its value picker to ONE partition of a grouped
-// source (json-rules 2.17). Purely presentational — identity stays path+where;
-// the group never enters the rule and never affects rehydration.
+// Author-time partition pinning: a grouped field's options narrow to the
+// partition selected by sibling clauses on its axes (the source's groupBy paths,
+// carried on the surface). The pin derives FROM the semantic clause, so the
+// picker can never promise a narrower vocabulary than the rule enforces — and
+// validity gates on the pinned set.
 const maps: Record<string, FieldMap> = {
   app: {
     models: {
@@ -18,6 +25,7 @@ const maps: Record<string, FieldMap> = {
       },
       Enrichment: {
         fields: {
+          source: { kind: 'scalar', type: 'String' },
           key: { kind: 'scalar', type: 'String' },
           value: { kind: 'scalar', type: 'String' },
         },
@@ -26,6 +34,7 @@ const maps: Record<string, FieldMap> = {
   },
 };
 
+// Composite axes: (source, key) — the 3-level cascade.
 const sourceValues: SourceValues[] = [
   {
     path: 'User.enrichments',
@@ -33,9 +42,10 @@ const sourceValues: SourceValues[] = [
     model: 'Enrichment',
     field: 'value',
     options: [
-      { value: 'Manufacturing', group: 'Industry' },
-      { value: 'Healthcare', group: 'Industry' },
-      { value: 'marketing', group: 'Business Unit' },
+      { value: 'Manufacturing', groups: ['Salesforce', 'industry'] },
+      { value: 'Healthcare', groups: ['Salesforce', 'industry'] },
+      { value: 'Retail', groups: ['HubSpot', 'industry'] },
+      { value: 'marketing', groups: ['Salesforce', 'business unit'] },
       { value: 'plain' },
     ],
   },
@@ -48,110 +58,239 @@ const source = {
   narrowing: {
     root: {
       relations: {
-        enrichments: { sources: { value: { groupBy: 'key' } } },
+        enrichments: { sources: { value: { groupBy: ['source', 'key'] } } },
       },
     },
   },
 };
 const lens = resolve(source, { sourceValues });
+const fields = describeModelFields(lens, 'app', 'User');
 
-const industryFacet = {
+// Facet = SOURCE container: identity is the source clause; the key clause is the
+// editable level-2 field selector, declared as a selector so renderers draw it
+// generically instead of hardcoding the path.
+const salesforceFacet = {
   path: 'enrichments.value',
-  where: { field: 'key', operator: 'equals', value: 'industry' } as Condition,
-  label: 'Industry',
-  group: 'Industry',
+  where: { field: 'source', operator: 'equals', value: 'Salesforce' } as Condition,
+  label: 'Salesforce',
+  selectors: [{ field: 'key', label: 'Field', anyLabel: 'Any field' }],
 };
+const decoration: Decoration = { facets: [salesforceFacet] };
 
-describe('facetElementLeaf — group pins the partition', () => {
-  test('a grouped facet narrows options/enumValues/enumLabels to its partition', () => {
-    const leaf = facetElementLeaf(lens, industryFacet);
-    expect(leaf?.options).toEqual([
-      { value: 'Manufacturing', group: 'Industry' },
-      { value: 'Healthcare', group: 'Industry' },
-    ]);
-    expect(leaf?.enumValues).toEqual(['Manufacturing', 'Healthcare']);
+const eavBlock = (conds: Condition[]): Condition => ({
+  all: [{ field: 'enrichments', arrayOperator: 'any', condition: { all: conds } }],
+});
+
+const valueLeafOf = (root: ReturnType<typeof buildRoot>, index: number): LeafNode =>
+  ((root as GroupNode).children[0] as ArrayNode).condition?.children[index] as LeafNode;
+
+describe('sibling-derived pin — surface axes narrow the value picker', () => {
+  test('describeModelFields carries the partition axes onto the field', () => {
+    const relFields = describeModelFields(lens, 'app', 'Enrichment');
+    expect(relFields.find((f) => f.name === 'value')?.groupBy).toEqual(['source', 'key']);
   });
 
-  test('a groupless facet keeps the full option set', () => {
-    const leaf = facetElementLeaf(lens, { ...industryFacet, group: undefined });
-    expect(leaf?.options?.map((o) => o.value)).toEqual([
+  test('an equals sibling on each axis pins to the exact partition', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'equals', value: 'Salesforce' },
+      { field: 'key', operator: 'equals', value: 'industry' },
+      { field: 'value', operator: 'equals', value: 'Manufacturing' },
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      2,
+    );
+    expect(leaf.value?.options).toEqual([
+      { value: 'Manufacturing', label: 'Manufacturing', groups: ['Salesforce', 'industry'] },
+      { value: 'Healthcare', label: 'Healthcare', groups: ['Salesforce', 'industry'] },
+    ]);
+  });
+
+  test('one constrained axis pins that axis only; the other stays free', () => {
+    const cond = eavBlock([
+      { field: 'key', operator: 'equals', value: 'industry' },
+      { field: 'value', operator: 'equals', value: '' },
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      1,
+    );
+    expect(leaf.value?.options?.map((o) => o.value)).toEqual([
       'Manufacturing',
       'Healthcare',
+      'Retail',
+    ]);
+  });
+
+  test('an `in` sibling pins to the union of its partitions', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'in', value: ['HubSpot'] },
+      { field: 'value', operator: 'equals', value: '' },
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      1,
+    );
+    expect(leaf.value?.options?.map((o) => o.value)).toEqual(['Retail']);
+  });
+
+  test('no axis sibling → the full sectioned set, ungrouped options included', () => {
+    const cond = eavBlock([{ field: 'value', operator: 'equals', value: '' }]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      0,
+    );
+    expect(leaf.value?.options?.map((o) => o.value)).toEqual([
+      'Manufacturing',
+      'Healthcare',
+      'Retail',
       'marketing',
       'plain',
     ]);
   });
 
-  test('an unknown group yields an empty partition (definition without data yet)', () => {
-    const leaf = facetElementLeaf(lens, { ...industryFacet, group: 'Deal Size' });
-    expect(leaf?.options).toEqual([]);
-    expect(leaf?.enumValues).toEqual([]);
+  test('a pinned set excludes ungrouped options', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'equals', value: 'Salesforce' },
+      { field: 'value', operator: 'equals', value: '' },
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      1,
+    );
+    expect(leaf.value?.options?.every((o) => o.groups?.[0] === 'Salesforce')).toBe(true);
   });
-});
 
-describe('buildRoot — a matched grouped facet filters the element value picker', () => {
-  const decoration: Decoration = { facets: [industryFacet] };
-  const fields = describeModelFields(lens, 'app', 'User');
+  test('VALIDITY gates on the pinned set — an out-of-partition value flags invalid', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'equals', value: 'Salesforce' },
+      { field: 'key', operator: 'equals', value: 'industry' },
+      { field: 'value', operator: 'equals', value: 'marketing' }, // business unit value
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      2,
+    );
+    expect(leaf.value?.valid).toBe(false);
+  });
 
-  test('the condition leaf on value offers only the partition options', () => {
+  test('an `any` block does not pin — its siblings are not conjunctive', () => {
     const cond: Condition = {
       all: [
         {
           field: 'enrichments',
           arrayOperator: 'any',
           condition: {
-            all: [
+            any: [
               { field: 'key', operator: 'equals', value: 'industry' },
-              { field: 'value', operator: 'equals', value: 'Manufacturing' },
+              { field: 'value', operator: 'equals', value: '' },
             ],
           },
         },
       ],
     };
-    const root = buildRoot(cond, lens, fields, 4, () => {}, { decoration });
-    const arr = (root as { children: ArrayNode[] }).children[0];
-    expect(arr.hoist?.label).toBe('Industry');
-    const valueLeaf = arr.condition?.children[1] as LeafNode;
-    expect(valueLeaf.value?.options).toEqual([
-      { value: 'Manufacturing', label: 'Manufacturing', group: 'Industry' },
-      { value: 'Healthcare', label: 'Healthcare', group: 'Industry' },
+    const arr = (buildRoot(cond, lens, fields, 4, () => {}) as GroupNode).children[0] as ArrayNode;
+    const leaf = arr.condition?.children[1] as LeafNode;
+    expect(leaf.value?.options?.map((o) => o.value)).toEqual([
+      'Manufacturing',
+      'Healthcare',
+      'Retail',
+      'marketing',
+      'plain',
     ]);
+  });
+
+  test('a bind-valued sibling does not pin (author-time cannot resolve it)', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'equals', bind: 'src' } as Condition,
+      { field: 'value', operator: 'equals', value: '' },
+    ]);
+    const leaf = valueLeafOf(
+      buildRoot(cond, lens, fields, 4, () => {}),
+      1,
+    );
+    expect(leaf.value?.options).toHaveLength(5);
   });
 });
 
-describe('leaf facets — group applies on a root sourced field too', () => {
-  const flatMaps: Record<string, FieldMap> = {
-    app: { models: { User: { fields: { tier: { kind: 'scalar', type: 'String' } } } } },
-  };
-  const flatLens = resolve(
-    {
-      maps: flatMaps,
-      mapName: 'app',
-      model: 'User',
-      narrowing: { root: { sources: { tier: { groupBy: 'tier' } } } },
-    },
-    {
-      sourceValues: [
-        {
-          path: 'User',
-          mapName: 'app',
-          model: 'User',
-          field: 'tier',
-          options: [
-            { value: 'gold', group: 'level' },
-            { value: 'apac', group: 'region' },
-          ],
-        },
+describe('matchFacet — subset identity (order-tolerant)', () => {
+  const savedInOrder = {
+    field: 'enrichments',
+    arrayOperator: 'any',
+    condition: {
+      all: [
+        { field: 'source', operator: 'equals', value: 'Salesforce' },
+        { field: 'key', operator: 'equals', value: 'industry' },
+        { field: 'value', operator: 'equals', value: 'Manufacturing' },
       ],
     },
-  );
+  } as Condition;
 
-  test('describeFacets narrows a leaf facet to its partition', () => {
-    const decoration: Decoration = {
-      facets: [{ path: 'tier', label: 'Level', group: 'level' }],
+  const savedReordered = {
+    field: 'enrichments',
+    arrayOperator: 'any',
+    condition: {
+      all: [
+        { field: 'key', operator: 'equals', value: 'industry' },
+        { field: 'value', operator: 'equals', value: 'Manufacturing' },
+        { field: 'source', operator: 'equals', value: 'Salesforce' }, // identity NOT leading
+      ],
+    },
+  } as Condition;
+
+  test('identity leading: matches', () => {
+    expect(matchFacet(lens, decoration, savedInOrder)).toBe(salesforceFacet);
+  });
+
+  test('identity anywhere in the block: still matches (AI-authored ordering)', () => {
+    expect(matchFacet(lens, decoration, savedReordered)).toBe(salesforceFacet);
+  });
+
+  test('a block without the identity clause does not match', () => {
+    const other = {
+      field: 'enrichments',
+      arrayOperator: 'any',
+      condition: {
+        all: [
+          { field: 'source', operator: 'equals', value: 'HubSpot' },
+          { field: 'value', operator: 'equals', value: 'Retail' },
+        ],
+      },
+    } as Condition;
+    expect(matchFacet(lens, decoration, other)).toBeUndefined();
+  });
+
+  test('the most specific matching facet wins', () => {
+    const general = {
+      path: 'enrichments.value',
+      where: { field: 'source', operator: 'equals', value: 'Salesforce' } as Condition,
+      label: 'Salesforce',
     };
-    const facetField = describeFacets(flatLens, decoration).find((f) => f.name === 'tier');
-    expect(facetField?.options).toEqual([{ value: 'gold', group: 'level' }]);
-    expect(facetField?.enumValues).toEqual(['gold']);
+    const specific = {
+      path: 'enrichments.value',
+      where: {
+        all: [
+          { field: 'source', operator: 'equals', value: 'Salesforce' },
+          { field: 'key', operator: 'equals', value: 'industry' },
+        ],
+      } as Condition,
+      label: 'Salesforce Industry',
+    };
+    const both: Decoration = { facets: [general, specific] };
+    expect(matchFacet(lens, both, savedReordered)).toBe(specific);
+  });
+});
+
+describe('facet selectors — decoration-declared inner rows', () => {
+  test('a matched facet exposes its selectors on the array node', () => {
+    const cond = eavBlock([
+      { field: 'source', operator: 'equals', value: 'Salesforce' },
+      { field: 'key', operator: 'equals', value: 'industry' },
+      { field: 'value', operator: 'equals', value: 'Manufacturing' },
+    ]);
+    const arr = (buildRoot(cond, lens, fields, 4, () => {}, { decoration }) as GroupNode)
+      .children[0] as ArrayNode;
+    expect(arr.hoist?.label).toBe('Salesforce');
+    expect(arr.selectors).toEqual([{ field: 'key', label: 'Field', anyLabel: 'Any field' }]);
   });
 });

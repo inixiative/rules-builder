@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.20.0 — sibling-derived partition pinning (dependent vocabularies)
+
+- **Author-time pin, inferred from the rule itself.** A grouped field (surface
+  `groupBy` axes, json-rules 2.18) narrows its options to the partition selected
+  by conjoined sibling clauses on its axes — `equals` pins one key, `in` a union,
+  several clauses intersect; only `all` blocks pin; bind/path/unset never pin.
+  The pin derives FROM the semantic clauses, so the picker can never promise a
+  narrower vocabulary than the rule enforces — and it narrows `enumValues` too,
+  so `ValueControl.valid` gates on the pinned set. Cascades (source → field →
+  value, country → state) fall out of ordinary authored clauses.
+- **`Facet.group` removed** (shipped 0.19.0, unconsumed): the facet's fixed
+  `where` IS the sibling that pins, making the static stamp redundant — and its
+  where-less form was exactly the unsafe state (picker narrower than semantics)
+  the inference forecloses.
+- **`matchFacet` collection identity is subset-matched** (order-tolerant): a
+  saved or AI-authored block carrying the identity clauses in any order still
+  collapses to its facet; when several identities are contained, the most
+  specific wins. Positional `lockedLeading` hiding still requires a leading
+  identity block.
+- **`Facet.selectors`** — declared inner selector rows (`{field, label?,
+  anyLabel?}`), surfaced verbatim on a matched `ArrayNode`, so renderers draw
+  "Field: [Any ▾]" dropdowns generically instead of hardcoding paths.
+- `PickOption.group` → `groups?: string[]`; `BuilderField.groupBy` carries the
+  axes. Requires `@inixiative/json-rules ^2.18.0`.
+
 ## 0.19.0 — grouped sources reach the picker
 
 - **`BuilderField.options`** — `describeModelFields` now carries the surface's option set verbatim (`{value, label?, group?}`, json-rules ≥ 2.17) instead of flattening it into `enumValues`/`enumLabels` (which remain, derived, for renderers that don't partition). A leaf's `ValueControl.options` carries `group` too, so an undecorated grouped field renders as one sectioned select.

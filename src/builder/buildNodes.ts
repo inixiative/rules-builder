@@ -8,7 +8,7 @@ import {
   type ValueShape,
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
-import { addRule, type RulePath, removeNode, setNode } from '../core/tree';
+import { addRule, getNode, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   type Decoration,
   facetBranchScope,
@@ -31,7 +31,7 @@ import {
   ruleForField,
 } from './nodes';
 
-export type PickOption = { value: string; label: string; icon?: string; group?: string };
+export type PickOption = { value: string; label: string; icon?: string; groups?: string[] };
 
 export type FieldControl = {
   value?: string;
@@ -159,6 +159,10 @@ export type ArrayNode = {
    *  non-editable `where` — a renderer hides exactly this many (the identity
    *  block), leaving the rest editable. */
   lockedLeading?: number;
+  /** The matched facet's declared inner selector rows (e.g. the field picker
+   *  inside a source container) — a renderer draws these generically instead of
+   *  hardcoding field paths. */
+  selectors?: { field: string; label?: string; anyLabel?: string }[];
   /** The related model the elements belong to (present for relation lists). */
   relation?: { mapName: string; modelName: string };
   /** Count operators (atLeast/atMost/exactly) → a numeric threshold. */
@@ -190,6 +194,52 @@ type Ctx = {
 /** What a node sees: the surface to validate against + its selectable fields. On
  *  descent into an array node's elements, this swaps to the related model. */
 type Scope = { lens: Lens; fields: BuilderField[] };
+
+/**
+ * Author-time partition pin. A grouped field (surface `groupBy` axes) narrows its
+ * options — AND its `enumValues`, so validity gates on the partition — to the
+ * slice selected by conjoined sibling clauses on its axes. Only an `all` block
+ * pins (an `any` sibling is not conjunctive); `equals` pins one key, `in` a
+ * union, several clauses on one axis intersect; bind/path/unset never pin. The
+ * pin derives FROM the semantic clauses, so the picker cannot promise a narrower
+ * vocabulary than the rule enforces.
+ */
+const axisSiblings = (root: Condition, path: RulePath): Condition[] => {
+  if (path.length === 0) return [];
+  const parent = getNode(root, path.slice(0, -1));
+  if (parent === undefined || !isGroupNode(parent) || groupOperatorOf(parent) !== 'all') return [];
+  return groupChildrenOf(parent).filter((_, i) => i !== path[path.length - 1]);
+};
+
+const pinField = (
+  field: BuilderField | undefined,
+  siblings: Condition[],
+): BuilderField | undefined => {
+  if (!field?.groupBy || !field.options) return field;
+  const constraints = new Map<number, Set<string>>();
+  for (const sibling of siblings) {
+    if (typeof sibling !== 'object' || sibling === null) continue;
+    const r = sibling as { field?: string; operator?: string; value?: unknown };
+    const axis = r.field === undefined ? -1 : field.groupBy.indexOf(r.field);
+    if (axis < 0 || r.value === undefined || r.value === '') continue;
+    const clause =
+      r.operator === 'equals'
+        ? new Set([String(r.value)])
+        : r.operator === 'in' && Array.isArray(r.value)
+          ? new Set(r.value.map(String))
+          : undefined;
+    if (!clause) continue;
+    const prev = constraints.get(axis);
+    constraints.set(axis, prev ? new Set([...prev].filter((k) => clause.has(k))) : clause);
+  }
+  if (constraints.size === 0) return field;
+  const options = field.options.filter(
+    (o) =>
+      o.groups !== undefined &&
+      [...constraints].every(([i, keys]) => o.groups?.[i] !== undefined && keys.has(o.groups[i])),
+  );
+  return { ...field, options, enumValues: options.map((o) => o.value) };
+};
 
 const COUNT_OPS = new Set(['atLeast', 'atMost', 'exactly']);
 const PREDICATE_OPS = new Set(['all', 'any', 'none']);
@@ -237,7 +287,10 @@ const buildLeaf = (
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
   // Resolve the base field: an exact match, or a Json column carrying a dotted sub-path.
-  let field = scope.fields.find((f) => f.name === fieldName);
+  let field = pinField(
+    scope.fields.find((f) => f.name === fieldName),
+    axisSiblings(ctx.root, path),
+  );
   let baseName = fieldName;
   let subPath: string | undefined;
   if (!field && fieldName?.includes('.')) {
@@ -261,7 +314,7 @@ const buildLeaf = (
     ? field.options.map((o) => ({
         value: o.value,
         label: field.enumLabels?.[o.value] ?? o.label ?? o.value,
-        group: o.group,
+        groups: o.groups,
       }))
     : field?.enumValues?.map((v) => ({
         value: v,
@@ -465,6 +518,7 @@ const buildArray = (
         }
       : undefined,
     lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
+    selectors: matchedFacet?.selectors,
     atomic: matchedFacet && isPreset(matchedFacet) ? true : undefined,
     arrayOperator: {
       value: op,
