@@ -183,6 +183,76 @@ const Leaf = ({ node }: { node: LeafNode }) => (
   </div>
 );
 
+const AggregateFacet = ({ node }: { node: ArrayNode }) => {
+  const agg = node.aggregate;
+  if (!agg) return null;
+  const isRange = agg.value.shape === 'range';
+  const value = agg.value.current;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select
+        aria-label="aggregate mode"
+        options={agg.modeOptions}
+        value={agg.mode}
+        onChange={(m) => agg.setMode(m as 'sum' | 'avg')}
+      />
+      <span className="text-xs text-muted-foreground">of</span>
+      <Select
+        aria-label="aggregate field"
+        placeholder="numeric field"
+        options={iconize(agg.field.options)}
+        value={agg.field.value ?? ''}
+        onChange={agg.field.set}
+      />
+      {/* A Json target runs via check() but cannot compile to a Prisma groupBy. */}
+      {agg.field.compilesToPrisma === false && (
+        <Badge tone="accent" title="Json aggregate runs via check() but cannot compile to Prisma">
+          check()-only (Json)
+        </Badge>
+      )}
+      <Select
+        aria-label="aggregate operator"
+        placeholder="operator"
+        options={agg.operator.options}
+        value={agg.operator.value ?? ''}
+        onChange={agg.operator.set}
+      />
+      {isRange ? (
+        <>
+          <Input
+            aria-label="aggregate value min"
+            type="number"
+            className="w-20"
+            value={Array.isArray(value) ? (value[0] ?? '') : ''}
+            onChange={(e) =>
+              agg.value.set([Number(e.target.value), Array.isArray(value) ? value[1] : 0])
+            }
+          />
+          <Input
+            aria-label="aggregate value max"
+            type="number"
+            className="w-20"
+            value={Array.isArray(value) ? (value[1] ?? '') : ''}
+            onChange={(e) =>
+              agg.value.set([Array.isArray(value) ? value[0] : 0, Number(e.target.value)])
+            }
+          />
+        </>
+      ) : (
+        <Input
+          aria-label="aggregate value"
+          type="number"
+          className="w-24"
+          value={typeof value === 'number' ? value : ''}
+          onChange={(e) =>
+            agg.value.set(e.target.value === '' ? undefined : Number(e.target.value))
+          }
+        />
+      )}
+    </div>
+  );
+};
+
 const ArrayRule = ({ node }: { node: ArrayNode }) => (
   <div
     className="grid gap-2 rounded-lg border border-border border-l-2 border-l-violet-500 bg-violet-50/40 p-2.5"
@@ -205,13 +275,16 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             value={node.field.value ?? ''}
             onChange={node.field.set}
           />
-          <Select
-            aria-label="array operator"
-            placeholder="operator"
-            options={node.arrayOperator.options}
-            value={node.arrayOperator.value ?? ''}
-            onChange={node.arrayOperator.set}
-          />
+          {node.arrayOperator && (
+            <Select
+              aria-label="array operator"
+              placeholder="operator"
+              options={node.arrayOperator.options}
+              value={node.arrayOperator.value ?? ''}
+              onChange={node.arrayOperator.set}
+            />
+          )}
+          {node.aggregate && <AggregateFacet node={node} />}
         </>
       )}
       {node.count && (
@@ -243,7 +316,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
     {node.condition && (
       <div className="grid gap-1">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {node.arrayOperator.value} element matches
+          {node.aggregate ? 'over elements where' : `${node.arrayOperator?.value} element matches`}
         </span>
         <Node node={node.condition} />
       </div>

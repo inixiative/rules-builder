@@ -1,4 +1,5 @@
 export type {
+  AggregateControl,
   ArrayNode,
   BuilderNode,
   FieldControl,

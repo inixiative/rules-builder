@@ -9,6 +9,12 @@ export const isGroupNode = (n: Condition): boolean =>
 export const isArrayNode = (n: Condition): boolean =>
   typeof n === 'object' && n !== null && 'arrayOperator' in n;
 
+/** An aggregate rule (`sum`/`avg` over a list relation) — carries an `aggregate`
+ *  descriptor instead of an `arrayOperator`. Built as an {@link ArrayNode} with its
+ *  `aggregate` facet populated. */
+export const isAggregateNode = (n: Condition): boolean =>
+  typeof n === 'object' && n !== null && 'aggregate' in n;
+
 export const groupOperatorOf = (n: Condition): 'all' | 'any' =>
   typeof n === 'object' && n !== null && 'any' in n ? 'any' : 'all';
 

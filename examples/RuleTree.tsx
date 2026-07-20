@@ -265,12 +265,52 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
         options={iconize(node.field.options)}
         onChange={node.field.set}
       />
-      <Picker
-        ariaLabel="array operator"
-        value={node.arrayOperator.value}
-        options={node.arrayOperator.options}
-        onChange={node.arrayOperator.set}
-      />
+      {node.arrayOperator && (
+        <Picker
+          ariaLabel="array operator"
+          value={node.arrayOperator.value}
+          options={node.arrayOperator.options}
+          onChange={node.arrayOperator.set}
+        />
+      )}
+      {node.aggregate && (
+        <>
+          <Picker
+            ariaLabel="aggregate mode"
+            value={node.aggregate.mode}
+            options={node.aggregate.modeOptions}
+            onChange={(m) => node.aggregate?.setMode(m as 'sum' | 'avg')}
+          />
+          <Picker
+            ariaLabel="aggregate field"
+            value={node.aggregate.field.value}
+            options={node.aggregate.field.options}
+            onChange={node.aggregate.field.set}
+          />
+          {node.aggregate.field.compilesToPrisma === false && (
+            <span style={{ fontSize: 11, color: '#b45309' }} title="Json — check()-only">
+              check()-only
+            </span>
+          )}
+          <Picker
+            ariaLabel="aggregate operator"
+            value={node.aggregate.operator.value}
+            options={node.aggregate.operator.options}
+            onChange={node.aggregate.operator.set}
+          />
+          <input
+            aria-label="aggregate value"
+            type="number"
+            style={{ ...sel, width: 90 }}
+            value={
+              typeof node.aggregate.value.current === 'number' ? node.aggregate.value.current : ''
+            }
+            onChange={(e) =>
+              node.aggregate?.value.set(e.target.value === '' ? undefined : Number(e.target.value))
+            }
+          />
+        </>
+      )}
       {node.count && (
         <input
           aria-label="count"
@@ -303,7 +343,9 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
 
     {node.condition && (
       <div style={{ display: 'grid', gap: 4 }}>
-        <span style={subLabel}>{node.arrayOperator.value} element matches</span>
+        <span style={subLabel}>
+          {node.aggregate ? 'over elements where' : `${node.arrayOperator?.value} element matches`}
+        </span>
         <Node node={node.condition} />
       </div>
     )}

@@ -26,12 +26,21 @@ import {
   defaultRule,
   groupChildrenOf,
   groupOperatorOf,
+  isAggregateNode,
   isArrayNode,
   isGroupNode,
   ruleForField,
 } from './nodes';
 
-export type PickOption = { value: string; label: string; icon?: string; groups?: string[] };
+export type PickOption = {
+  value: string;
+  label: string;
+  icon?: string;
+  groups?: string[];
+  /** Set on an aggregate numeric-target option: `false` marks a `Json` field, which
+   *  the in-memory `check()` aggregates but `toPrisma()` cannot compile. */
+  compilesToPrisma?: boolean;
+};
 
 export type FieldControl = {
   value?: string;
@@ -134,13 +143,46 @@ export type GroupNode = {
  * matching it first) are nested sub-builders scoped to the *related* model's
  * surface — author them like any other group.
  */
+/**
+ * The numeric-aggregate facet of an {@link ArrayNode} — present instead of
+ * `arrayOperator` when the node is an `AggregateRule` (`sum`/`avg` over the list
+ * elements compared to a threshold). The element window (e.g. a date range) is
+ * authored via the shared `condition` sub-builder, NOT a separate window control:
+ * the engine expresses the window as the element `condition`, and `toPrisma()`
+ * rejects authored windowing (orderBy/take/skip/filter).
+ */
+export type AggregateControl = {
+  /** `sum` or `avg`. Only these two — {@link AGGREGATE_MODES}. */
+  mode: 'sum' | 'avg';
+  setMode: (mode: 'sum' | 'avg') => void;
+  modeOptions: PickOption[];
+  /** Picker over the RELATED model's aggregatable numeric scalars + `Json` columns.
+   *  Each option carries `compilesToPrisma`; `compilesToPrisma` here reflects the
+   *  currently-selected target (`false` = a `Json` target, check()-only). */
+  field: {
+    value?: string;
+    options: PickOption[];
+    set: (name: string) => void;
+    /** False when the selected target is missing or not aggregatable. */
+    valid: boolean;
+    /** False when the selected target is a `Json` column (check()-only). */
+    compilesToPrisma?: boolean;
+  };
+  /** The threshold comparison — restricted to {@link AGGREGATE_OPERATORS}. */
+  operator: OperatorControl;
+  /** The threshold value: a number (single-value ops) or `[number, number]` (between). */
+  value: { current?: number | [number, number]; shape: ValueShape; set: (v: unknown) => void };
+};
+
 export type ArrayNode = {
   kind: 'array';
   id: string;
   path: RulePath;
   depth: number;
   field: FieldControl;
-  arrayOperator: {
+  /** Present for element rules (presence/count/predicate); absent on an aggregate
+   *  node, which carries {@link ArrayNode.aggregate} instead. */
+  arrayOperator?: {
     value?: string;
     options: PickOption[];
     set: (op: string) => void;
@@ -149,6 +191,8 @@ export type ArrayNode = {
      *  affordance rather than showing it inline. */
     hidden?: boolean;
   };
+  /** Present instead of `arrayOperator` when this is an `AggregateRule`. */
+  aggregate?: AggregateControl;
   /** Set when this array node is a hoisted alias (a {@link Decoration} facet) — a
    *  renderer collapses it to the named field. */
   hoist?: HoistBadge;
@@ -246,6 +290,57 @@ const PREDICATE_OPS = new Set(['all', 'any', 'none']);
 type ArrayCat = 'presence' | 'count' | 'predicate';
 const arrayCat = (op: string | undefined): ArrayCat =>
   op && COUNT_OPS.has(op) ? 'count' : op && PREDICATE_OPS.has(op) ? 'predicate' : 'presence';
+
+/** The `sum`/`avg` modes the engine's `AggregateMode` supports. `min`/`max` could be
+ *  added here if the engine adds them; element *count* is intentionally not a mode —
+ *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
+const AGGREGATE_MODES = ['sum', 'avg'] as const;
+
+/** The threshold comparisons an aggregate rule may use — mirrors the engine's
+ *  toPrisma guards (`toPrisma/aggregate.ts`): single-value comparisons + `between`.
+ *  `notBetween` is intentionally excluded (the compiler throws on it). */
+const AGGREGATE_OPERATORS = [
+  'equals',
+  'notEquals',
+  'lessThan',
+  'lessThanEquals',
+  'greaterThan',
+  'greaterThanEquals',
+  'between',
+] as const;
+const AGGREGATE_OPERATOR_SET = new Set<string>(AGGREGATE_OPERATORS);
+
+/** Author-time windowing keys the engine's `toPrisma()` rejects on an aggregate rule
+ *  (`hasWindow`). The element `condition` is NOT windowing — it compiles fine. */
+const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
+
+/**
+ * Validate an aggregate rule the way the engine's `toPrisma/aggregate.ts` guards do,
+ * plus the check()-only Json carve-out. Returns whether it is authorable at all and
+ * whether its numeric target compiles to a Prisma plan.
+ *
+ * - `field` must terminate at a list (`many`) relation.
+ * - `aggregate.field` must exist on the related model and be a numeric scalar
+ *   (`compilesToPrisma`) OR a `Json` column (valid-but-flagged, check()-only).
+ * - `operator` must be one of {@link AGGREGATE_OPERATORS} (rejects `notBetween`).
+ * - no authored windowing ({@link AGGREGATE_WINDOW_KEYS}).
+ */
+const validateAggregate = (
+  rec: Rec,
+  relationField: BuilderField | undefined,
+  targetField: BuilderField | undefined,
+): { ok: boolean; compilesToPrisma: boolean } => {
+  const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
+  const fieldTerminatesAtList =
+    relationField?.isList === true && relationField.relation !== undefined;
+  const targetExists = targetField !== undefined && targetField.aggregatable === true;
+  const targetCompiles = targetField?.compilesToPrisma === true;
+  const operatorOk = typeof rec.operator === 'string' && AGGREGATE_OPERATOR_SET.has(rec.operator);
+  const modeOk = agg.mode === 'sum' || agg.mode === 'avg';
+  const noWindow = AGGREGATE_WINDOW_KEYS.every((k) => rec[k] === undefined);
+  const ok = fieldTerminatesAtList && targetExists && operatorOk && modeOk && noWindow;
+  return { ok, compilesToPrisma: ok && targetCompiles };
+};
 
 /** Scalars, enums, json, and list relations are directly rule-able; a to-one
  *  relation is not (you traverse it via a dotted path or its own array node). */
@@ -444,11 +539,16 @@ const buildArray = (
   const op = rec.arrayOperator as string | undefined;
   const cat = arrayCat(op);
   const rel = field?.relation;
+  const isAggregate = isAggregateNode(node);
+  const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
+  const aggMode: 'sum' | 'avg' = agg.mode === 'avg' ? 'avg' : 'sum';
 
   // A hoisted collection facet: recognize the node so it renders as its named
   // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
+  // Aggregate rules are never facets — skip the match (an aggregate rule also has
+  // no `arrayOperator`, which the whereless-prefix heuristic would otherwise catch).
   const matchedFacet =
-    ctx.decoration && ctx.anchorLens === scope.lens
+    !isAggregate && ctx.decoration && ctx.anchorLens === scope.lens
       ? matchFacet(ctx.anchorLens, ctx.decoration, node)
       : undefined;
   const overrideLeaf = matchedFacet
@@ -490,6 +590,14 @@ const buildArray = (
     return buildGroup(subRoot, [], depth + 1, subCtx, relScope);
   };
 
+  // Aggregate target: the numeric scalar (or check()-only Json) on the RELATED model
+  // that `sum`/`avg` reduces. Offered only when the element relation resolves.
+  const aggTargetFields = rel ? relScope.fields.filter((f) => f.aggregatable) : [];
+  const aggTargetField = rel ? relScope.fields.find((f) => f.name === agg.field) : undefined;
+  const aggregateValidation = isAggregate
+    ? validateAggregate(rec, field, aggTargetField)
+    : undefined;
+
   return {
     kind: 'array',
     id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
@@ -505,8 +613,24 @@ const buildArray = (
       })),
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
-        if (next)
-          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
+        if (!next) return;
+        const id = rec._id ? { _id: rec._id as string } : {};
+        // In aggregate mode, re-pointing at another list relation keeps the aggregate
+        // (mode/operator/value preserved) but clears the target field — its related
+        // model changed. A non-list target falls back to the ordinary rule shape.
+        if (isAggregate && next.isList && next.relation) {
+          ctx.commit(
+            setNode(ctx.root, path, {
+              field: name,
+              aggregate: { mode: aggMode },
+              operator: (rec.operator as string) ?? 'greaterThan',
+              ...(rec.value !== undefined ? { value: rec.value } : {}),
+              ...id,
+            } as Condition),
+          );
+          return;
+        }
+        ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
       },
       valid: field !== undefined,
     },
@@ -520,38 +644,90 @@ const buildArray = (
     lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
     selectors: matchedFacet?.selectors,
     atomic: matchedFacet && isPreset(matchedFacet) ? true : undefined,
-    arrayOperator: {
-      value: op,
-      options: (field?.operators.array ?? []).map((o) => ({
-        value: o,
-        label: o,
-      })),
-      hidden: matchedFacet ? true : undefined,
-      set: (nextOp) => {
-        const nextCat = arrayCat(nextOp);
-        const { count, condition, ...restRec } = rec;
-        const out: Rec = { ...restRec, arrayOperator: nextOp };
-        if (nextCat !== 'presence' && condition !== undefined) out.condition = condition;
-        if (nextCat === 'count' && count !== undefined) out.count = count;
-        ctx.commit(setNode(ctx.root, path, out as Condition));
-      },
-    },
+    // Element-mode operator: absent on an aggregate node (it carries `aggregate`).
+    arrayOperator: isAggregate
+      ? undefined
+      : {
+          value: op,
+          options: (field?.operators.array ?? []).map((o) => ({
+            value: o,
+            label: o,
+          })),
+          hidden: matchedFacet ? true : undefined,
+          set: (nextOp) => {
+            const nextCat = arrayCat(nextOp);
+            const { count, condition, ...restRec } = rec;
+            const out: Rec = { ...restRec, arrayOperator: nextOp };
+            if (nextCat !== 'presence' && condition !== undefined) out.condition = condition;
+            if (nextCat === 'count' && count !== undefined) out.count = count;
+            ctx.commit(setNode(ctx.root, path, out as Condition));
+          },
+        },
+    // Aggregate mode: sum/avg over the related list → a threshold comparison. The
+    // element window is authored via `condition` (below), not a separate control.
+    aggregate: isAggregate
+      ? {
+          mode: aggMode,
+          modeOptions: AGGREGATE_MODES.map((m) => ({ value: m, label: m })),
+          setMode: (m) =>
+            ctx.commit(
+              setNode(ctx.root, path, { ...rec, aggregate: { ...agg, mode: m } } as Condition),
+            ),
+          field: {
+            value: agg.field,
+            options: aggTargetFields.map((f) => ({
+              value: f.name,
+              label: f.label,
+              icon: f.icon,
+              compilesToPrisma: f.compilesToPrisma,
+            })),
+            set: (name) =>
+              ctx.commit(
+                setNode(ctx.root, path, {
+                  ...rec,
+                  aggregate: { ...agg, field: name },
+                } as Condition),
+              ),
+            valid: aggTargetField?.aggregatable === true,
+            compilesToPrisma: aggTargetField?.compilesToPrisma,
+          },
+          operator: {
+            value: rec.operator as string | undefined,
+            options: AGGREGATE_OPERATORS.map((o) => ({ value: o, label: o })),
+            set: (nextOp) =>
+              ctx.commit(setNode(ctx.root, path, { ...rec, operator: nextOp } as Condition)),
+          },
+          value: {
+            current: rec.value as number | [number, number] | undefined,
+            shape: rec.operator ? valueShapeForOperator(rec.operator as never) : 'none',
+            set: (v) => ctx.commit(setNode(ctx.root, path, { ...rec, value: v } as Condition)),
+          },
+        }
+      : undefined,
     count:
-      cat === 'count'
+      !isAggregate && cat === 'count'
         ? {
             value: rec.count as number | undefined,
             set: (n) => ctx.commit(setNode(ctx.root, path, { ...rec, count: n } as Condition)),
           }
         : undefined,
-    condition: rel && (cat === 'predicate' || cat === 'count') ? buildSub('condition') : undefined,
-    filter: rel ? buildSub('filter') : undefined,
-    removeFilter: rel
-      ? () => {
-          const { filter: _f, ...restRec } = rec;
-          ctx.commit(setNode(ctx.root, path, restRec as Condition));
-        }
-      : undefined,
-    valid: checkRuleAgainstLens(node, scope.lens).ok,
+    // Element predicate (element mode) OR aggregate window (aggregate mode) — both
+    // ride the same `condition` sub-builder scoped to the related model.
+    condition:
+      rel && (isAggregate || cat === 'predicate' || cat === 'count')
+        ? buildSub('condition')
+        : undefined,
+    // `filter` is authored windowing — offered on element rules, never on an
+    // aggregate (toPrisma() rejects windowing on aggregates).
+    filter: rel && !isAggregate ? buildSub('filter') : undefined,
+    removeFilter:
+      rel && !isAggregate
+        ? () => {
+            const { filter: _f, ...restRec } = rec;
+            ctx.commit(setNode(ctx.root, path, restRec as Condition));
+          }
+        : undefined,
+    valid: checkRuleAgainstLens(node, scope.lens).ok && (aggregateValidation?.ok ?? true),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
@@ -629,7 +805,7 @@ const buildNode = (
 ): BuilderNode =>
   isGroupNode(node)
     ? buildGroup(node, path, depth, ctx, scope)
-    : isArrayNode(node)
+    : isArrayNode(node) || isAggregateNode(node)
       ? buildArray(node, path, depth, ctx, scope)
       : buildLeaf(node, path, depth, ctx, scope);
 

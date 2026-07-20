@@ -13,6 +13,7 @@ import {
   getValueShape,
   type Lens,
   type LensNarrowing,
+  NUMERIC_KINDS,
   type Operator,
   type RuleTarget,
   type SourceOption,
@@ -85,6 +86,15 @@ export type BuilderField = {
   /** A `Json` column: no declared sub-fields, but the kernel resolves a dotted JSON
    *  path on the operand — a renderer may let the user append a freeform sub-path. */
   acceptsSubPath?: boolean;
+  /** True when this scalar can be the numeric target of a `sum`/`avg` aggregate over
+   *  a list relation — a numeric scalar (Int/Float/Decimal/BigInt) or a `Json` column.
+   *  Consumed by the {@link ArrayNode} aggregate facet's field picker. */
+  aggregatable?: boolean;
+  /** For an `aggregatable` field: whether `toPrisma()` can compile a `groupBy` over it.
+   *  `true` for numeric scalars; `false` for `Json` — the in-memory `check()` runs a
+   *  Json aggregate fine, but Prisma `groupBy` cannot `_sum`/`_avg` a JSON-extracted
+   *  value, so a renderer should warn rather than emit a rule that 500s on DB eval. */
+  compilesToPrisma?: boolean;
 };
 
 export type SurfaceOptions = {
@@ -183,6 +193,12 @@ export const describeModelFields = (
     const isList = entry.isList === true;
     const kind: FieldKind = entry.kind === 'enum' ? 'Enum' : toFieldKind(entry.type);
 
+    // Numeric-aggregate targets: a numeric scalar compiles to a Prisma groupBy; a
+    // Json column is check()-only (flagged so a renderer can warn, not hard-block).
+    const isNumericScalar = entry.kind === 'scalar' && NUMERIC_KINDS.includes(kind);
+    const isJsonScalar = entry.kind === 'scalar' && kind === 'Json';
+    const aggregatable = isNumericScalar || isJsonScalar;
+
     const operators = isRelation
       ? {
           field: [] as Operator[],
@@ -207,6 +223,8 @@ export const describeModelFields = (
         opts.valueLabels?.[`${modelName}.${name}`] ?? opts.valueLabels?.[name],
       ),
       acceptsSubPath: kind === 'Json',
+      aggregatable: aggregatable || undefined,
+      compilesToPrisma: aggregatable ? isNumericScalar : undefined,
     });
   }
   return out;
