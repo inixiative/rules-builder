@@ -677,15 +677,21 @@ export const matchFacet = (
       } else break;
     }
     const lead = whereConditions(facet.where);
-    const destConds = (dest.condition as { all?: Condition[] } | undefined)?.all ?? [];
+    const destRec = dest.condition as { all?: Condition[]; any?: Condition[] } | undefined;
+    // A fixed `where` is identity only when AND-ed, so the subset check below reads
+    // `all` alone — an `any` group containing the where means something else.
+    const destConds = destRec?.all ?? [];
     if (lead.length === 0) {
       // A whereless collection has no identity block, so require the element leaf to
       // actually appear — otherwise any array node on this field would mislabel as
-      // this facet. A whole-collection facet (no leaf) has nothing to require.
+      // this facet. A whole-collection facet (no leaf) has nothing to require. There
+      // is no identity clause to protect either, so the leaf may sit in whichever
+      // compound the group's ALL/ANY toggle produced.
       const leafName = resolved.elementLeaf?.split('.').pop();
+      const conds = destRec?.all ?? destRec?.any ?? [];
       const applies =
         !resolved.elementLeaf ||
-        destConds.some(
+        conds.some(
           (c) => c && typeof c === 'object' && (c as { field?: string }).field === leafName,
         );
       if (applies && bestLead < 0) {

@@ -149,6 +149,48 @@ describe('buildRoot — descriptor tree', () => {
     expect(committed).toHaveProperty('any');
   });
 
+  test('switching to a no-operand operator drops the stale operand', () => {
+    // validateRule rejects `value` on isEmpty — carrying it over leaves the leaf
+    // permanently invalid ("Rule does not accept value") with no visible cause.
+    const leaf = build(cond()).children[0] as LeafNode;
+    leaf.operator?.set('isEmpty');
+    expect((committed as { all: Condition[] }).all[0]).toEqual({
+      field: 'tier',
+      operator: 'isEmpty',
+      _id: 'a',
+    });
+  });
+
+  test('a DateTime field seeds its default rule from the date catalog, not equals', () => {
+    // `equals` on DateTime compares the full timestamp — a calendar-picked day
+    // almost never matches, so a fresh date row must not start there.
+    const dateMap: FieldMap = {
+      models: { User: { fields: { createdAt: { kind: 'scalar', type: 'DateTime' } } } },
+    };
+    const dateLens = resolve({ maps: { app: dateMap }, mapName: 'app', model: 'User' });
+    const dateFields = describeModelFields(dateLens, 'app', 'User');
+    let out: Condition | undefined;
+    const root = buildRoot({ all: [] }, dateLens, dateFields, 4, (next) => {
+      out = next;
+    });
+    root.addRule();
+    expect((out as { all: Condition[] }).all[0]).toMatchObject({
+      field: 'createdAt',
+      dateOperator: 'before',
+    });
+  });
+
+  test('switching between valued operators keeps the operand', () => {
+    const leaf = build(cond()).children[0] as LeafNode;
+    leaf.operator?.set('notEquals');
+    expect((committed as { all: Condition[] }).all[0]).toEqual({
+      field: 'tier',
+      operator: 'notEquals',
+      value: 'gold',
+      _id: 'a',
+    });
+  });
+
   test('addRule appends a child; addGroup appends an empty group; canAddGroup respects depth', () => {
     const root = build(cond());
     expect(root.canAddGroup).toBe(true);

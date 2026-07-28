@@ -31,8 +31,11 @@ export const nodeKey = (n: Condition, index: number): string => {
 const firstOperator = (
   field: BuilderField,
 ): { key: 'operator' | 'dateOperator'; op: string } | null => {
-  if (field.operators.field.length > 0) return { key: 'operator', op: field.operators.field[0] };
+  // A field with a date catalog (DateTime) seeds from it: its generic first
+  // operator is `equals`, a full-timestamp comparison a calendar-picked day
+  // almost never matches.
   if (field.operators.date.length > 0) return { key: 'dateOperator', op: field.operators.date[0] };
+  if (field.operators.field.length > 0) return { key: 'operator', op: field.operators.field[0] };
   return null;
 };
 
