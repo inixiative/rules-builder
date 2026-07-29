@@ -25,7 +25,7 @@ export const groupChildrenOf = (n: Condition): Condition[] => {
 
 export const nodeKey = (n: Condition, index: number): string => {
   const r = n as Rec;
-  return (r._groupId as string) ?? (r._id as string) ?? String(index);
+  return (r.__groupId as string) ?? (r.__id as string) ?? String(index);
 };
 
 const firstOperator = (
@@ -40,7 +40,7 @@ const firstOperator = (
 };
 
 export const ruleForField = (field: BuilderField, keepId?: string): Condition => {
-  const id = keepId ? { _id: keepId } : {};
+  const id = keepId ? { __id: keepId } : {};
   // A hoisted collection entry carries its own seed (array node + slice/operator).
   if (field.seed) return { ...(field.seed as object), ...id } as Condition;
   // A list/relation field is an array rule: a predicate/count/presence over its elements.

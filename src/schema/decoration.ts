@@ -195,15 +195,16 @@ export const facetId = (facet: Facet): string => {
 };
 
 // A rehydrated node carries metadata the authored `where` never has (coerceType
-// from stampCoercions, _id/_groupId from the tree). Strip it and sort keys so the
-// leading-block comparison is order- and coercion-insensitive.
-const META = new Set(['coerceType', '_id', '_groupId']);
+// from stampCoercions, `_`-prefixed editor keys like __id/__groupId — the same
+// prefix stripMeta strips). Drop it and sort keys so the leading-block comparison
+// is order- and coercion-insensitive.
+const isMetaKey = (key: string): boolean => key === 'coerceType' || key.startsWith('_');
 const canonical = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort())
-      if (!META.has(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
+      if (!isMetaKey(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
     return out;
   }
   return value;

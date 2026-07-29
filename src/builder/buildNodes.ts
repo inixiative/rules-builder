@@ -7,7 +7,7 @@ import {
   type Lens,
   type ValueShape,
 } from '@inixiative/json-rules';
-import { switchGroupOperator } from '../core/decorate';
+import { groupMeta, switchGroupOperator } from '../core/decorate';
 import { addRule, getNode, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   type Decoration,
@@ -356,7 +356,7 @@ const selectableFields = (fields: BuilderField[]): BuilderField[] =>
 
 const idOf = (n: Condition, index: number): string => {
   const r = n as Rec;
-  return (r._groupId as string) ?? (r._id as string) ?? String(index);
+  return (r.__groupId as string) ?? (r.__id as string) ?? String(index);
 };
 
 const buildLeaf = (
@@ -457,7 +457,7 @@ const buildLeaf = (
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
         if (next)
-          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
+          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec.__id as string | undefined)));
       },
       valid: fieldValid,
       acceptsSubPath: field?.acceptsSubPath,
@@ -636,7 +636,7 @@ const buildArray = (
       set: (name) => {
         const next = scope.fields.find((f) => f.name === name);
         if (!next) return;
-        const id = rec._id ? { _id: rec._id as string } : {};
+        const id = rec.__id ? { __id: rec.__id as string } : {};
         // In aggregate mode, re-pointing at another list relation keeps the aggregate
         // (mode/operator/value preserved) but clears the target field — its related
         // model changed. A non-list target falls back to the ordinary rule shape.
@@ -652,7 +652,7 @@ const buildArray = (
           );
           return;
         }
-        ctx.commit(setNode(ctx.root, path, ruleForField(next, rec._id as string | undefined)));
+        ctx.commit(setNode(ctx.root, path, ruleForField(next, rec.__id as string | undefined)));
       },
       valid: field !== undefined,
     },
@@ -840,9 +840,11 @@ const lockedGroupView = (
   lead: number,
   commit: (next: Condition) => void,
 ): GroupNode => {
-  const rec = node as { all?: Condition[]; any?: Condition[]; _groupId?: unknown };
+  const rec = node as { all?: Condition[]; any?: Condition[] };
   const children = rec.all ?? rec.any ?? [];
-  const meta = rec._groupId !== undefined ? { _groupId: rec._groupId } : {};
+  // Everything non-structural (error, __groupId) survives the rewrite, exactly as
+  // switchGroupOperator preserves it on an ordinary toggle.
+  const meta = groupMeta(node);
   // Nested-any state: exactly the locked prefix plus one trailing `any` group.
   const tail = children.length === lead + 1 ? (children[lead] as { any?: Condition[] }) : undefined;
   const tailAny = tail && Array.isArray(tail.any) ? tail.any : undefined;

@@ -125,6 +125,30 @@ describe('collection facet — ALL/ANY toggle keeps the fixed where AND-ed', () 
     expect((condition.all?.[1] as { any: Condition[] }).any).toHaveLength(2);
   });
 
+  test('a group error annotation survives the toggle round-trip', () => {
+    // The locked-view rewrite must preserve everything non-structural, exactly as
+    // switchGroupOperator does on an ordinary group.
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: npsView,
+        defaultValue: {
+          all: [
+            {
+              field: 'customFields',
+              arrayOperator: 'any',
+              condition: { all: [where as Condition, row('9')], error: 'pick a score' },
+            } as Condition,
+          ],
+        },
+      }),
+    );
+    act(() => facetNode(result.current).condition?.operator.set('any'));
+    expect(savedNode(result.current).condition).toMatchObject({ error: 'pick a score' });
+    act(() => facetNode(result.current).condition?.operator.set('all'));
+    expect(savedNode(result.current).condition).toMatchObject({ error: 'pick a score' });
+  });
+
   test('toggling back to ALL flattens the nested group in place', () => {
     const { result } = renderHook(() =>
       useRuleBuilder({
