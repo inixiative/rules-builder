@@ -11,6 +11,7 @@ import { groupMeta, switchGroupOperator } from '../core/decorate';
 import { addRule, getNode, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   type Decoration,
+  type Facet,
   facetBranchScope,
   facetElementLeaf,
   facetId,
@@ -134,7 +135,17 @@ export type GroupNode = {
   /** Leading `children` that are the branch facet's fixed, non-editable `where` —
    *  a renderer hides exactly this many (the identity block). */
   lockedLeading?: number;
+  /** Present when a facet governs this node or a detach is active. `raw` suspends
+   *  recognition for the session — hoist/lock drop and the identity rows render
+   *  as plain editable children. Session-only: the `__facetId` meta backing it is
+   *  stripped before `value` emits, so a saved rule always reloads faceted. */
+  facetMode?: FacetModeControl;
   remove?: () => void;
+};
+
+export type FacetModeControl = {
+  value: 'faceted' | 'raw';
+  set: (mode: 'faceted' | 'raw') => void;
 };
 
 /**
@@ -203,6 +214,9 @@ export type ArrayNode = {
    *  non-editable `where` — a renderer hides exactly this many (the identity
    *  block), leaving the rest editable. */
   lockedLeading?: number;
+  /** Present when a facet governs (or could govern) this node — see
+   *  {@link GroupNode.facetMode}. */
+  facetMode?: FacetModeControl;
   /** The matched facet's declared inner selector rows (e.g. the field picker
    *  inside a source container) — a renderer draws these generically instead of
    *  hardcoding field paths. */
@@ -665,6 +679,7 @@ const buildArray = (
       : undefined,
     lockedLeading: matchedFacet ? leadingWhereCount(matchedFacet, node) || undefined : undefined,
     selectors: matchedFacet?.selectors,
+    facetMode: facetModeControl(matchedFacet, rec, path, ctx),
     atomic: matchedFacet && isPreset(matchedFacet) ? true : undefined,
     // Element-mode operator: absent on an aggregate node (it carries `aggregate`).
     arrayOperator: isAggregate
@@ -815,6 +830,7 @@ const buildGroup = (
     hoist: groupHoist,
     atomic: preset ? true : undefined,
     lockedLeading: lockedLead || undefined,
+    facetMode: facetModeControl(groupFacet, node as Rec, path, ctx),
     remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
   };
   // A branch facet's group opens with the fixed where — its ALL/ANY toggle must
@@ -822,6 +838,37 @@ const buildGroup = (
   return lockedLead
     ? lockedGroupView(group, node, lockedLead, (next) => ctx.commit(setNode(ctx.root, path, next)))
     : group;
+};
+
+/**
+ * The faceted ⇄ raw toggle — the session escape hatch from facet capture. `raw`
+ * writes `__facetId: null`: recognition suspends, hoist/lock drop, and the
+ * identity rows render as plain editable children. `faceted` deletes the key,
+ * reopening the node to search — recognition resumes iff the rows still form
+ * the facet. Offered whenever a facet governs the node or a detach is active.
+ */
+const facetModeControl = (
+  matched: Facet | undefined,
+  rec: Rec,
+  path: RulePath,
+  ctx: Ctx,
+): FacetModeControl | undefined => {
+  const detached = rec.__facetId === null;
+  if (!matched && !detached) return undefined;
+  return {
+    value: detached ? 'raw' : 'faceted',
+    set: (mode) => {
+      if ((mode === 'raw') === detached) return;
+      const { __facetId: _f, ...restRec } = rec;
+      ctx.commit(
+        setNode(
+          ctx.root,
+          path,
+          (mode === 'raw' ? { ...rec, __facetId: null } : restRec) as Condition,
+        ),
+      );
+    },
+  };
 };
 
 /**

@@ -628,6 +628,17 @@ export const matchFacet = (
   decoration: Decoration,
   node: Condition,
 ): Facet | undefined => {
+  // `__facetId` (session meta, stripped before `value` emits) is the node's own
+  // facet state: the facet's id when attached, `null` when detached to raw —
+  // recognition suspends and the identity rows render as plain editable children —
+  // and absent when the node is open to being searched, ingested and stamped.
+  // An id that no longer resolves (decoration changed) falls through to search.
+  const stamped = (node as { __facetId?: unknown }).__facetId;
+  if (stamped === null) return undefined;
+  if (typeof stamped === 'string') {
+    const byId = decoration.facets.find((f) => facetId(f) === stamped);
+    if (byId) return byId;
+  }
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
   const children = groupChildren(node);
   const nodeKey = JSON.stringify(canonical(node));
@@ -707,6 +718,33 @@ export const matchFacet = (
     }
   }
   return best;
+};
+
+/**
+ * Ingest pass: stamp every recognizable node with its facet's id — `__facetId`,
+ * the node's own session facet state (id = attached; `null` = detached to raw;
+ * absent = open to search). Stamping pins recognition by id for the session, so
+ * a node's facet-hood can't silently re-derive differently as siblings change.
+ * Already-stamped (including detached) nodes pass through untouched. Session
+ * meta only: stripMeta drops the key before `value` emits, so a saved rule
+ * always reloads via a fresh search. Array `condition`/`filter` subtrees are
+ * scoped to the RELATED model — the builder never facet-matches inside them, so
+ * the walk stops at the array node, exactly like buildNodes.
+ */
+export const stampFacetIds = (
+  condition: Condition,
+  lens: Lens,
+  decoration: Decoration,
+): Condition => {
+  if (!condition || typeof condition !== 'object') return condition;
+  const next = { ...(condition as Record<string, unknown>) };
+  const key = Array.isArray(next.all) ? 'all' : Array.isArray(next.any) ? 'any' : undefined;
+  if (key) next[key] = (next[key] as Condition[]).map((c) => stampFacetIds(c, lens, decoration));
+  if ((key !== undefined || 'arrayOperator' in next) && next.__facetId === undefined) {
+    const facet = matchFacet(lens, decoration, next as Condition);
+    if (facet) next.__facetId = facetId(facet);
+  }
+  return next as Condition;
 };
 
 /**
