@@ -19,6 +19,24 @@
   rejected it, leaving the leaf permanently invalid with no visible cause.
 - **A DateTime field seeds its default rule from the date catalog** (`before`),
   not full-timestamp `equals` (a calendar-picked day almost never matches).
+- **Session facet detach — `facetMode` + `__facetId`, the escape hatch from facet
+  capture.** `__facetId` is the node's own facet state: the facet's id when
+  attached — stamped once at ingest (`stampFacetIds`, exported) so recognition
+  is pinned rather than re-derived as siblings change — `null` when the user
+  detaches to raw (recognition suspends; hoist/lock drop; identity rows render
+  as plain editable children), absent when the node is open to search. The
+  `facetMode` control on hoisted group/array nodes toggles faceted ⇄ raw;
+  re-attach deletes the key and re-scans, recapturing iff the rows still form a
+  facet. Session-only: `stripMeta` drops the key before `value` emits, so a
+  saved rule always reloads faceted.
+- **The pin never exempts a node from being its facet's shape**: a stamped id is
+  structurally re-verified against the pinned facet alone, so an edit that
+  removes the identity (e.g. switching the collection operator to a presence op)
+  breaks the bind honestly instead of leaving a badge over a drifted rule.
+- **Out-of-order identity blocks are normalized at ingest**: subset matching
+  accepts the fixed `where` anywhere in the block, but the toggle lock keys off
+  the leading prefix — ingest now hoists identity clauses to leading (an `all`
+  reorder, semantics unchanged), so the lock engages for hand/AI-authored order.
 - Requires `@inixiative/json-rules` ^2.18.3, whose `toPrisma` no longer compares
   non-String columns to `''` — the other half of the same incident.
 

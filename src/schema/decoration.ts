@@ -632,12 +632,19 @@ export const matchFacet = (
   // facet state: the facet's id when attached, `null` when detached to raw —
   // recognition suspends and the identity rows render as plain editable children —
   // and absent when the node is open to being searched, ingested and stamped.
-  // An id that no longer resolves (decoration changed) falls through to search.
+  // The pin decides WHICH facet an ambiguous shape is — it never exempts the node
+  // from being that shape. An edit that removes the identity must break the bind
+  // honestly, so the pinned facet is structurally re-verified (against it alone,
+  // stamp stripped so the check can't short-circuit); a stale or unresolvable
+  // stamp falls through to the ordinary search.
   const stamped = (node as { __facetId?: unknown }).__facetId;
   if (stamped === null) return undefined;
   if (typeof stamped === 'string') {
     const byId = decoration.facets.find((f) => facetId(f) === stamped);
-    if (byId) return byId;
+    if (byId) {
+      const { __facetId: _f, ...bare } = node as Record<string, unknown>;
+      if (matchFacet(lens, { ...decoration, facets: [byId] }, bare as Condition)) return byId;
+    }
   }
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
   const children = groupChildren(node);
@@ -737,14 +744,54 @@ export const stampFacetIds = (
   decoration: Decoration,
 ): Condition => {
   if (!condition || typeof condition !== 'object') return condition;
-  const next = { ...(condition as Record<string, unknown>) };
+  let next = { ...(condition as Record<string, unknown>) };
   const key = Array.isArray(next.all) ? 'all' : Array.isArray(next.any) ? 'any' : undefined;
   if (key) next[key] = (next[key] as Condition[]).map((c) => stampFacetIds(c, lens, decoration));
   if ((key !== undefined || 'arrayOperator' in next) && next.__facetId === undefined) {
     const facet = matchFacet(lens, decoration, next as Condition);
-    if (facet) next.__facetId = facetId(facet);
+    if (facet) {
+      if ('arrayOperator' in next)
+        next = hoistIdentityLeading(facet, next as Condition) as Record<string, unknown>;
+      next.__facetId = facetId(facet);
+    }
   }
   return next as Condition;
+};
+
+/**
+ * Ingest normalization for a matched collection: move the facet's identity
+ * clauses to the LEADING positions of the innermost condition block (descending
+ * traversal chains exactly like the matcher). Subset matching deliberately
+ * tolerates hand/AI-authored clause order, but the toggle lock (lockedGroupView,
+ * lockedLeading) keys off the leading prefix — without this, an out-of-order
+ * identity escapes the lock and the ALL/ANY toggle ORs it into the user's rows.
+ * `all` is order-independent, so the reorder never changes semantics.
+ */
+const hoistIdentityLeading = (facet: Facet, node: Condition): Condition => {
+  const lead = whereConditions(facet.where);
+  if (lead.length === 0) return node;
+
+  const reorder = (rec: Record<string, unknown>): Record<string, unknown> => {
+    const cond = rec.condition as { all?: Condition[] } | undefined;
+    const cs = cond?.all;
+    if (!cs) return rec;
+    // Traversal chain: a single nested array child — the identity sits deeper.
+    if (cs.length === 1 && cs[0] && typeof cs[0] === 'object' && 'arrayOperator' in cs[0]) {
+      const inner = reorder(cs[0] as Record<string, unknown>);
+      return inner === cs[0] ? rec : { ...rec, condition: { ...cond, all: [inner as Condition] } };
+    }
+    if (isLeadingPrefix(lead, cs)) return rec;
+    const rest = [...cs];
+    const identity: Condition[] = [];
+    for (const clause of lead) {
+      const at = rest.findIndex((c) => sameConditions([clause], [c]));
+      if (at < 0) return rec;
+      identity.push(...rest.splice(at, 1));
+    }
+    return { ...rec, condition: { ...cond, all: [...identity, ...rest] } };
+  };
+
+  return reorder(node as Record<string, unknown>) as Condition;
 };
 
 /**

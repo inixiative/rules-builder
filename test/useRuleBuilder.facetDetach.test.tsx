@@ -152,6 +152,57 @@ describe('__facetId — ingest stamping and node-controlled matching', () => {
   });
 });
 
+describe('the pin never exempts a node from being its facet (adversarial findings)', () => {
+  test('editing away the identity breaks the bind — no badge over a drifted rule', () => {
+    // A presence operator drops `condition` (identity where included). The stamped
+    // id must NOT keep presenting the node as the facet over a rule that now means
+    // "has any custom field at all".
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: npsView,
+        defaultValue: savedFacet([row('9')]),
+      }),
+    );
+    expect(facetNode(result.current).hoist?.label).toBe('NPS');
+    act(() => facetNode(result.current).arrayOperator?.set('notEmpty'));
+    const node = facetNode(result.current);
+    expect(node.hoist).toBeUndefined();
+    expect(node.facetMode).toBeUndefined();
+    expect(result.current.value).toEqual({
+      all: [{ field: 'customFields', arrayOperator: 'notEmpty' }],
+    });
+  });
+
+  test('an out-of-order identity is hoisted to leading at ingest, so the lock engages', () => {
+    // Subset matching accepts the where anywhere in the block; the toggle lock
+    // keys off the LEADING prefix. Ingest must reconcile the two, or the ALL/ANY
+    // toggle ORs the identity into the user rows — the exact bug of ZLT-3899.
+    const outOfOrder: Condition = {
+      all: [
+        {
+          field: 'customFields',
+          arrayOperator: 'any',
+          condition: { all: [row('9'), where as Condition] },
+        } as Condition,
+      ],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: eavSource, decoration: npsView, defaultValue: outOfOrder }),
+    );
+    const node = facetNode(result.current);
+    expect(node.hoist?.label).toBe('NPS');
+    expect(node.lockedLeading).toBe(1);
+    act(() => facetNode(result.current).condition?.operator.set('any'));
+    const saved = (result.current.value as { all: Condition[] }).all[0] as {
+      condition: { all?: Condition[] };
+    };
+    expect(saved.condition).toEqual({
+      all: [expect.objectContaining(where), { any: [expect.objectContaining(row('9'))] }],
+    });
+  });
+});
+
 describe('branch facet — detach unlocks the identity clause', () => {
   const branchMap: FieldMap = {
     models: {
