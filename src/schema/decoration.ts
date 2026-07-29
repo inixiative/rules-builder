@@ -795,6 +795,137 @@ const hoistIdentityLeading = (facet: Facet, node: Condition): Condition => {
 };
 
 /**
+ * Durable detach: nest the facet's identity block in a singleton `all` group —
+ * `{ all: [w1, w2, ...rows] }` → `{ all: [{ all: [w1, w2] }, ...rows] }`.
+ * Semantics are identical (`all` associates), but the canonical shape differs:
+ * `matchFacet` subset-matches identity over the block's LEAF clauses and the
+ * ingest hoister only reorders leaves, so recognition drops — durably, because
+ * the shape survives save/load where the session `__facetId: null` does not.
+ * Reversed by {@link reattachIdentity}. Returns the node unchanged (no-op) when
+ * the identity isn't found where expected — a stale call must not corrupt.
+ */
+export const detachIdentity = (facet: Facet, node: Condition): Condition => {
+  const lead = whereConditions(facet.where);
+  if (lead.length === 0) return node;
+
+  const nest = (cs: Condition[]): Condition[] | undefined =>
+    isLeadingPrefix(lead, cs)
+      ? [{ all: cs.slice(0, lead.length) } as Condition, ...cs.slice(lead.length)]
+      : undefined;
+
+  const rec = node as Record<string, unknown>;
+  if ('arrayOperator' in rec || 'condition' in rec) {
+    const rewrite = (r: Record<string, unknown>): Record<string, unknown> => {
+      const cond = r.condition as { all?: Condition[] } | undefined;
+      const cs = cond?.all;
+      if (!cs) return r;
+      // Traversal chain: a single nested array child — the identity sits deeper.
+      if (cs.length === 1 && cs[0] && typeof cs[0] === 'object' && 'arrayOperator' in cs[0]) {
+        const inner = rewrite(cs[0] as Record<string, unknown>);
+        return inner === cs[0] ? r : { ...r, condition: { ...cond, all: [inner as Condition] } };
+      }
+      const nested = nest(cs);
+      return nested ? { ...r, condition: { ...cond, all: nested } } : r;
+    };
+    const { __facetId: _f, ...bare } = rec;
+    const out = rewrite(bare);
+    return (out === bare ? node : out) as Condition;
+  }
+
+  const children = (rec.all ?? rec.any) as Condition[] | undefined;
+  if (!Array.isArray(rec.all) || !children) return node;
+  const nested = nest(children);
+  if (!nested) return node;
+  const { __facetId: _f, all: _a, ...meta } = rec;
+  return { ...meta, all: nested } as Condition;
+};
+
+/**
+ * The facet a durably-detached node belongs to: its leading child is a singleton
+ * `all` group holding exactly the facet's identity clauses (the shape
+ * {@link detachIdentity} writes). Mirrors `matchFacet`'s resolution — collection
+ * nodes are matched by list path and searched at the innermost block, branches at
+ * their own children — so a renderer can offer re-attach on exactly the nodes
+ * flattening would re-capture.
+ */
+export const matchDetachedFacet = (
+  lens: Lens,
+  decoration: Decoration,
+  node: Condition,
+): Facet | undefined => {
+  const rec = node as { field?: string; all?: Condition[]; __facetId?: unknown };
+  if (rec.__facetId !== undefined) return undefined;
+
+  const leadingIdentityGroup = (cs: Condition[] | undefined, lead: Condition[]): boolean => {
+    const head = cs?.[0] as { all?: Condition[]; any?: unknown } | undefined;
+    if (!head || typeof head !== 'object' || !Array.isArray(head.all) || head.any !== undefined)
+      return false;
+    if (Object.keys(head).some((k) => k !== 'all' && !isMetaKey(k))) return false;
+    return sameConditions(lead, head.all);
+  };
+
+  for (const facet of decoration.facets) {
+    const lead = whereConditions(facet.where);
+    if (lead.length === 0 || facet.condition !== undefined) continue;
+    const resolved = resolvePath(lens, facet.path);
+    if (!resolved) continue;
+    if (resolved.kind === 'branch') {
+      if (Array.isArray(rec.all) && leadingIdentityGroup(rec.all, lead)) return facet;
+      continue;
+    }
+    if (resolved.kind !== 'collection' || rec.field !== resolved.listPath) continue;
+    let dest = node as { condition?: { all?: Condition[] } };
+    while (true) {
+      const cs = dest.condition?.all;
+      if (cs?.length === 1 && cs[0] && typeof cs[0] === 'object' && 'arrayOperator' in cs[0]) {
+        dest = cs[0] as typeof dest;
+      } else break;
+    }
+    if (leadingIdentityGroup(dest.condition?.all, lead)) return facet;
+  }
+  return undefined;
+};
+
+/**
+ * Re-attach: flatten the singleton identity group {@link detachIdentity} nested —
+ * recognition (and the identity lock) resumes on the next ingest. No-op when the
+ * detached shape isn't found.
+ */
+export const reattachIdentity = (facet: Facet, node: Condition): Condition => {
+  const lead = whereConditions(facet.where);
+  if (lead.length === 0) return node;
+
+  const flatten = (cs: Condition[]): Condition[] | undefined => {
+    const head = cs[0] as { all?: Condition[] } | undefined;
+    if (!head || !Array.isArray(head.all) || !sameConditions(lead, head.all)) return undefined;
+    return [...head.all, ...cs.slice(1)];
+  };
+
+  const rec = node as Record<string, unknown>;
+  if ('arrayOperator' in rec || 'condition' in rec) {
+    const rewrite = (r: Record<string, unknown>): Record<string, unknown> => {
+      const cond = r.condition as { all?: Condition[] } | undefined;
+      const cs = cond?.all;
+      if (!cs) return r;
+      if (cs.length === 1 && cs[0] && typeof cs[0] === 'object' && 'arrayOperator' in cs[0]) {
+        const inner = rewrite(cs[0] as Record<string, unknown>);
+        return inner === cs[0] ? r : { ...r, condition: { ...cond, all: [inner as Condition] } };
+      }
+      const flat = flatten(cs);
+      return flat ? { ...r, condition: { ...cond, all: flat } } : r;
+    };
+    return rewrite(rec) as Condition;
+  }
+
+  const children = rec.all as Condition[] | undefined;
+  if (!Array.isArray(children)) return node;
+  const flat = flatten(children);
+  if (!flat) return node;
+  const { all: _a, ...meta } = rec;
+  return { ...meta, all: flat } as Condition;
+};
+
+/**
  * Reject a decoration whose facets could collide on rehydration — the guarantee
  * that reverse-matching is deterministic. Returns human-readable violations
  * (empty = valid): unresolvable paths, duplicate ids, a `defaultWhere` whose

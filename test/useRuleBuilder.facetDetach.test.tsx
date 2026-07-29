@@ -251,3 +251,136 @@ describe('branch facet — detach unlocks the identity clause', () => {
     expect(group().lockedLeading).toBe(1);
   });
 });
+
+// The DURABLE hatch: facetMode.detach() rewrites the tree — the identity block
+// nests in a singleton `all` group. Semantics identical, canonical shape differs,
+// so recognition drops and stays dropped across save/load (the session `raw` does
+// not survive a reload). Reversible: facetMode.set('faceted') on the detached
+// node flattens the group back and recognition resumes at the next ingest.
+describe('facetMode.detach() — durable escape via shape change', () => {
+  const nested = { all: [where as Condition] };
+
+  test('detach nests the identity; hoist and lock drop; the emitted value keeps the shape', () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: npsView,
+        defaultValue: savedFacet([row('9')]),
+      }),
+    );
+    expect(facetNode(result.current).facetMode?.detach).toBeDefined();
+    act(() => facetNode(result.current).facetMode?.detach?.());
+
+    const node = facetNode(result.current);
+    expect(node.hoist).toBeUndefined();
+    expect(node.lockedLeading).toBeUndefined();
+    expect((result.current.value as { all: Condition[] }).all[0]).toMatchObject({
+      field: 'customFields',
+      condition: { all: [nested, expect.objectContaining(row('9'))] },
+    });
+  });
+
+  test('the detached shape is durable: a reload does NOT recapture (unlike session raw)', () => {
+    const first = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: npsView,
+        defaultValue: savedFacet([row('9')]),
+      }),
+    );
+    act(() => facetNode(first.result.current).facetMode?.detach?.());
+    const saved = first.result.current.value as Condition;
+
+    const reloaded = renderHook(() =>
+      useRuleBuilder({ source: eavSource, decoration: npsView, defaultValue: saved }),
+    );
+    const node = facetNode(reloaded.result.current);
+    expect(node.hoist).toBeUndefined();
+    expect(node.facetMode?.value).toBe('raw');
+  });
+
+  test("set('faceted') on a detached node flattens the group back and recognition resumes", () => {
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: npsView,
+        defaultValue: savedFacet([row('9')]),
+      }),
+    );
+    act(() => facetNode(result.current).facetMode?.detach?.());
+    expect(facetNode(result.current).facetMode?.value).toBe('raw');
+
+    act(() => facetNode(result.current).facetMode?.set('faceted'));
+    const node = facetNode(result.current);
+    expect(node.hoist?.label).toBe('NPS');
+    expect(node.lockedLeading).toBe(1);
+    expect((result.current.value as { all: Condition[] }).all[0]).toMatchObject({
+      condition: { all: [expect.objectContaining(where), expect.objectContaining(row('9'))] },
+    });
+  });
+
+  test('a whereless facet offers no detach — there is no locked identity to escape', () => {
+    const wherelessView: Decoration = { facets: [{ path: 'customFields.value', label: 'Values' }] };
+    const { result } = renderHook(() =>
+      useRuleBuilder({
+        source: eavSource,
+        decoration: wherelessView,
+        defaultValue: {
+          all: [
+            {
+              field: 'customFields',
+              arrayOperator: 'any',
+              condition: { all: [row('a')] },
+            } as Condition,
+          ],
+        },
+      }),
+    );
+    expect(facetNode(result.current).facetMode?.detach).toBeUndefined();
+  });
+
+  test('branch facet: detach nests durably, re-attach restores hoist and lock', () => {
+    const branchMap: FieldMap = {
+      models: {
+        User: { fields: { account: { kind: 'object', type: 'Account' } } },
+        Account: {
+          fields: {
+            industry: { kind: 'scalar', type: 'String' },
+            arr: { kind: 'scalar', type: 'Int' },
+          },
+        },
+      },
+    };
+    const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+    const branchWhere = { field: 'account.industry', operator: 'equals', value: 'saas' };
+    const decoration: Decoration = {
+      facets: [{ path: 'account', label: 'SaaS Company', where: branchWhere as Condition }],
+    };
+    const defaultValue: Condition = {
+      all: [
+        {
+          all: [
+            branchWhere as Condition,
+            { field: 'account.arr', operator: 'greaterThan', value: 100 } as Condition,
+          ],
+        },
+      ],
+    };
+    const { result } = renderHook(() =>
+      useRuleBuilder({ source: branchSource, decoration, defaultValue }),
+    );
+    const group = () => rootGroup(result.current).children[0] as GroupNode;
+    act(() => group().facetMode?.detach?.());
+    expect(group().hoist).toBeUndefined();
+    expect((result.current.value as { all: Condition[] }).all[0]).toMatchObject({
+      all: [
+        { all: [expect.objectContaining(branchWhere)] },
+        expect.objectContaining({ field: 'account.arr' }),
+      ],
+    });
+
+    act(() => group().facetMode?.set('faceted'));
+    expect(group().hoist?.label).toBe('SaaS Company');
+    expect(group().lockedLeading).toBe(1);
+  });
+});

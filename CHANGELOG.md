@@ -29,6 +29,14 @@
   re-attach deletes the key and re-scans, recapturing iff the rows still form a
   facet. Session-only: `stripMeta` drops the key before `value` emits, so a
   saved rule always reloads faceted.
+- **Durable facet detach — `facetMode.detach()`.** The session `raw` reverts on
+  reload; `detach()` is the lasting escape: it nests the identity block in a
+  singleton `all` group (`{ all: [w1, ...rows] }` → `{ all: [{ all: [w1] },
+  ...rows] }`). Semantics identical, canonical shape differs — recognition (and
+  the ingest hoister) sees no leaf-level identity, so the node stays raw across
+  save/load. Reversible: on a detached node `facetMode.set('faceted')` flattens
+  the group back and recognition resumes. Offered only on where-carrying facets
+  (a preset or whereless facet has no locked identity to escape).
 - **The pin never exempts a node from being its facet's shape**: a stamped id is
   structurally re-verified against the pinned facet alone, so an edit that
   removes the identity (e.g. switching the collection operator to a presence op)

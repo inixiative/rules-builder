@@ -11,15 +11,19 @@ import { groupMeta, switchGroupOperator } from '../core/decorate';
 import { addRule, getNode, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   type Decoration,
+  detachIdentity,
   type Facet,
   facetBranchScope,
   facetElementLeaf,
   facetId,
   isPreset,
   leadingWhereCount,
+  matchDetachedFacet,
   matchFacet,
   modelDecor,
+  reattachIdentity,
   relabelRelations,
+  whereConditions,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import { describeModelFields, valueShapeForOperator } from '../schema/surface';
@@ -146,6 +150,12 @@ export type GroupNode = {
 export type FacetModeControl = {
   value: 'faceted' | 'raw';
   set: (mode: 'faceted' | 'raw') => void;
+  /** Durable escape from facet capture (present while the facet governs the node):
+   *  nests the identity block in a singleton `all` group — semantics identical,
+   *  canonical shape differs, so recognition drops and STAYS dropped across
+   *  save/load (unlike the session-only `raw`). Reversed by `set('faceted')` on
+   *  the detached node, which flattens the group back. */
+  detach?: () => void;
 };
 
 /**
@@ -853,21 +863,44 @@ const facetModeControl = (
   path: RulePath,
   ctx: Ctx,
 ): FacetModeControl | undefined => {
-  const detached = rec.__facetId === null;
-  if (!matched && !detached) return undefined;
+  const sessionDetached = rec.__facetId === null;
+  // Durably detached (the shape detachIdentity writes): offer the way back —
+  // `faceted` flattens the singleton identity group so recognition resumes.
+  if (!matched && !sessionDetached) {
+    const shapeDetached = ctx.decoration
+      ? matchDetachedFacet(ctx.anchorLens, ctx.decoration, rec as Condition)
+      : undefined;
+    if (!shapeDetached) return undefined;
+    return {
+      value: 'raw',
+      set: (mode) => {
+        if (mode !== 'faceted') return;
+        ctx.commit(setNode(ctx.root, path, reattachIdentity(shapeDetached, rec as Condition)));
+      },
+    };
+  }
+  if (!matched && sessionDetached) {
+    return {
+      value: 'raw',
+      set: (mode) => {
+        if (mode !== 'faceted') return;
+        const { __facetId: _f, ...restRec } = rec;
+        ctx.commit(setNode(ctx.root, path, restRec as Condition));
+      },
+    };
+  }
   return {
-    value: detached ? 'raw' : 'faceted',
+    value: 'faceted',
     set: (mode) => {
-      if ((mode === 'raw') === detached) return;
-      const { __facetId: _f, ...restRec } = rec;
-      ctx.commit(
-        setNode(
-          ctx.root,
-          path,
-          (mode === 'raw' ? { ...rec, __facetId: null } : restRec) as Condition,
-        ),
-      );
+      if (mode !== 'raw') return;
+      ctx.commit(setNode(ctx.root, path, { ...rec, __facetId: null } as unknown as Condition));
     },
+    // The durable hatch — only meaningful for a where-carrying facet (a preset or
+    // whereless facet has no locked identity to escape).
+    detach:
+      matched && whereConditions(matched.where).length > 0
+        ? () => ctx.commit(setNode(ctx.root, path, detachIdentity(matched, rec as Condition)))
+        : undefined,
   };
 };
 
