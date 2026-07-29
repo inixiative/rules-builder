@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.22.0 — the facet ALL/ANY toggle keeps the fixed where AND-ed; `__`-prefixed meta keys
+
+- **Facet toggle no longer ORs the identity clause into user rows** (ZLT-3899).
+  On a locked group, toggling ANY writes `{ all: [...locked, { any: [...rows] }] }`
+  and the new locked view flattens the nested tail back into a flat row list, so
+  a renderer still sees one group whose operator reads `any`. Identity stays a
+  leading AND — recognition needs no shape change. `axisSiblings` walks ancestor
+  `all` groups so partition pinning survives inside the nested any; whereless
+  facets read `all ?? any` (nothing to protect there).
+- **Editor meta keys are `__`-prefixed**: `_id`/`_groupId` → `__id`/`__groupId`
+  (`__` marks internal values; a single `_` is for unused bindings — matching
+  json-rules' `__step`). Session-only: `stripMeta` removes them before `value`
+  emits, so no persisted rule changes. Group rewrites share one `groupMeta`
+  carry-over, so no rewrite sheds a group's `error` annotation; facet
+  canonicalization drops meta by the same `_`-prefix rule.
+- **`operator.set` drops the stale operand on isEmpty/isNotEmpty** — validateRule
+  rejected it, leaving the leaf permanently invalid with no visible cause.
+- **A DateTime field seeds its default rule from the date catalog** (`before`),
+  not full-timestamp `equals` (a calendar-picked day almost never matches).
+- Requires `@inixiative/json-rules` ^2.18.3, whose `toPrisma` no longer compares
+  non-String columns to `''` — the other half of the same incident.
+
 ## 0.20.0 — sibling-derived partition pinning (dependent vocabularies)
 
 - **Author-time pin, inferred from the rule itself.** A grouped field (surface
