@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.25.0 — `lensScopeSurface` (loop portals) + Json sub-path leaves open-ended
+
+- **`lensScopeSurface(lens, { mapName, model, labels })` → `{ values, loops }`** —
+  the scope-aware value surface. `values` are every leaf scalar/enum reachable
+  through TO-ONE relations only, unbounded depth (the lens is the depth; cycles
+  cut per path as before). A to-many relation is never flattened through — it is
+  emitted as a **`LensLoopOption`** (`{ path, field, label, relation }`), the loop
+  portal a consumer renders as an `{{#each path as=binding}}` entry point; the
+  scope inside the loop comes from calling the surface again anchored at
+  `relation` (`{ mapName, model }`). Scalar list columns stay values (`isList`).
+  Replaces depth-capped flattening (`maxDepth` proxies), which both hid resolvable
+  deep to-one chains and offered meaningless scalar paths through collections.
+  `useLensScopeSurface` is the memoized hook form; leaf emission is shared with
+  `lensValuePicker` (`leafOption`), which is untouched — consumers migrate on
+  their own clock.
+- **A Json sub-path leaf is open-ended.** A leaf whose field appends a sub-path
+  to a Json column (`metadata.theme`) reused the base column's descriptor: only
+  the Json operator set (isEmpty/notEmpty/exists/notExists — `equals` was
+  unreachable) and the column's own `values`/`options` gated every value under
+  it. Below the boundary the value is undeclared, so the leaf now takes
+  `genericOperators` (the catalog's union across kinds, intersected across
+  `targets`), reports no `kind` and no value options, and validates
+  unconstrained. A leaf on the bare column is unchanged. The checker-side twin
+  ships in `@inixiative/json-rules` 2.18.4 (`jsonSubPath` on `walkLensPath`);
+  `LeafNode.valid` picks that up via the dependency floor.
+
 ## 0.24.1 — catch-all facets are sanctioned
 
 - **A catch-all facet coexists with stricter projections on the same target.**
