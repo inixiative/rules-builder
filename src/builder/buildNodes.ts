@@ -28,7 +28,7 @@ import {
   writeSelectorClause,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
-import { describeModelFields, valueShapeForOperator } from '../schema/surface';
+import { describeModelFields, genericOperators, valueShapeForOperator } from '../schema/surface';
 import {
   defaultRule,
   groupChildrenOf,
@@ -439,27 +439,35 @@ const buildLeaf = (
       subPath = fieldName.slice(head.length + 1);
     }
   }
+  // A sub-path leaf lands BELOW the Json column's boundary, on a value the column does
+  // not declare: its kind is unknown, so the generic operator set stands (the column's
+  // own Json operators — isEmpty/exists — describe the column), and its allowed value
+  // set gates the column, never what lives under it. Mirrors the lens checker: nothing
+  // below the boundary resolves, and the kernel compares the traversed value untyped.
+  const declared = subPath === undefined ? field : undefined;
+  const operators =
+    subPath === undefined ? field?.operators : genericOperators(ctx.surfaceOpts.targets);
   const operator = (rec.dateOperator ?? rec.operator) as string | undefined;
-  const operatorOptions = field
-    ? [...field.operators.field, ...field.operators.date].map((o) => ({
+  const operatorOptions = operators
+    ? [...operators.field, ...operators.date].map((o) => ({
         value: o,
         label: o,
       }))
     : [];
   const shape: ValueShape = operator ? valueShapeForOperator(operator as never) : 'none';
-  const valueOptions = field?.options
-    ? field.options.map((o) => ({
+  const valueOptions = declared?.options
+    ? declared.options.map((o) => ({
         value: o.value,
-        label: field.enumLabels?.[o.value] ?? o.label ?? o.value,
+        label: declared.enumLabels?.[o.value] ?? o.label ?? o.value,
         groups: o.groups,
       }))
-    : field?.enumValues?.map((v) => ({
+    : declared?.enumValues?.map((v) => ({
         value: v,
-        label: field.enumLabels?.[v] ?? v,
+        label: declared.enumLabels?.[v] ?? v,
       }));
   const fieldValid = field !== undefined;
   const valueValid = ((): boolean => {
-    const allowed = field?.enumValues;
+    const allowed = declared?.enumValues;
     if (!allowed) return true;
     const v = rec.value;
     const vals = Array.isArray(v) ? v : [v];
@@ -508,7 +516,7 @@ const buildLeaf = (
       value: operator,
       options: operatorOptions,
       set: (op) => {
-        const isDate = field?.operators.date.includes(op as never) ?? false;
+        const isDate = operators?.date.includes(op as never) ?? false;
         // A no-operand operator (isEmpty/isNotEmpty) must not inherit the previous
         // operator's operand — validateRule rejects any value on it, leaving the
         // leaf permanently invalid with no visible cause.
@@ -532,7 +540,7 @@ const buildLeaf = (
     value: {
       current: rec.value,
       shape,
-      kind: field?.kind,
+      kind: declared?.kind,
       options: valueOptions,
       valid: valueValid,
       set: (value) => ctx.commit(setNode(ctx.root, path, { ...rec, value } as Condition)),

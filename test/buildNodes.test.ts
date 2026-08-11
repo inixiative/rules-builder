@@ -235,6 +235,59 @@ describe('buildRoot — descriptor tree', () => {
   });
 });
 
+describe('buildRoot — Json sub-path leaves are open-ended', () => {
+  // A Json column carrying its own allowed value set: the set gates the column itself,
+  // never the undeclared values below it.
+  const jsonMap: FieldMap = {
+    models: {
+      User: {
+        fields: {
+          metadata: { kind: 'scalar', type: 'Json', values: ['dark', 'light'] },
+        },
+      },
+    },
+  };
+  const jsonLens = resolve({ maps: { app: jsonMap }, mapName: 'app', model: 'User' });
+  const jsonFields = describeModelFields(jsonLens, 'app', 'User');
+  const jsonLeaf = (c: Condition): LeafNode =>
+    buildRoot(c, jsonLens, jsonFields, 4, () => {}) as unknown as LeafNode;
+
+  test('a sub-path leaf offers the generic operator set, not the Json column operators', () => {
+    const ops = jsonLeaf({
+      field: 'metadata.theme',
+      operator: 'equals',
+      value: 'dark',
+    }).operator?.options.map((o) => o.value);
+    expect(ops).toContain('equals');
+    expect(ops).toContain('contains');
+    expect(ops).toContain('greaterThan');
+    expect(ops).toContain('before'); // date operators too — the kind is unknown
+  });
+
+  test('the base Json column keeps its Json operator set', () => {
+    const ops = jsonLeaf({ field: 'metadata', operator: 'isEmpty' }).operator?.options.map(
+      (o) => o.value,
+    );
+    expect(ops).toEqual(['isEmpty', 'notEmpty', 'exists', 'notExists']);
+  });
+
+  test('a sub-path leaf ignores the column value set (no options, no kind, always valid)', () => {
+    const leaf = jsonLeaf({ field: 'metadata.theme', operator: 'equals', value: 'whatever' });
+    expect(leaf.value?.options).toBeUndefined();
+    expect(leaf.value?.kind).toBeUndefined();
+    expect(leaf.value?.valid).toBe(true);
+  });
+
+  test('the base Json column still validates against its own value set', () => {
+    const good = jsonLeaf({ field: 'metadata', operator: 'equals', value: 'dark' });
+    expect(good.value?.options?.map((o) => o.value)).toEqual(['dark', 'light']);
+    expect(good.value?.valid).toBe(true);
+    expect(
+      jsonLeaf({ field: 'metadata', operator: 'equals', value: 'whatever' }).value?.valid,
+    ).toBe(false);
+  });
+});
+
 describe('buildRoot — boolean leaves + bare root', () => {
   beforeEach(() => {
     committed = undefined;

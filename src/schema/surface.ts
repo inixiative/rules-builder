@@ -178,6 +178,22 @@ export const operatorsForKind = (
   array: [] as ArrayOperator[],
 });
 
+/** The operator set for a value whose kind is undeclared — every operator the catalog
+ *  offers to any kind, intersected across `targets`. Offered below a `Json` column's
+ *  boundary: json-rules resolves nothing under the column, so no kind-specific
+ *  narrowing applies there and the kernel compares the traversed value untyped (a
+ *  mismatch is an ordinary non-match, not an authoring error). */
+export const genericOperators = (targets?: RuleTarget[]): BuilderField['operators'] => {
+  const field = new Set<Operator>();
+  const date = new Set<DateOperator>();
+  for (const kind of ALL_KINDS) {
+    const ops = fieldAndDateOperators(kind, targets);
+    for (const op of ops.field) field.add(op);
+    for (const op of ops.date) date.add(op);
+  }
+  return { field: [...field], date: [...date], array: [] as ArrayOperator[] };
+};
+
 export const describeModelFields = (
   lens: Lens,
   mapName: string,
