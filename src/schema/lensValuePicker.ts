@@ -1,6 +1,8 @@
 import {
   exposedSurface,
   type FieldKind,
+  type FieldMap,
+  type FieldMapEntry,
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
@@ -33,6 +35,29 @@ export type LensValuePickerOptions = {
 };
 
 const RELATION_KINDS = new Set(['object', 'bridge']);
+
+/** The pickable option for one leaf (scalar/enum) field at `path`. Enum values come
+ *  from the field, falling back to the owning map's enum registry. Shared by every
+ *  walk over a lens so they all emit the same option shape. */
+export const leafOption = (
+  name: string,
+  entry: FieldMapEntry,
+  path: string,
+  enums: FieldMap['enums'],
+  labels?: Record<string, string>,
+): LensValueOption => {
+  const isEnum = entry.kind === 'enum';
+  const kind: FieldKind = isEnum ? 'Enum' : toFieldKind(entry.type);
+  return {
+    path,
+    field: name,
+    kind,
+    label: labels?.[path] ?? name,
+    isList: entry.isList === true,
+    values: isEnum ? (entry.values ?? enums?.[entry.type]) : entry.values,
+    acceptsSubPath: kind === 'Json',
+  };
+};
 
 /**
  * Enumerate the value-locations reachable through a lens — every leaf scalar/enum,
@@ -70,17 +95,7 @@ export const lensValuePicker = (
         if (target) walk(target.mapName, target.modelName, path, depth + 1, nextSeen);
         continue;
       }
-      const isEnum = entry.kind === 'enum';
-      const kind = isEnum ? 'Enum' : toFieldKind(entry.type);
-      out.push({
-        path,
-        field: name,
-        kind,
-        label: opts.labels?.[path] ?? name,
-        isList: entry.isList === true,
-        values: isEnum ? (entry.values ?? lens.maps[mapName]?.enums?.[entry.type]) : entry.values,
-        acceptsSubPath: kind === 'Json',
-      });
+      out.push(leafOption(name, entry, path, lens.maps[mapName]?.enums, opts.labels));
     }
   };
 

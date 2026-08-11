@@ -331,6 +331,7 @@ with a registry stores its own by-name reference.
 - `describeModelFields(lens, map, model, { labels, valueLabels, targets })` — the selectable fields + operator sets
 - `runSources(lensOrNarrowing, rows)` — DISTINCT option sets for sourced fields
 - `lensValuePicker` / `useLensValuePicker` — the field/path picker atom
+- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through to-one relations (unbounded, cycle-cut), to-many relations emitted as loop portals instead of being walked
 - `parseSavedRule` / `stringifySavedRule` — validated rule serialization
 
 See [PLAN.md](./PLAN.md) for the architecture.

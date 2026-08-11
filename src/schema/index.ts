@@ -23,6 +23,8 @@ export {
   whereConditions,
   writeSelectorClause,
 } from './decoration';
+export type { LensLoopOption, LensScope, LensScopeSurfaceOptions } from './lensScopeSurface';
+export { lensScopeSurface, useLensScopeSurface } from './lensScopeSurface';
 export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker';
 export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
 export type { SourceRows, SourceValues } from './sources';
