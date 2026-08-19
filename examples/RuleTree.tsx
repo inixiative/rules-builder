@@ -65,6 +65,33 @@ const Picker = ({
 );
 
 const LiteralValue = ({ value }: { value: ValueControl }) => {
+  if (value.shape === 'range' || value.shape === 'dateRange') {
+    const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
+    const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
+    const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+    const type = isDate ? 'date' : numeric ? 'number' : 'text';
+    const toInput = (v: unknown) =>
+      v == null ? '' : isDate && typeof v === 'string' ? v.slice(0, 10) : String(v);
+    const fromInput = (raw: string) => (raw === '' ? undefined : numeric ? Number(raw) : raw);
+    return (
+      <>
+        <input
+          aria-label="value min"
+          type={type}
+          style={sel}
+          value={toInput(min)}
+          onChange={(e) => value.set([fromInput(e.target.value), max])}
+        />
+        <input
+          aria-label="value max"
+          type={type}
+          style={sel}
+          value={toInput(max)}
+          onChange={(e) => value.set([min, fromInput(e.target.value)])}
+        />
+      </>
+    );
+  }
   if (value.options) {
     const multi = value.shape === 'array' || value.shape === 'dayList';
     if (multi) {
@@ -298,17 +325,60 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             options={node.aggregate.operator.options}
             onChange={node.aggregate.operator.set}
           />
-          <input
-            aria-label="aggregate value"
-            type="number"
-            style={{ ...sel, width: 90 }}
-            value={
-              typeof node.aggregate.value.current === 'number' ? node.aggregate.value.current : ''
-            }
-            onChange={(e) =>
-              node.aggregate?.value.set(e.target.value === '' ? undefined : Number(e.target.value))
-            }
-          />
+          {node.aggregate.value.shape === 'range' ? (
+            <>
+              <input
+                aria-label="aggregate value min"
+                type="number"
+                style={{ ...sel, width: 90 }}
+                value={
+                  Array.isArray(node.aggregate.value.current)
+                    ? (node.aggregate.value.current[0] ?? '')
+                    : ''
+                }
+                onChange={(e) =>
+                  node.aggregate?.value.set([
+                    Number(e.target.value),
+                    Array.isArray(node.aggregate?.value.current)
+                      ? node.aggregate.value.current[1]
+                      : 0,
+                  ])
+                }
+              />
+              <input
+                aria-label="aggregate value max"
+                type="number"
+                style={{ ...sel, width: 90 }}
+                value={
+                  Array.isArray(node.aggregate.value.current)
+                    ? (node.aggregate.value.current[1] ?? '')
+                    : ''
+                }
+                onChange={(e) =>
+                  node.aggregate?.value.set([
+                    Array.isArray(node.aggregate?.value.current)
+                      ? node.aggregate.value.current[0]
+                      : 0,
+                    Number(e.target.value),
+                  ])
+                }
+              />
+            </>
+          ) : (
+            <input
+              aria-label="aggregate value"
+              type="number"
+              style={{ ...sel, width: 90 }}
+              value={
+                typeof node.aggregate.value.current === 'number' ? node.aggregate.value.current : ''
+              }
+              onChange={(e) =>
+                node.aggregate?.value.set(
+                  e.target.value === '' ? undefined : Number(e.target.value),
+                )
+              }
+            />
+          )}
         </>
       )}
       {node.count && (

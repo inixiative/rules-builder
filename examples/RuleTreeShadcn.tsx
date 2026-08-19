@@ -25,6 +25,31 @@ const iconize = (options: readonly { value: string; label: string; icon?: string
  */
 
 const LiteralValue = ({ value }: { value: ValueControl }) => {
+  if (value.shape === 'range' || value.shape === 'dateRange') {
+    const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
+    const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
+    const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+    const type = isDate ? 'date' : numeric ? 'number' : 'text';
+    const toInput = (v: unknown) =>
+      v == null ? '' : isDate && typeof v === 'string' ? v.slice(0, 10) : String(v);
+    const fromInput = (raw: string) => (raw === '' ? undefined : numeric ? Number(raw) : raw);
+    return (
+      <>
+        <Input
+          aria-label="value min"
+          type={type}
+          value={toInput(min)}
+          onChange={(e) => value.set([fromInput(e.target.value), max])}
+        />
+        <Input
+          aria-label="value max"
+          type={type}
+          value={toInput(max)}
+          onChange={(e) => value.set([min, fromInput(e.target.value)])}
+        />
+      </>
+    );
+  }
   if (value.options) {
     if (value.shape === 'array' || value.shape === 'dayList') {
       const current = Array.isArray(value.current) ? (value.current as string[]) : [];

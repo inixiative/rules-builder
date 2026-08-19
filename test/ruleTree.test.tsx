@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import type { FieldMap } from '@inixiative/json-rules';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { RuleEditor } from '../examples/RuleTree';
 
@@ -38,5 +38,23 @@ describe('RuleEditor (reference renderer over the headless hook)', () => {
     expect(screen.queryAllByLabelText('field')).toHaveLength(1);
     fireEvent.click(screen.getByLabelText('remove'));
     expect(screen.queryAllByLabelText('field')).toHaveLength(0);
+  });
+
+  test('between renders paired min/max inputs and writes a two-element tuple', () => {
+    const onChange = mock<(c: Condition) => void>();
+    render(
+      <RuleEditor
+        source={source}
+        rule={{ all: [{ field: 'age', operator: 'between', value: [10, 20] }] }}
+        onChange={onChange}
+      />,
+    );
+    const min = screen.getByLabelText('value min') as HTMLInputElement;
+    const max = screen.getByLabelText('value max') as HTMLInputElement;
+    expect(min.value).toBe('10');
+    expect(max.value).toBe('20');
+    fireEvent.change(max, { target: { value: '30' } });
+    const rule = onChange.mock.calls.at(-1)?.[0] as { all: { value: unknown }[] };
+    expect(rule.all[0].value).toEqual([10, 30]);
   });
 });
