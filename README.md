@@ -230,24 +230,35 @@ shape comes from the operator, the allowed set from the lens. A default is a lit
 `RuleValue` / `DateExpr` — never a `bind` or `path`. `{ bind }` in a template is *not*
 a slot: the server fills it, the user never sees it.
 
+`Facet.condition` is a `FacetCondition`: a `Condition` whose rules may carry
+`variable` — a plain `Condition` is one, and a template with slots needs no cast.
+Templates are read on the **builder's own shape** (`normalizeGroups`: every
+array/aggregate `condition` and `filter` as a group, the shape the sub-builder
+round-trips), so a bare `condition: { field … }` and `condition: { all: [ { field … } ] }`
+are one facet, one id, and both recognize the rules the other spelling saved.
+
 - **Insert** — `presetSeed(facet)`: each slot takes its default; an open slot inserts
   with no value source at all (the state a freshly added leaf has).
 - **Recognize** — `matchFacet` compares the template with each slot taking the node's
   own value source (`value`/`path`/`bind`, or still open) to the node: any value at a
   slot, exact equality everywhere else. Fewest wildcard slots wins, so a fixed
   `tier = gold` preset beats a variable `tier = ?` on a `gold` rule regardless of
-  facet order. `facetId` erases the default (like `defaultWhere`, it is editable, not
-  identity), so two presets differing only by default are one id — a validation
-  violation, not two cards.
+  facet order, and a matched preset beats any path facet on the same field. `facetId`
+  erases the default (like `defaultWhere`, it is editable, not identity), so two
+  presets differing only by default are one id — a validation violation, not two
+  cards. A `variable` key *inside* a rule's `value` is Json data, never a slot.
 - **Render** — the atomic node exposes `variables: VariableControl[]`, one per slot:
   `{ path, field, label, variable, options, value }` where `value` is the leaf's own
   `ValueControl` (or the aggregate threshold control) already built for that
-  position. Everything else on the card is inert. Zero variables is the plain atomic
-  case. `variableSlots(template)` lists the slots for non-builder consumers (prose
-  from a saved rule: `getNode(node, slot.path)`).
+  position; `options` are labeled by whatever that control already calls the value.
+  Everything else on the card is inert. Zero variables is the plain atomic case.
+  `variableSlots(template)` lists the slots for non-builder consumers — paths address
+  the builder's shape, so read a saved rule as `getNode(normalizeGroups(node), slot.path)`.
 - **Validate** — the seed must be a valid rule against the lens; every `options`
   entry must be admitted in its slot (the lens is asked directly); `selectors` on a
-  preset is a violation — a preset's editable slots are its variables.
+  preset is a violation — a preset's editable slots are its variables; two presets
+  over one body whose slot sets cross (neither contains the other) are ambiguous — a
+  saved rule would match both at equal rank.
 
 Aggregate rules are never *path* facets (no `arrayOperator` for the whereless-prefix
 heuristic) but can be presets — the first consumer above is one.

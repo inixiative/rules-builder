@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.26.1 — preset variables: the builder's shape is the identity
+
+- **A bare sub-condition template lost its card on the first tune.** The array
+  sub-builder reads `condition`/`filter` through `asGroupRoot` and commits the
+  group back, so tuning a variable under `condition: { field … }` rewrote the
+  rule to `condition: { all: [ … ] }` and it no longer equaled the template.
+  Templates, slot paths, ids, and recognition now all work on the builder's own
+  shape — `normalizeGroups` (new in `core`, with `asGroupRoot` moved beside it):
+  a bare and a grouped spelling are one facet, and each recognizes the rules
+  the other saved. `descend` no longer compensates on the read side.
+- **`FacetCondition`** — the declared type of `Facet.condition`: a `Condition`
+  whose rules may carry `variable`. No cast on templates.
+- **Precedence**: a matched preset is settled before any path facet (a leaf path
+  facet on the same field used to preempt it by array order); an exact slot-count
+  tie settles on `facetId`. `validateDecoration` reports two presets over one
+  body with crossing slot sets as ambiguous.
+- **`canonical`** erases `variable` only at rule positions — a `variable` key
+  inside a rule's `value` is Json data.
+- **`VariableControl.options`** are labeled by the slot's own control (the
+  leaf's resolved value decor, `Model.field` keys included) instead of a bare
+  field-name lookup; nested element surfaces now receive `SurfaceOptions`, so
+  `labels.fields` reaches a nested slot's `label`.
+
 ## 0.26.0 — preset variables
 
 - **Preset facets can leave value slots to the author.** A template leaf (or

@@ -1,4 +1,11 @@
-export type { Decor, Decoration, Facet, Variable, VariableSlot } from './decoration';
+export type {
+  Decor,
+  Decoration,
+  Facet,
+  FacetCondition,
+  Variable,
+  VariableSlot,
+} from './decoration';
 export {
   branchFields,
   consumedTopFields,

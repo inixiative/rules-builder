@@ -11,8 +11,10 @@ import {
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import {
   type Decoration,
+  decorationSurfaceOptions,
   describeFacets,
   type Facet,
+  type FacetCondition,
   facetId,
   matchFacet,
   presetSeed,
@@ -29,6 +31,7 @@ const map: FieldMap = {
       fields: {
         tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
         lastLoginAt: { kind: 'scalar', type: 'DateTime', isRequired: false },
+        meta: { kind: 'scalar', type: 'Json' },
         rewards: { kind: 'object', type: 'Reward', isList: true },
       },
     },
@@ -48,7 +51,7 @@ const fields = describeModelFields(lens, 'app', 'User');
 
 // The first consumer's shape: an aggregate threshold left OPEN, a window variable
 // with a default, and a locked identity clause.
-const rewardsTemplate = {
+const rewardsTemplate: FacetCondition = {
   field: 'rewards',
   aggregate: { mode: 'sum', field: 'amount' },
   operator: 'greaterThanEquals',
@@ -59,7 +62,7 @@ const rewardsTemplate = {
       { field: 'status', operator: 'notEquals', value: 'rejected' },
     ],
   },
-} as unknown as Condition;
+};
 const rewards: Facet = { label: 'Rewards Redeemed', condition: rewardsTemplate };
 
 const inactive: Facet = {
@@ -71,7 +74,7 @@ const inactive: Facet = {
       default: { ago: { days: 30 } },
       options: [{ ago: { days: 30 } }, { ago: { days: 90 } }],
     },
-  } as unknown as Condition,
+  },
 };
 
 const goldFixed: Facet = {
@@ -84,7 +87,7 @@ const anyTier: Facet = {
     field: 'tier',
     operator: 'equals',
     variable: { options: ['gold', 'silver'] },
-  } as unknown as Condition,
+  },
 };
 
 describe('variables — the template', () => {
@@ -127,7 +130,7 @@ describe('variables — the template', () => {
         field: 'tier',
         operator: 'equals',
         variable: { default: 'gold' },
-      } as unknown as Condition,
+      },
     };
     expect(facetId(withDefault)).toBe(facetId(anyTier));
     expect(facetId(withDefault)).not.toBe(facetId(goldFixed));
@@ -215,7 +218,7 @@ describe('variables — validateDecoration', () => {
         field: 'tier',
         operator: 'equals',
         variable: { options: ['gold', 'platinum'] },
-      } as unknown as Condition,
+      },
     };
     expect(validateDecoration(lens, { facets: [bad] })).toEqual([
       expect.stringContaining('"platinum"'),
@@ -336,5 +339,188 @@ describe('variables — through the hook', () => {
     expect(run([{ amount: 150, createdAt: thisYear, status: 'paid' }])).toBe(true);
     expect(run([{ amount: 150, createdAt: thisYear, status: 'rejected' }])).not.toBe(true);
     expect(run([{ amount: 50, createdAt: thisYear, status: 'paid' }])).not.toBe(true);
+  });
+});
+
+// Zealot's second card as it is authored today: a BARE (non-group) sub-condition.
+const inactiveMissions: Facet = {
+  label: 'Inactive',
+  condition: {
+    field: 'rewards',
+    arrayOperator: 'none',
+    condition: {
+      field: 'createdAt',
+      dateOperator: 'within',
+      variable: { default: { ago: { days: 30 } } },
+    },
+  },
+};
+
+describe('variables — the builder shape is the identity', () => {
+  let committed: Condition | undefined;
+  const build = (c: Condition, decoration: Decoration) =>
+    buildRoot(
+      c,
+      lens,
+      fields,
+      4,
+      (next) => {
+        committed = next;
+      },
+      { decoration },
+    );
+
+  test('a bare sub-condition template seeds, recognizes a saved bare rule, and survives a tune', () => {
+    const decoration: Decoration = { facets: [inactiveMissions] };
+    expect(validateDecoration(lens, decoration)).toEqual([]);
+    // slot paths address the shape the builder round-trips
+    expect(variableSlots(inactiveMissions.condition as FacetCondition)[0].path).toEqual([
+      'condition',
+      0,
+    ]);
+
+    const savedBare: Condition = {
+      field: 'rewards',
+      arrayOperator: 'none',
+      condition: { field: 'createdAt', dateOperator: 'within', value: { ago: { days: 90 } } },
+    } as Condition;
+    expect(matchFacet(lens, decoration, savedBare)).toBe(inactiveMissions);
+
+    const node = build(savedBare, decoration) as ArrayNode;
+    expect(node.atomic).toBe(true);
+    expect(node.variables?.[0].value.current).toEqual({ ago: { days: 90 } });
+    node.variables?.[0].value.set({ ago: { days: 7 } });
+    expect(matchFacet(lens, decoration, committed as Condition)).toBe(inactiveMissions);
+    const again = build(committed as Condition, decoration) as ArrayNode;
+    expect(again.atomic).toBe(true);
+    expect(again.variables?.[0].value.current).toEqual({ ago: { days: 7 } });
+  });
+
+  test('a bare and a grouped spelling of the same template are one facet id', () => {
+    const bare = inactiveMissions.condition as { condition: FacetCondition };
+    const grouped: Facet = {
+      ...inactiveMissions,
+      condition: { ...bare, condition: { all: [bare.condition] } } as FacetCondition,
+    };
+    expect(facetId(grouped)).toBe(facetId(inactiveMissions));
+  });
+
+  test('a `variable` key inside a Json value is data, not a slot', () => {
+    const a: Facet = {
+      label: 'A',
+      condition: { field: 'meta', operator: 'equals', value: { variable: 1 } },
+    };
+    const b: Facet = {
+      label: 'B',
+      condition: { field: 'meta', operator: 'equals', value: { variable: 2 } },
+    };
+    expect(variableSlots(a.condition as FacetCondition)).toEqual([]);
+    expect(facetId(a)).not.toBe(facetId(b));
+    expect(matchFacet(lens, { facets: [a, b] }, b.condition as Condition)).toBe(b);
+  });
+});
+
+describe('variables — precedence and ambiguity', () => {
+  test('a matched preset beats a path facet on the same field, whatever the order', () => {
+    const tierPath: Facet = { path: 'tier', label: 'Tier (path)' };
+    const gold = { field: 'tier', operator: 'equals', value: 'gold' } as Condition;
+    expect(matchFacet(lens, { facets: [tierPath, anyTier] }, gold)).toBe(anyTier);
+    expect(matchFacet(lens, { facets: [anyTier, tierPath] }, gold)).toBe(anyTier);
+  });
+
+  test('two presets with crossing slots over one body are ambiguous — a violation, and a stable pick', () => {
+    const body = (a: FacetCondition, b: FacetCondition): FacetCondition =>
+      ({ all: [a, b] }) as FacetCondition;
+    const left: Facet = {
+      label: 'Left',
+      condition: body(
+        { field: 'tier', operator: 'equals', variable: {} },
+        { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
+      ),
+    };
+    const right: Facet = {
+      label: 'Right',
+      condition: body(
+        { field: 'tier', operator: 'equals', value: 'gold' },
+        { field: 'lastLoginAt', dateOperator: 'notWithin', variable: {} },
+      ),
+    };
+    expect(validateDecoration(lens, { facets: [left, right] })).toEqual([
+      expect.stringContaining('ambiguous'),
+    ]);
+    const saved = body(
+      { field: 'tier', operator: 'equals', value: 'gold' },
+      { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
+    ) as Condition;
+    expect(matchFacet(lens, { facets: [left, right] }, saved)).toBe(
+      matchFacet(lens, { facets: [right, left] }, saved),
+    );
+  });
+
+  test("a preset whose slots subsume another's is not ambiguous — fewer slots wins", () => {
+    const both: Facet = {
+      label: 'Both',
+      condition: {
+        all: [
+          { field: 'tier', operator: 'equals', variable: {} },
+          { field: 'lastLoginAt', dateOperator: 'notWithin', variable: {} },
+        ],
+      },
+    };
+    const one: Facet = {
+      label: 'One',
+      condition: {
+        all: [
+          { field: 'tier', operator: 'equals', variable: {} },
+          { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
+        ],
+      },
+    };
+    expect(validateDecoration(lens, { facets: [both, one] })).toEqual([]);
+    const saved = {
+      all: [
+        { field: 'tier', operator: 'equals', value: 'gold' },
+        { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
+      ],
+    } as Condition;
+    expect(matchFacet(lens, { facets: [both, one] }, saved)).toBe(one);
+  });
+});
+
+describe("variables — labels come from the slot's own scope", () => {
+  test('option and control labels resolve through the same decor the leaf uses', () => {
+    const statusPreset: Facet = {
+      label: 'Reward status',
+      condition: {
+        field: 'rewards',
+        arrayOperator: 'any',
+        condition: {
+          field: 'status',
+          operator: 'equals',
+          variable: { options: ['paid', 'pending'] },
+        },
+      },
+    };
+    const decoration: Decoration = {
+      facets: [rewards, statusPreset],
+      labels: {
+        fields: {
+          'Reward.createdAt': { label: 'Redeemed on' },
+          'Reward.amount': { label: 'Amount (cents)' },
+        },
+        values: { 'Reward.status': { paid: { label: 'Paid out' } } },
+      },
+    };
+    const root = buildRoot(
+      { all: [presetSeed(rewards), presetSeed(statusPreset)] },
+      lens,
+      fields,
+      4,
+      () => {},
+      { decoration, surfaceOpts: decorationSurfaceOptions(decoration) },
+    ) as GroupNode;
+    const [agg, status] = root.children as ArrayNode[];
+    expect(agg.variables?.map((v) => v.label)).toEqual(['Amount (cents)', 'Redeemed on']);
+    expect(status.variables?.[0].options?.map((o) => o.label)).toEqual(['Paid out', 'pending']);
   });
 });

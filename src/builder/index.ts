@@ -1,3 +1,4 @@
+export { asGroupRoot } from '../core/tree';
 export type {
   AggregateControl,
   ArrayNode,
@@ -11,7 +12,7 @@ export type {
   ValueControl,
   VariableControl,
 } from './buildNodes';
-export { asGroupRoot, asRoot, buildRoot } from './buildNodes';
+export { asRoot, buildRoot } from './buildNodes';
 export { isAggregateNode, isArrayNode, isGroupNode } from './nodes';
 export type { UseFilteredCollection, UseFilteredCollectionOptions } from './useFilteredCollection';
 export { useFilteredCollection } from './useFilteredCollection';

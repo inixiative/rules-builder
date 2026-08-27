@@ -77,6 +77,30 @@ export const removeNode = (cond: Condition, path: RulePath): Condition => {
   throw new Error(`removeNode: segment '${key}' is required and cannot be removed`);
 };
 
+/** Normalize a (sub-)condition to a group so it has a compound to add into. Used for the array
+ *  node's nested condition/filter sub-trees, which are always groups over the related elements. */
+export const asGroupRoot = (cond: Condition | undefined): Condition =>
+  cond !== undefined && (isAll(cond) || isAny(cond))
+    ? cond
+    : { all: cond !== undefined ? [cond] : [] };
+
+/** The shape the builder round-trips: every array/aggregate rule's `condition` and
+ *  `filter` as a group, at every depth — the sub-builder reads through
+ *  {@link asGroupRoot} and commits the group back. `X` and `{ all: [X] }` are one
+ *  rule to the engine and one tree to the builder, so anything that compares or
+ *  addresses conditions does so on this shape. */
+export const normalizeGroups = (cond: Condition): Condition => {
+  if (!isObj(cond)) return cond;
+  const rec = { ...(cond as unknown as Record<string, unknown>) };
+  const kids = childArray(cond);
+  if (kids) rec[isAll(cond) ? 'all' : 'any'] = kids.map(normalizeGroups);
+  for (const key of ['condition', 'filter'] as const)
+    if (rec[key] !== undefined) rec[key] = normalizeGroups(asGroupRoot(rec[key] as Condition));
+  for (const key of ['if', 'then', 'else'] as const)
+    if (rec[key] !== undefined) rec[key] = normalizeGroups(rec[key] as Condition);
+  return rec as unknown as Condition;
+};
+
 export const addRule = (cond: Condition, parentPath: RulePath, node: Condition): Condition => {
   const parent = getNode(cond, parentPath);
   if (parent === undefined || (!isAll(parent) && !isAny(parent))) {

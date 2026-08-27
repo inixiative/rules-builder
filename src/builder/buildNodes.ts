@@ -8,12 +8,13 @@ import {
   type ValueShape,
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
-import { addRule, getNode, type RulePath, removeNode, setNode } from '../core/tree';
+import { addRule, asGroupRoot, getNode, type RulePath, removeNode, setNode } from '../core/tree';
 import {
   consumedTopFields,
   type Decoration,
   describeFacets,
   type Facet,
+  type FacetCondition,
   facetBranchScope,
   facetElementLeaf,
   facetId,
@@ -413,25 +414,15 @@ const validateAggregate = (
   return { ok, compilesToPrisma: ok && targetCompiles };
 };
 
-/** The built descriptor at `path` under `built` (the raw `node` walked alongside:
- *  an array's sub-builder wraps a bare, non-group condition in a group, so a slot
- *  on such a condition sits one level down). `if`/`then`/`else` carry no nodes. */
-const descend = (built: BuilderNode, node: Condition, path: RulePath): BuilderNode | undefined => {
+/** The built descriptor at a slot `path` (paths address the builder's own shape —
+ *  {@link normalizeGroups}). `if`/`then`/`else` carry no nodes. */
+const descend = (built: BuilderNode, path: RulePath): BuilderNode | undefined => {
   let b: BuilderNode | undefined = built;
-  let r: Condition | undefined = node;
   for (const seg of path) {
-    if (!b || r === undefined) return undefined;
-    if (typeof seg === 'number') {
-      if (b.kind !== 'group') return undefined;
-      b = b.children[seg];
-      r = groupChildrenOf(r)[seg];
-      continue;
-    }
-    if (seg !== 'condition' && seg !== 'filter') return undefined;
-    if (b.kind !== 'array') return undefined;
-    const sub: GroupNode | undefined = b[seg];
-    r = (r as Rec)[seg] as Condition | undefined;
-    b = sub && r !== undefined && !isGroupNode(r) ? sub.children[0] : sub;
+    if (!b) return undefined;
+    if (typeof seg === 'number') b = b.kind === 'group' ? b.children[seg] : undefined;
+    else if (seg === 'condition' || seg === 'filter') b = b.kind === 'array' ? b[seg] : undefined;
+    else return undefined;
   }
   return b;
 };
@@ -439,15 +430,10 @@ const descend = (built: BuilderNode, node: Condition, path: RulePath): BuilderNo
 /** One control per variable slot of the preset governing an atomic node: the
  *  slot's own value control, found in the already-built subtree by the slot's
  *  path — never re-derived from the catalog. */
-const presetVariables = (
-  facet: Facet,
-  node: Condition,
-  built: BuilderNode,
-  ctx: Ctx,
-): VariableControl[] => {
+const presetVariables = (facet: Facet, built: BuilderNode): VariableControl[] => {
   const out: VariableControl[] = [];
-  for (const slot of variableSlots(facet.condition as Condition)) {
-    const target = descend(built, node, slot.path);
+  for (const slot of variableSlots(facet.condition as FacetCondition)) {
+    const target = descend(built, slot.path);
     const value =
       target?.kind === 'leaf'
         ? target.value
@@ -462,7 +448,9 @@ const presetVariables = (
           ? target.aggregate?.field
           : undefined;
     const field = picker?.value;
-    const valueLabels = field ? ctx.surfaceOpts.valueLabels?.[field] : undefined;
+    // Prose for an option is whatever the slot's own control already calls that
+    // value — the leaf's enum/sourced set carries the resolved value decor.
+    const named = target.kind === 'leaf' ? target.value?.options : undefined;
     out.push({
       path: slot.path,
       field,
@@ -470,7 +458,7 @@ const presetVariables = (
       variable: slot.variable,
       options: slot.variable.options?.map((option) => {
         const key = typeof option === 'string' ? option : JSON.stringify(option);
-        return { value: option, label: valueLabels?.[key] ?? key };
+        return { value: option, label: named?.find((o) => o.value === key)?.label ?? key };
       }),
       value,
     });
@@ -676,9 +664,7 @@ const buildLeaf = (
     valid: checkRuleAgainstLens(node, scope.lens).ok,
     remove,
   };
-  return leaf.atomic && leafMatch
-    ? { ...leaf, variables: presetVariables(leafMatch, node, leaf, ctx) }
-    : leaf;
+  return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
 };
 
 const buildArray = (
@@ -724,7 +710,7 @@ const buildArray = (
           }),
         );
         const relFields = relabelRelations(
-          describeModelFields(relLens, rel.mapName, rel.modelName),
+          describeModelFields(relLens, rel.mapName, rel.modelName, ctx.surfaceOpts),
           ctx.decoration,
         );
         const fields = overrideLeaf
@@ -991,7 +977,7 @@ const buildArray = (
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
   };
   return built.atomic && matchedFacet
-    ? { ...built, variables: presetVariables(matchedFacet, node, built, ctx) }
+    ? { ...built, variables: presetVariables(matchedFacet, built) }
     : built;
 };
 
@@ -1113,9 +1099,7 @@ const buildGroup = (
     setSelectorClause: setGroupSelectorClause,
     remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
   };
-  return preset && matched
-    ? { ...built, variables: presetVariables(matched, node, built, ctx) }
-    : built;
+  return preset && matched ? { ...built, variables: presetVariables(matched, built) } : built;
 };
 
 /**
@@ -1161,11 +1145,6 @@ const buildNode = (
     : isArrayNode(node) || isAggregateNode(node)
       ? buildArray(node, path, depth, ctx, scope)
       : buildLeaf(node, path, depth, ctx, scope);
-
-/** Normalize a (sub-)condition to a group so it has a compound to add into. Used for the array
- *  node's nested condition/filter sub-trees, which are always groups over the related elements. */
-export const asGroupRoot = (cond: Condition | undefined): Condition =>
-  cond !== undefined && isGroupNode(cond) ? cond : { all: cond !== undefined ? [cond] : [] };
 
 /** The root is the condition itself — never synthetically wrapped. Only an absent condition
  *  becomes `empty` — a blank group by default (a first-class, add-into-able container), or a

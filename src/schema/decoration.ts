@@ -11,7 +11,7 @@ import {
 } from '@inixiative/json-rules';
 import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
-import { getNode, type RulePath, setNode } from '../core/tree';
+import { asGroupRoot, getNode, normalizeGroups, type RulePath, setNode } from '../core/tree';
 import {
   type BuilderField,
   describeModelFields,
@@ -74,11 +74,26 @@ export type Facet = {
   selectors?: { field: string; label?: string; anyLabel?: string }[];
   /** A preset: the complete pre-authored condition this facet aliases, its value
    *  slots optionally marked with {@link Variable}. When set, `path` and the
-   *  traversal fields are ignored. Typed as `Condition` — a template leaf with a
-   *  `variable` and no value source is not a valid rule until instantiated, so an
-   *  inline literal needs a cast. */
-  condition?: Condition;
+   *  traversal fields are ignored. */
+  condition?: FacetCondition;
 } & Decor;
+
+type Templated<T> = T extends string | number | boolean | null | undefined | Date | RegExp
+  ? T
+  : T extends readonly (infer U)[]
+    ? Templated<U>[]
+    : T extends object
+      ? { [K in keyof T]: Templated<T[K]> } & (T extends { field: string }
+          ? { variable?: Variable }
+          : unknown)
+      : T;
+
+/** What a preset facet's `condition` is: a `Condition` whose rules (leaf or
+ *  aggregate — anything with a `field`) may carry `variable` in their value-source
+ *  position. A plain `Condition` is one; a template with slots is not a valid rule
+ *  until {@link presetSeed} instantiates it, which is the only place it becomes a
+ *  `Condition` again. */
+export type FacetCondition = Templated<Condition>;
 
 /**
  * A value slot in a preset template — the value domain only. Everything else
@@ -106,10 +121,15 @@ export type VariableSlot = { path: RulePath; variable: Variable };
 
 const VALUE_SOURCE_KEYS = ['value', 'path', 'bind'] as const;
 
+/** A template in the builder's own shape ({@link normalizeGroups}) — the shape
+ *  slot paths address, ids fold, and recognition compares. */
+const templateOf = (facet: Facet): Condition => normalizeGroups(facet.condition as Condition);
+
 /** Every variable slot in a preset template, by builder path (the same `RulePath`
- *  `getNode` / `setNode` address the built tree with) — a slot sits ON the leaf
- *  or aggregate rule that carries `variable`. Template order, depth-first. */
-export const variableSlots = (template: Condition): VariableSlot[] => {
+ *  `getNode` / `setNode` address the built tree with, on the builder's shape —
+ *  {@link normalizeGroups}) — a slot sits ON the leaf or aggregate rule that
+ *  carries `variable`. Template order, depth-first. */
+export const variableSlots = (template: FacetCondition): VariableSlot[] => {
   const out: VariableSlot[] = [];
   const walk = (node: unknown, path: RulePath) => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
@@ -120,7 +140,7 @@ export const variableSlots = (template: Condition): VariableSlot[] => {
     for (const key of ['condition', 'filter', 'if', 'then', 'else'] as const)
       if (rec[key] !== undefined) walk(rec[key], [...path, key]);
   };
-  walk(template, []);
+  walk(normalizeGroups(template as Condition), []);
   return out;
 };
 
@@ -136,6 +156,17 @@ const mapSlots = (
     return setNode(acc, slot.path, { ...rest, ...replacement(slot) } as Condition);
   }, template);
 
+/** The template with its slot AND value-source keys blanked at `paths` — what is
+ *  left is the body two presets are compared on. A path the template has no node
+ *  at is left alone (the bodies then differ structurally anyway). */
+const maskAt = (template: Condition, paths: RulePath[]): Condition =>
+  paths.reduce<Condition>((acc, path) => {
+    const at = getNode(acc, path);
+    if (!at || typeof at !== 'object') return acc;
+    const { variable: _v, value: _a, path: _p, bind: _b, ...rest } = at as Record<string, unknown>;
+    return setNode(acc, path, rest as Condition);
+  }, template);
+
 const valueSourceOf = (node: unknown): Record<string, unknown> => {
   if (!node || typeof node !== 'object') return {};
   const rec = node as Record<string, unknown>;
@@ -148,7 +179,7 @@ const valueSourceOf = (node: unknown): Record<string, unknown> => {
  *  slot inserts with no value source at all — the tree state a freshly added
  *  leaf has, so the save gate blocks until the user fills it. */
 export const presetSeed = (facet: Facet): Condition => {
-  const template = facet.condition as Condition;
+  const template = templateOf(facet);
   return mapSlots(template, variableSlots(template), ({ variable }) =>
     variable.default !== undefined ? { value: variable.default } : {},
   );
@@ -156,9 +187,12 @@ export const presetSeed = (facet: Facet): Condition => {
 
 /** The template with each slot taking whatever value source `node` has at that
  *  position — so comparing the result to `node` asks "equal everywhere but the
- *  slots?". A slot the node hasn't filled stays open on both sides. */
-const fillVariables = (template: Condition, slots: VariableSlot[], node: Condition): Condition =>
-  mapSlots(template, slots, ({ path }) => valueSourceOf(getNode(node, path)));
+ *  slots?". A slot the node hasn't filled stays open on both sides. Both sides
+ *  are read on the builder's shape. */
+const fillVariables = (template: Condition, slots: VariableSlot[], node: Condition): Condition => {
+  const shaped = normalizeGroups(node);
+  return mapSlots(template, slots, ({ path }) => valueSourceOf(getNode(shaped, path)));
+};
 
 /**
  * A display decoration over a lens: hoisted facets plus structural/path
@@ -325,16 +359,25 @@ export const facetId = (facet: Facet): string => {
 // prefix stripMeta strips). Drop it and sort keys so the leading-block comparison
 // is order- and coercion-insensitive.
 const isMetaKey = (key: string): boolean => key === 'coerceType' || key.startsWith('_');
-/** The one comparator behind ids, `where` matching, and preset recognition. A
- *  variable's body (default/options/range) is erased to the bare marker: it is
- *  editable, so — like `defaultWhere` — it never folds into identity. */
-const canonical = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(canonical);
+/** The one comparator behind ids, `where` matching, and preset recognition. It
+ *  compares the builder's shape ({@link normalizeGroups} — `X` and `{ all: [X] }`
+ *  are one rule), and on a rule node erases a variable's body
+ *  (default/options/range) to the bare marker: it is editable, so — like
+ *  `defaultWhere` — it never folds into identity. Below a rule's `value` there is
+ *  only data: a `variable` key there is a Json literal, and stays one. */
+const STRUCTURAL_KEYS = new Set(['all', 'any', 'condition', 'filter', 'if', 'then', 'else']);
+const canonical = (value: unknown, structural = true): unknown => {
+  if (Array.isArray(value)) return value.map((v) => canonical(v, structural));
   if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort())
-      if (key === 'variable') out[key] = {};
-      else if (!isMetaKey(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
+    for (const key of Object.keys(rec).sort()) {
+      if (isMetaKey(key)) continue;
+      if (structural && key === 'variable') out[key] = {};
+      else if (structural && (key === 'condition' || key === 'filter'))
+        out[key] = canonical(normalizeGroups(asGroupRoot(rec[key] as Condition)), true);
+      else out[key] = canonical(rec[key], structural && STRUCTURAL_KEYS.has(key));
+    }
     return out;
   }
   return value;
@@ -907,23 +950,31 @@ export const matchFacet = (
   let best: Facet | undefined;
   let bestLead = -1;
   // A preset matches a node equal to its whole condition (coercion/order-insensitive)
-  // once each variable slot takes the node's own value source. Fewest wildcard
-  // slots wins — a fixed `100` beats a variable on a `100` rule — so array order
-  // never decides which card a saved rule wears.
+  // once each variable slot takes the node's own value source — whole-node equality,
+  // so it is the most specific claim and is settled before any path facet. Fewest
+  // wildcard slots wins (a fixed `100` beats a variable on a `100` rule); an exact
+  // tie — an ambiguous decoration, which validateDecoration reports — settles on
+  // the id, so array order never decides which card a saved rule wears.
   let bestPreset: Facet | undefined;
   let bestPresetSlots = Number.POSITIVE_INFINITY;
   for (const facet of decoration.facets) {
-    if (facet.condition !== undefined) {
-      const slots = variableSlots(facet.condition);
-      const filled = slots.length ? fillVariables(facet.condition, slots, node) : facet.condition;
-      if (nodeKey !== JSON.stringify(canonical(filled))) continue;
-      if (slots.length === 0) return facet;
-      if (slots.length < bestPresetSlots) {
-        bestPreset = facet;
-        bestPresetSlots = slots.length;
-      }
-      continue;
+    if (facet.condition === undefined) continue;
+    const template = templateOf(facet);
+    const slots = variableSlots(template);
+    const filled = slots.length ? fillVariables(template, slots, node) : template;
+    if (nodeKey !== JSON.stringify(canonical(filled))) continue;
+    if (slots.length === 0) return facet;
+    if (
+      slots.length < bestPresetSlots ||
+      (slots.length === bestPresetSlots && bestPreset && facetId(facet) < facetId(bestPreset))
+    ) {
+      bestPreset = facet;
+      bestPresetSlots = slots.length;
     }
+  }
+  if (bestPreset) return bestPreset;
+  for (const facet of decoration.facets) {
+    if (facet.condition !== undefined) continue;
     const resolved = resolvePath(lens, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
@@ -998,7 +1049,7 @@ export const matchFacet = (
       bestLead = lead.length;
     }
   }
-  return bestPreset ?? best;
+  return best;
 };
 
 /**
@@ -1283,6 +1334,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
   const violations: string[] = [];
   const ids = new Set<string>();
   const byTarget = new Map<string, { facet: Facet; lead: Condition[] }[]>();
+  const presets: { name: string; template: Condition; slots: VariableSlot[] }[] = [];
 
   for (const facet of list) {
     if (facet.condition !== undefined) {
@@ -1299,17 +1351,34 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
         );
       if (!checkRuleAgainstLens(presetSeed(facet), lens).ok)
         violations.push(`preset '${name}' is not a valid rule against the lens`);
-      const slots = variableSlots(facet.condition);
+      const template = templateOf(facet);
+      const slots = variableSlots(template);
       for (const slot of slots)
         for (const option of slot.variable.options ?? []) {
-          const withOption = mapSlots(facet.condition, slots, (s) =>
+          const withOption = mapSlots(template, slots, (s) =>
             s === slot ? { value: option } : {},
           );
           if (!checkRuleAgainstLens(withOption, lens).ok)
             violations.push(
-              `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(facet.condition, slot.path) as { field?: string }).field}' is not allowed by the lens`,
+              `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(template, slot.path) as { field?: string }).field}' is not allowed by the lens`,
             );
         }
+      // Two presets over one body whose slot sets cross (neither contains the
+      // other) both match the same saved rules with equal rank — ambiguous. Nested
+      // slot sets rank (fewer wins); equal sets are one id (reported above).
+      for (const other of presets) {
+        const mine = new Set(slots.map((s) => JSON.stringify(s.path)));
+        const theirs = new Set(other.slots.map((s) => JSON.stringify(s.path)));
+        const nested =
+          [...mine].every((p) => theirs.has(p)) || [...theirs].every((p) => mine.has(p));
+        if (nested) continue;
+        const union = [...slots, ...other.slots].map((s) => s.path);
+        if (sameConditions([maskAt(template, union)], [maskAt(other.template, union)]))
+          violations.push(
+            `presets '${other.name}' and '${name}' are ambiguous: one body, crossing variable slots — a saved rule would match both`,
+          );
+      }
+      presets.push({ name, template, slots });
       continue;
     }
     const resolved = resolvePath(lens, facet.path);
