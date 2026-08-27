@@ -3,12 +3,15 @@ import {
   type Condition,
   checkRuleAgainstLens,
   createLens,
+  type DateExpr,
   exposedSurface,
   type FieldKind,
   type Lens,
+  type RuleValue,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
+import { getNode, type RulePath, setNode } from '../core/tree';
 import {
   type BuilderField,
   describeModelFields,
@@ -46,6 +49,15 @@ export type Decor = { label?: string; icon?: string };
  * operator, or value pickers; it just *is* a rule. A saved node equal to the
  * condition collapses back to the name.
  *
+ * A preset may leave value slots to the author: a leaf (or an aggregate rule)
+ * carrying {@link Variable} in its value-source position — `variable` beside
+ * `value` / `path` / `bind`, mutually exclusive with them — is a slot the user
+ * fills through the card while everything around it stays fixed. Inserting fills
+ * each slot with its `default` (an open slot inserts with no value source — the
+ * save gate blocks until filled); recognition accepts any value source at a slot
+ * and exact equality everywhere else. `{ bind }` in a template is NOT a slot: the
+ * server fills it, the user never sees it. Zero variables is the plain atomic case.
+ *
  * Purely presentational — the emitted rule is exactly what the engine runs.
  */
 export type Facet = {
@@ -57,15 +69,96 @@ export type Facet = {
    *  container): ordinary editable conditions on these fields that a renderer
    *  draws as dedicated dropdowns ("Field: [Any ▾]") instead of hardcoding the
    *  paths. Surfaced verbatim on a matched node. Options for the row come from
-   *  the field's own source; a grouped value leaf pins off these siblings. */
+   *  the field's own source; a grouped value leaf pins off these siblings.
+   *  Path facets only — a preset's editable slots are its variables. */
   selectors?: { field: string; label?: string; anyLabel?: string }[];
-  /** A preset: the complete pre-authored condition this facet aliases. When set,
-   *  `path` and the traversal fields are ignored. */
+  /** A preset: the complete pre-authored condition this facet aliases, its value
+   *  slots optionally marked with {@link Variable}. When set, `path` and the
+   *  traversal fields are ignored. Typed as `Condition` — a template leaf with a
+   *  `variable` and no value source is not a valid rule until instantiated, so an
+   *  inline literal needs a cast. */
   condition?: Condition;
 } & Decor;
 
+/**
+ * A value slot in a preset template — the value domain only. Everything else
+ * lives where it already does: the control's label is the leaf's field decor,
+ * option prose is `labels.values`, the value shape comes from the operator, the
+ * allowed set from the lens.
+ */
+export type Variable = {
+  /** What the slot starts as; absent = an open slot (required at save). A literal
+   *  `RuleValue` / `DateExpr` only — never a `bind` or `path` (the engine can't
+   *  resolve one nested in `value`, and a sibling one fails validation). */
+  default?: RuleValue | DateExpr;
+  /** A curated list of what the slot may be. For an enum/sourced field it must be
+   *  a subset of the lens's set ({@link validateDecoration} checks). A saved value
+   *  outside the list is shown untouched. */
+  options?: (RuleValue | DateExpr)[];
+  /** Bounds on a numeric slot — a builder-side gate, the engine doesn't care. */
+  range?: { min?: number; max?: number; step?: number };
+};
+
 /** A preset facet aliases a whole pre-authored condition (atomic; no pickers). */
 export const isPreset = (facet: Facet): boolean => facet.condition !== undefined;
+
+export type VariableSlot = { path: RulePath; variable: Variable };
+
+const VALUE_SOURCE_KEYS = ['value', 'path', 'bind'] as const;
+
+/** Every variable slot in a preset template, by builder path (the same `RulePath`
+ *  `getNode` / `setNode` address the built tree with) — a slot sits ON the leaf
+ *  or aggregate rule that carries `variable`. Template order, depth-first. */
+export const variableSlots = (template: Condition): VariableSlot[] => {
+  const out: VariableSlot[] = [];
+  const walk = (node: unknown, path: RulePath) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    const rec = node as Record<string, unknown>;
+    if (rec.variable !== undefined) out.push({ path, variable: rec.variable as Variable });
+    const kids = Array.isArray(rec.all) ? rec.all : Array.isArray(rec.any) ? rec.any : undefined;
+    if (kids) for (const [i, kid] of kids.entries()) walk(kid, [...path, i]);
+    for (const key of ['condition', 'filter', 'if', 'then', 'else'] as const)
+      if (rec[key] !== undefined) walk(rec[key], [...path, key]);
+  };
+  walk(template, []);
+  return out;
+};
+
+/** The template with each slot's `variable` replaced by `replacement(slot)` —
+ *  the value-source key(s) that stand in for it, or nothing (an open slot). */
+const mapSlots = (
+  template: Condition,
+  slots: VariableSlot[],
+  replacement: (slot: VariableSlot) => Record<string, unknown>,
+): Condition =>
+  slots.reduce<Condition>((acc, slot) => {
+    const { variable: _v, ...rest } = getNode(acc, slot.path) as Record<string, unknown>;
+    return setNode(acc, slot.path, { ...rest, ...replacement(slot) } as Condition);
+  }, template);
+
+const valueSourceOf = (node: unknown): Record<string, unknown> => {
+  if (!node || typeof node !== 'object') return {};
+  const rec = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of VALUE_SOURCE_KEYS) if (rec[key] !== undefined) out[key] = rec[key];
+  return out;
+};
+
+/** The condition a preset inserts: every slot filled with its default; an open
+ *  slot inserts with no value source at all — the tree state a freshly added
+ *  leaf has, so the save gate blocks until the user fills it. */
+export const presetSeed = (facet: Facet): Condition => {
+  const template = facet.condition as Condition;
+  return mapSlots(template, variableSlots(template), ({ variable }) =>
+    variable.default !== undefined ? { value: variable.default } : {},
+  );
+};
+
+/** The template with each slot taking whatever value source `node` has at that
+ *  position — so comparing the result to `node` asks "equal everywhere but the
+ *  slots?". A slot the node hasn't filled stays open on both sides. */
+const fillVariables = (template: Condition, slots: VariableSlot[], node: Condition): Condition =>
+  mapSlots(template, slots, ({ path }) => valueSourceOf(getNode(node, path)));
 
 /**
  * A display decoration over a lens: hoisted facets plus structural/path
@@ -232,12 +325,16 @@ export const facetId = (facet: Facet): string => {
 // prefix stripMeta strips). Drop it and sort keys so the leading-block comparison
 // is order- and coercion-insensitive.
 const isMetaKey = (key: string): boolean => key === 'coerceType' || key.startsWith('_');
+/** The one comparator behind ids, `where` matching, and preset recognition. A
+ *  variable's body (default/options/range) is erased to the bare marker: it is
+ *  editable, so — like `defaultWhere` — it never folds into identity. */
 const canonical = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort())
-      if (!isMetaKey(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
+      if (key === 'variable') out[key] = {};
+      else if (!isMetaKey(key)) out[key] = canonical((value as Record<string, unknown>)[key]);
     return out;
   }
   return value;
@@ -694,7 +791,7 @@ export const describeFacets = (
         isList: false,
         isBridge: false,
         operators: { field: [], date: [], array: [] },
-        seed: facet.condition,
+        seed: presetSeed(facet),
       });
       continue;
     }
@@ -809,10 +906,22 @@ export const matchFacet = (
   // facets' identities are contained in one block, the most specific wins.
   let best: Facet | undefined;
   let bestLead = -1;
+  // A preset matches a node equal to its whole condition (coercion/order-insensitive)
+  // once each variable slot takes the node's own value source. Fewest wildcard
+  // slots wins — a fixed `100` beats a variable on a `100` rule — so array order
+  // never decides which card a saved rule wears.
+  let bestPreset: Facet | undefined;
+  let bestPresetSlots = Number.POSITIVE_INFINITY;
   for (const facet of decoration.facets) {
     if (facet.condition !== undefined) {
-      // A preset matches a node equal to its whole condition (coercion/order-insensitive).
-      if (nodeKey === JSON.stringify(canonical(facet.condition))) return facet;
+      const slots = variableSlots(facet.condition);
+      const filled = slots.length ? fillVariables(facet.condition, slots, node) : facet.condition;
+      if (nodeKey !== JSON.stringify(canonical(filled))) continue;
+      if (slots.length === 0) return facet;
+      if (slots.length < bestPresetSlots) {
+        bestPreset = facet;
+        bestPresetSlots = slots.length;
+      }
       continue;
     }
     const resolved = resolvePath(lens, facet.path);
@@ -889,7 +998,7 @@ export const matchFacet = (
       bestLead = lead.length;
     }
   }
-  return best;
+  return bestPreset ?? best;
 };
 
 /**
@@ -1177,12 +1286,30 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
 
   for (const facet of list) {
     if (facet.condition !== undefined) {
-      // A preset must be a valid rule against the lens (it works as-is, no pickers).
+      // A preset must be a valid rule against the lens as it inserts (defaults
+      // filled, open slots left open), and every curated option must be admitted
+      // in its slot — the lens owns the allowed set, so it is asked directly.
       const id = facetId(facet);
+      const name = facet.label ?? id;
       if (ids.has(id)) violations.push(`duplicate facet id '${id}'`);
       ids.add(id);
-      if (!checkRuleAgainstLens(facet.condition, lens).ok)
-        violations.push(`preset '${facet.label ?? id}' is not a valid rule against the lens`);
+      if (facet.selectors?.length)
+        violations.push(
+          `preset '${name}' cannot carry 'selectors' — its editable slots are variables`,
+        );
+      if (!checkRuleAgainstLens(presetSeed(facet), lens).ok)
+        violations.push(`preset '${name}' is not a valid rule against the lens`);
+      const slots = variableSlots(facet.condition);
+      for (const slot of slots)
+        for (const option of slot.variable.options ?? []) {
+          const withOption = mapSlots(facet.condition, slots, (s) =>
+            s === slot ? { value: option } : {},
+          );
+          if (!checkRuleAgainstLens(withOption, lens).ok)
+            violations.push(
+              `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(facet.condition, slot.path) as { field?: string }).field}' is not allowed by the lens`,
+            );
+        }
       continue;
     }
     const resolved = resolvePath(lens, facet.path);

@@ -9,6 +9,7 @@ export type {
   OperatorControl,
   PickOption,
   ValueControl,
+  VariableControl,
 } from './buildNodes';
 export { asGroupRoot, asRoot, buildRoot } from './buildNodes';
 export { isAggregateNode, isArrayNode, isGroupNode } from './nodes';

@@ -1,4 +1,4 @@
-export type { Decor, Decoration, Facet } from './decoration';
+export type { Decor, Decoration, Facet, Variable, VariableSlot } from './decoration';
 export {
   branchFields,
   consumedTopFields,
@@ -13,6 +13,7 @@ export {
   matchFacet,
   modelDecor,
   modelFacets,
+  presetSeed,
   relabelRelations,
   scopedDecoration,
   scopedFacetId,
@@ -20,6 +21,7 @@ export {
   stampFacetIds,
   useFacetFields,
   validateDecoration,
+  variableSlots,
   whereConditions,
   writeSelectorClause,
 } from './decoration';

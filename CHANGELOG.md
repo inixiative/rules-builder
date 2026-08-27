@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.26.0 — preset variables
+
+- **Preset facets can leave value slots to the author.** A template leaf (or
+  aggregate rule) carrying `variable: { default?, options?, range? }` in its
+  value-source position — a sibling of `value` / `path` / `bind`, mutually
+  exclusive with them — is a slot the user fills through the card while everything
+  around it stays fixed. `presetSeed(facet)` is what the picker inserts (defaults
+  filled; an open slot inserts with no value source, so the save gate blocks until
+  filled). `matchFacet` recognizes a node that equals the template once each slot
+  takes the node's own value source, ranking by fewest wildcard slots so array
+  order never decides which card a rule wears. `facetId`/`canonical` erase a
+  variable's body: defaults are editable, not identity. Atomic nodes expose
+  `variables: VariableControl[]` — the slot's already-built `ValueControl` (or
+  aggregate threshold control), its field/label, and the labeled `options`.
+  `variableSlots(template)` for non-builder consumers. Zero variables is the
+  0.24 atomic preset unchanged.
+- **Aggregate rules can be presets.** `buildArray` offered no facet to an
+  aggregate node (the whereless-prefix heuristic would misfire on a missing
+  `arrayOperator`); it now offers the decoration's presets only, so an
+  aggregate preset inserts *and* renders as its card.
+- **`validateDecoration`**: a preset is validated as it inserts (`presetSeed`);
+  each `options` entry is checked in its slot against the lens; `selectors` on a
+  preset is a violation (previously silently ignored).
+- Peer/dev `@inixiative/json-rules` → `^2.19.8` (`notWithin` / `notBefore` /
+  `notAfter` in the operator catalog).
+
 ## 0.25.0 — `lensScopeSurface` (loop portals) + Json sub-path leaves open-ended
 
 - **`lensScopeSurface(lens, { mapName, model, labels })` → `{ values, loops }`** —

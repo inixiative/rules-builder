@@ -13,6 +13,7 @@ export type {
   UseRuleBuilder,
   UseRuleBuilderOptions,
   ValueControl,
+  VariableControl,
 } from './builder';
 export { asGroupRoot, asRoot, buildRoot, useFilteredCollection, useRuleBuilder } from './builder';
 export type { RulePath, RulePathSegment } from './core';
@@ -75,6 +76,8 @@ export type {
   SourceRows,
   SourceValues,
   SurfaceOptions,
+  Variable,
+  VariableSlot,
 } from './schema';
 export {
   branchFields,
@@ -93,6 +96,7 @@ export {
   matchFacet,
   modelDecor,
   modelFacets,
+  presetSeed,
   relabelRelations,
   resolve,
   runSources,
@@ -105,6 +109,7 @@ export {
   useLensValuePicker,
   validateDecoration,
   valueShapeForOperator,
+  variableSlots,
   whereConditions,
   writeSelectorClause,
 } from './schema';

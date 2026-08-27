@@ -3,7 +3,7 @@ import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
-import type { Decoration } from '../src/schema/decoration';
+import { type Decoration, validateDecoration } from '../src/schema/decoration';
 
 afterEach(cleanup);
 
@@ -608,6 +608,10 @@ describe('the write seam never crosses a structural boundary (adversarial round 
     expect(node.atomic).toBe(true);
     expect(node.selectors).toBeUndefined();
     expect(node.setSelectorClause).toBeUndefined();
+    // and the decoration itself is flagged: a preset's editable slots are variables.
+    expect(validateDecoration(result.current.lens, presetView)).toEqual([
+      expect.stringContaining('selectors'),
+    ]);
   });
 
   test('clear then re-pick never destroys a visible duplicate row', () => {

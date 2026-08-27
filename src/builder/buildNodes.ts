@@ -25,6 +25,8 @@ import {
   relabelRelations,
   scopedDecoration,
   selectorsApply,
+  type Variable,
+  variableSlots,
   writeSelectorClause,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
@@ -108,6 +110,9 @@ export type LeafNode = {
   /** Set when this node is a **preset** alias — a renderer shows only the name; the
    *  whole condition is opaque, with no field/operator/value pickers. */
   atomic?: boolean;
+  /** On an atomic node: one control per variable slot of the preset (empty for a
+   *  plain preset). See {@link VariableControl}. */
+  variables?: VariableControl[];
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
   valid: boolean;
   remove: () => void;
@@ -116,6 +121,26 @@ export type LeafNode = {
 /** Marks a node the builder recognized as a hoisted {@link Decoration} facet, so a
  *  renderer collapses it to the named field instead of raw internals. */
 export type HoistBadge = { id: string; label: string; icon?: string };
+
+/** A preset's editable slot, surfaced on the atomic node that wears the card:
+ *  the value control the builder already built for the slot's own leaf (or for
+ *  the aggregate threshold), plus the template's value domain. Everything else
+ *  on the card is inert. */
+export type VariableControl = {
+  /** The slot's path, relative to the preset node. */
+  path: RulePath;
+  /** The slot's field — the leaf's field, or the aggregate target — the key a
+   *  renderer looks decor up by. */
+  field?: string;
+  /** The field's label in the slot's own scope — what names the control. */
+  label?: string;
+  variable: Variable;
+  /** `variable.options`, labeled through `valueLabels` where a label exists. */
+  options?: { value: unknown; label: string }[];
+  /** The live control: a leaf's {@link ValueControl}, or an aggregate rule's
+   *  threshold control ({@link AggregateControl.value}). */
+  value: ValueControl | AggregateControl['value'];
+};
 
 export type GroupNode = {
   kind: 'group';
@@ -138,6 +163,8 @@ export type GroupNode = {
   /** Set when this group is a **preset** alias — a renderer shows only the name;
    *  the whole condition is opaque, with no pickers or add-rule. */
   atomic?: boolean;
+  /** On an atomic group: one control per variable slot of the preset. */
+  variables?: VariableControl[];
   /** Present when a facet governs this node or a detach is active. `raw` suspends
    *  recognition for the session — hoist/lock drop and the identity rows render
    *  as plain editable children. Session-only: the `__facetId` meta backing it is
@@ -223,6 +250,8 @@ export type ArrayNode = {
   /** Set when this node is a **preset** alias — a renderer shows only the name; the
    *  whole condition is opaque, with no pickers. */
   atomic?: boolean;
+  /** On an atomic node: one control per variable slot of the preset. */
+  variables?: VariableControl[];
   /** Present when a facet governs (or could govern) this node — see
    *  {@link GroupNode.facetMode}. */
   facetMode?: FacetModeControl;
@@ -384,6 +413,71 @@ const validateAggregate = (
   return { ok, compilesToPrisma: ok && targetCompiles };
 };
 
+/** The built descriptor at `path` under `built` (the raw `node` walked alongside:
+ *  an array's sub-builder wraps a bare, non-group condition in a group, so a slot
+ *  on such a condition sits one level down). `if`/`then`/`else` carry no nodes. */
+const descend = (built: BuilderNode, node: Condition, path: RulePath): BuilderNode | undefined => {
+  let b: BuilderNode | undefined = built;
+  let r: Condition | undefined = node;
+  for (const seg of path) {
+    if (!b || r === undefined) return undefined;
+    if (typeof seg === 'number') {
+      if (b.kind !== 'group') return undefined;
+      b = b.children[seg];
+      r = groupChildrenOf(r)[seg];
+      continue;
+    }
+    if (seg !== 'condition' && seg !== 'filter') return undefined;
+    if (b.kind !== 'array') return undefined;
+    const sub: GroupNode | undefined = b[seg];
+    r = (r as Rec)[seg] as Condition | undefined;
+    b = sub && r !== undefined && !isGroupNode(r) ? sub.children[0] : sub;
+  }
+  return b;
+};
+
+/** One control per variable slot of the preset governing an atomic node: the
+ *  slot's own value control, found in the already-built subtree by the slot's
+ *  path — never re-derived from the catalog. */
+const presetVariables = (
+  facet: Facet,
+  node: Condition,
+  built: BuilderNode,
+  ctx: Ctx,
+): VariableControl[] => {
+  const out: VariableControl[] = [];
+  for (const slot of variableSlots(facet.condition as Condition)) {
+    const target = descend(built, node, slot.path);
+    const value =
+      target?.kind === 'leaf'
+        ? target.value
+        : target?.kind === 'array'
+          ? target.aggregate?.value
+          : undefined;
+    if (!target || !value) continue;
+    const picker =
+      target.kind === 'leaf'
+        ? target.field
+        : target.kind === 'array'
+          ? target.aggregate?.field
+          : undefined;
+    const field = picker?.value;
+    const valueLabels = field ? ctx.surfaceOpts.valueLabels?.[field] : undefined;
+    out.push({
+      path: slot.path,
+      field,
+      label: picker?.options.find((o) => o.value === field)?.label,
+      variable: slot.variable,
+      options: slot.variable.options?.map((option) => {
+        const key = typeof option === 'string' ? option : JSON.stringify(option);
+        return { value: option, label: valueLabels?.[key] ?? key };
+      }),
+      value,
+    });
+  }
+  return out;
+};
+
 /** Scalars, enums, json, and list relations are directly rule-able; a to-one
  *  relation is not (you traverse it via a dotted path or its own array node). */
 const selectableFields = (fields: BuilderField[]): BuilderField[] =>
@@ -480,7 +574,7 @@ const buildLeaf = (
     ? { id: facetId(leafMatch), label: leafMatch.label ?? baseName ?? '', icon: leafMatch.icon }
     : undefined;
 
-  return {
+  const leaf: LeafNode = {
     kind: 'leaf',
     id,
     path,
@@ -582,6 +676,9 @@ const buildLeaf = (
     valid: checkRuleAgainstLens(node, scope.lens).ok,
     remove,
   };
+  return leaf.atomic && leafMatch
+    ? { ...leaf, variables: presetVariables(leafMatch, node, leaf, ctx) }
+    : leaf;
 };
 
 const buildArray = (
@@ -603,10 +700,15 @@ const buildArray = (
 
   // A hoisted collection facet: recognize the node so it renders as its named
   // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
-  // Aggregate rules are never facets — skip the match (an aggregate rule also has
-  // no `arrayOperator`, which the whereless-prefix heuristic would otherwise catch).
-  const matchedFacet =
-    !isAggregate && scope.decoration ? matchFacet(scope.lens, scope.decoration, node) : undefined;
+  // An aggregate rule is never a PATH facet — it has no `arrayOperator`, which the
+  // whereless-prefix heuristic would otherwise catch — but it can be a preset
+  // (whole-node equality is shape-agnostic), so only presets are offered to it.
+  const recognizable = !scope.decoration
+    ? undefined
+    : isAggregate
+      ? { ...scope.decoration, facets: scope.decoration.facets.filter(isPreset) }
+      : scope.decoration;
+  const matchedFacet = recognizable ? matchFacet(scope.lens, recognizable, node) : undefined;
   const overrideLeaf = matchedFacet
     ? facetElementLeaf(scope.lens, matchedFacet, ctx.surfaceOpts)
     : undefined;
@@ -744,7 +846,7 @@ const buildArray = (
       ? matchedFacet
       : undefined;
 
-  return {
+  const built: ArrayNode = {
     kind: 'array',
     id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
     path,
@@ -888,6 +990,9 @@ const buildArray = (
     // blank group, mirroring the leaf-root behavior.
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
   };
+  return built.atomic && matchedFacet
+    ? { ...built, variables: presetVariables(matchedFacet, node, built, ctx) }
+    : built;
 };
 
 const buildGroup = (
@@ -985,7 +1090,7 @@ const buildGroup = (
     };
   }
 
-  return {
+  const built: GroupNode = {
     kind: 'group',
     id: idOf(node, path.length ? (path[path.length - 1] as number) : 0),
     path,
@@ -1008,6 +1113,9 @@ const buildGroup = (
     setSelectorClause: setGroupSelectorClause,
     remove: path.length ? () => ctx.commit(removeNode(ctx.root, path)) : undefined,
   };
+  return preset && matched
+    ? { ...built, variables: presetVariables(matched, node, built, ctx) }
+    : built;
 };
 
 /**

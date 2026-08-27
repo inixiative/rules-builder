@@ -197,9 +197,60 @@ is fine):
 A facet can instead be a **preset** — `condition` in place of `path`: a named alias
 for a *complete* pre-authored `Condition` (`{ label: 'Mature', condition: {…} }`).
 Selecting it drops the whole condition in as one **atomic** node (`GroupNode.atomic`
-/ `LeafNode.atomic`) — no field/operator/value pickers, it just *is* a rule — and a
-saved node equal to the condition collapses back to the name. `validateDecoration`
-checks the preset is a valid rule against the lens.
+/ `LeafNode.atomic` / `ArrayNode.atomic`) — no field/operator/value pickers, it just
+*is* a rule — and a saved node equal to the condition collapses back to the name.
+`validateDecoration` checks the preset is a valid rule against the lens.
+
+#### Variables — a preset the user can still tune
+
+A preset may leave **value slots** to the author. A leaf (or an aggregate rule) in
+the template carries `variable` in its value-source position — beside `value` /
+`path` / `bind`, mutually exclusive with them, never nested inside `value` (a real
+value can be any JSON, so a marker inside it is indistinguishable from data):
+
+```ts
+{
+  label: 'Rewards Redeemed',
+  condition: {
+    field: 'rewards',
+    aggregate: { mode: 'sum', field: 'amount' },
+    operator: 'greaterThanEquals',
+    variable: {},                                        // threshold: OPEN — inserts with no value, the save gate blocks until filled
+    condition: { all: [
+      { field: 'createdAt', dateOperator: 'within', variable: { default: { this: 'year' } } },  // window: tunable, defaulted
+      { field: 'status', operator: 'notEquals', value: 'rejected' },                            // identity — locked
+    ] },
+  },
+}
+```
+
+`Variable` is the **value domain only** — `{ default?, options?, range? }`. The
+control's label is the slot's field decor, option prose is `labels.values`, the value
+shape comes from the operator, the allowed set from the lens. A default is a literal
+`RuleValue` / `DateExpr` — never a `bind` or `path`. `{ bind }` in a template is *not*
+a slot: the server fills it, the user never sees it.
+
+- **Insert** — `presetSeed(facet)`: each slot takes its default; an open slot inserts
+  with no value source at all (the state a freshly added leaf has).
+- **Recognize** — `matchFacet` compares the template with each slot taking the node's
+  own value source (`value`/`path`/`bind`, or still open) to the node: any value at a
+  slot, exact equality everywhere else. Fewest wildcard slots wins, so a fixed
+  `tier = gold` preset beats a variable `tier = ?` on a `gold` rule regardless of
+  facet order. `facetId` erases the default (like `defaultWhere`, it is editable, not
+  identity), so two presets differing only by default are one id — a validation
+  violation, not two cards.
+- **Render** — the atomic node exposes `variables: VariableControl[]`, one per slot:
+  `{ path, field, label, variable, options, value }` where `value` is the leaf's own
+  `ValueControl` (or the aggregate threshold control) already built for that
+  position. Everything else on the card is inert. Zero variables is the plain atomic
+  case. `variableSlots(template)` lists the slots for non-builder consumers (prose
+  from a saved rule: `getNode(node, slot.path)`).
+- **Validate** — the seed must be a valid rule against the lens; every `options`
+  entry must be admitted in its slot (the lens is asked directly); `selectors` on a
+  preset is a violation — a preset's editable slots are its variables.
+
+Aggregate rules are never *path* facets (no `arrayOperator` for the whereless-prefix
+heuristic) but can be presets — the first consumer above is one.
 
 ### Two `where`s
 
