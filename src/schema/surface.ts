@@ -8,6 +8,7 @@ import {
   type FieldKind,
   type FieldMap,
   type FieldMapEntry,
+  getAggregateOperators,
   getArrayOperators,
   getOperatorsForKind,
   getValueShape,
@@ -146,6 +147,14 @@ const fieldAndDateOperators = (
   );
   return { field, date };
 };
+
+/** The aggregate threshold comparisons every declared target can compile — the
+ *  engine's own list, narrowed the way {@link operatorsForKind} narrows a field's.
+ *  No targets means no narrowing: whatever the engine supports anywhere. */
+export const aggregateOperators = (targets?: RuleTarget[]): readonly Operator[] =>
+  getAggregateOperators().filter((op) =>
+    supportedByAllTargets(op, targets, (t) => getAggregateOperators(t)),
+  );
 
 const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
   getArrayOperators().filter((op) =>

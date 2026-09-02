@@ -32,6 +32,7 @@ import {
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import {
+  aggregateOperators,
   describeModelFields,
   genericOperators,
   knownValueShape,
@@ -225,7 +226,7 @@ export type AggregateControl = {
     /** False when the selected target is a `Json` column (check()-only). */
     compilesToPrisma?: boolean;
   };
-  /** The threshold comparison — restricted to {@link AGGREGATE_OPERATORS}. */
+  /** The threshold comparison — restricted to what the declared targets compile. */
   operator: OperatorControl;
   /** The threshold value: a number (single-value ops) or `[number, number]` (between). */
   value: { current?: number | [number, number]; shape: ValueShape; set: (v: unknown) => void };
@@ -373,20 +374,6 @@ const arrayCat = (op: string | undefined): ArrayCat =>
  *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
 const AGGREGATE_MODES = ['sum', 'avg'] as const;
 
-/** The threshold comparisons an aggregate rule may use — mirrors the engine's
- *  toPrisma guards (`toPrisma/aggregate.ts`): single-value comparisons + `between`.
- *  `notBetween` is intentionally excluded (the compiler throws on it). */
-const AGGREGATE_OPERATORS = [
-  'equals',
-  'notEquals',
-  'lessThan',
-  'lessThanEquals',
-  'greaterThan',
-  'greaterThanEquals',
-  'between',
-] as const;
-const AGGREGATE_OPERATOR_SET = new Set<string>(AGGREGATE_OPERATORS);
-
 /** Author-time windowing keys the engine's `toPrisma()` rejects on an aggregate rule
  *  (`hasWindow`). The element `condition` is NOT windowing — it compiles fine. */
 const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
@@ -399,20 +386,22 @@ const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
  * - `field` must terminate at a list (`many`) relation.
  * - `aggregate.field` must exist on the related model and be a numeric scalar
  *   (`compilesToPrisma`) OR a `Json` column (valid-but-flagged, check()-only).
- * - `operator` must be one of {@link AGGREGATE_OPERATORS} (rejects `notBetween`).
+ * - `operator` must be one the declared targets compile ({@link aggregateOperators} —
+ *   `toPrisma` has no range complement, so it drops `notBetween`).
  * - no authored windowing ({@link AGGREGATE_WINDOW_KEYS}).
  */
 const validateAggregate = (
   rec: Rec,
   relationField: BuilderField | undefined,
   targetField: BuilderField | undefined,
+  operators: readonly string[],
 ): { ok: boolean; compilesToPrisma: boolean } => {
   const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
   const fieldTerminatesAtList =
     relationField?.isList === true && relationField.relation !== undefined;
   const targetExists = targetField !== undefined && targetField.aggregatable === true;
   const targetCompiles = targetField?.compilesToPrisma === true;
-  const operatorOk = typeof rec.operator === 'string' && AGGREGATE_OPERATOR_SET.has(rec.operator);
+  const operatorOk = typeof rec.operator === 'string' && operators.includes(rec.operator);
   const modeOk = agg.mode === 'sum' || agg.mode === 'avg';
   const noWindow = AGGREGATE_WINDOW_KEYS.every((k) => rec[k] === undefined);
   const ok = fieldTerminatesAtList && targetExists && operatorOk && modeOk && noWindow;
@@ -819,8 +808,9 @@ const buildArray = (
   // that `sum`/`avg` reduces. Offered only when the element relation resolves.
   const aggTargetFields = rel ? relScope.fields.filter((f) => f.aggregatable) : [];
   const aggTargetField = rel ? relScope.fields.find((f) => f.name === agg.field) : undefined;
+  const aggOperators = aggregateOperators(ctx.surfaceOpts.targets);
   const aggregateValidation = isAggregate
-    ? validateAggregate(rec, field, aggTargetField)
+    ? validateAggregate(rec, field, aggTargetField, aggOperators)
     : undefined;
 
   // Built ahead of the node literal: `buildSub('condition')` is what fills
@@ -953,7 +943,7 @@ const buildArray = (
           },
           operator: {
             value: rec.operator as string | undefined,
-            options: AGGREGATE_OPERATORS.map((o) => ({ value: o, label: o })),
+            options: aggOperators.map((o) => ({ value: o, label: o })),
             set: (nextOp) => {
               // A scalar ↔ range switch must not carry the old operand: `between`
               // over a bare number (or `equals` over a pair) is an invalid rule with

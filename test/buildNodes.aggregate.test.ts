@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { type ArrayNode, buildRoot, type LeafNode } from '../src/builder/buildNodes';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeModelFields, resolve, type SurfaceOptions } from '../src/schema/surface';
 import { parseSavedRule, type SavedRule, stringifySavedRule } from '../src/serialize';
 
 const map: FieldMap = {
@@ -32,11 +32,18 @@ const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
 const fields = describeModelFields(lens, 'app', 'User');
 
 let committed: Condition | undefined;
-const build = (c: Condition) => {
+const build = (c: Condition, surfaceOpts: SurfaceOptions = {}) => {
   committed = undefined;
-  return buildRoot(c, lens, fields, 4, (next) => {
-    committed = next;
-  });
+  return buildRoot(
+    c,
+    lens,
+    fields,
+    4,
+    (next) => {
+      committed = next;
+    },
+    { surfaceOpts },
+  );
 };
 
 // A `sum` over `orders.total` restricted to a date window, compared to a threshold.
@@ -116,10 +123,14 @@ describe('buildRoot — aggregate nodes', () => {
     expect(a.valid).toBe(false);
   });
 
-  test('notBetween is rejected (not in the supported comparison set)', () => {
-    const a = build(aggRule({ operator: 'notBetween', value: [1, 2] })).children[0] as ArrayNode;
+  test('notBetween is rejected for a toPrisma builder — its having filter has no complement', () => {
+    const rule = aggRule({ operator: 'notBetween', value: [1, 2] });
+    const a = build(rule, { targets: ['toPrisma'] }).children[0] as ArrayNode;
     expect(a.valid).toBe(false);
     expect(a.aggregate?.operator.options.map((o) => o.value)).not.toContain('notBetween');
+    // check() and toSql() both compile it, so an undeclared or check builder offers it.
+    const anywhere = build(rule).children[0] as ArrayNode;
+    expect(anywhere.aggregate?.operator.options.map((o) => o.value)).toContain('notBetween');
   });
 
   test('authored windowing (take/skip/orderBy/filter) is rejected', () => {
@@ -132,8 +143,8 @@ describe('buildRoot — aggregate nodes', () => {
     expect((build(aggRule({ filter: { all: [] } })).children[0] as ArrayNode).valid).toBe(false);
   });
 
-  test('the operator picker offers exactly the engine-supported comparisons', () => {
-    const a = build(aggRule()).children[0] as ArrayNode;
+  test('the operator picker offers exactly what the declared targets compile', () => {
+    const a = build(aggRule(), { targets: ['toPrisma'] }).children[0] as ArrayNode;
     expect(a.aggregate?.operator.options.map((o) => o.value)).toEqual([
       'equals',
       'notEquals',

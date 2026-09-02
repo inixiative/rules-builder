@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.27.0 — the aggregate threshold picker follows the declared targets
+
+- **The threshold comparisons come from the engine, narrowed per target.** The list was
+  a local constant that hardcoded the `toPrisma`-safe subset for every consumer, so a
+  `check`- or `toSql`-target builder lost `notBetween` for a reason that does not apply
+  to it. `aggregateOperators(targets)` now narrows json-rules'
+  `getAggregateOperators(target)` the same way `operatorsForKind` narrows a field's, and
+  the aggregate validity check reads the same list. Undeclared targets mean no
+  narrowing, as everywhere else — a builder that must compile to Prisma declares
+  `targets: ['toPrisma']` and sees exactly what it saw before.
+- Requires `@inixiative/json-rules` ^2.21.0.
+
 ## 0.26.2 — an operator switch and its operand
 
 - **Both operator setters drop a stale operand when the operand class changes.** The
