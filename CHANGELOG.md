@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.27.0 — preset variables: an operator knob
+
+- **`Variable.operators`** — a slot may now declare the operators it can switch
+  among; the template's own `operator`/`dateOperator` is the default. Absent means
+  the operator is identity (locked), exactly as before. A saved operator outside the
+  list still matches and is shown untouched — the `options` rule, applied to the
+  operator.
+- **Recognition lifts the operator at a knobbed slot.** `fillVariables` takes the
+  node's `operator`/`dateOperator` alongside its value source, and `mapSlots` lets a
+  lifted operator supersede the template's so the two keys never sit side by side.
+  `matchFacet` ranks by wildcard degree — a slot counts once, a knobbed slot twice —
+  so a locked `>= ?` still beats a knobbed `? ?` on a `>=` rule.
+- **Identity erases the default operator at a knobbed slot.** `canonical` skips the
+  rule's operator keys when its `variable` carries `operators`, so two presets that
+  differ only by default operator are one `facetId` (a duplicate violation), while a
+  knobbed and a locked template over one body stay two ids. The knob's *list* never
+  distinguishes presets either — like `options` and `default`, it is the editable
+  domain, not identity — so two knobbed presets over one body are one card whatever
+  they offer. `maskAt` blanks the same keys for the crossing-slot ambiguity check.
+- **`validateDecoration` checks the knob.** The lens checker does not judge
+  operators, so the builder's catalogs are asked: an aggregate slot's operators must
+  be threshold comparisons; a leaf slot's must be offered for its field kind,
+  resolved in the slot's own scope (a `condition`/`filter` segment enters the
+  element model, dotted leaves hop to-one relations, a sub-path under a `Json`
+  column gets the generic set). A no-operand operator beside a value
+  `default`/`options` is a violation — the seed would carry a value the engine
+  rejects, and switching back would leave the slot open with no default.
+- **`VariableControl.operator`** — present only on a knobbed slot: the leaf's (or
+  aggregate threshold's) own `OperatorControl` narrowed to the declared list, plus
+  the saved operator when it sits outside it.
+- **Both operator setters drop a stale operand on a shape change.** The leaf setter
+  used to drop it only for a no-operand operator; the aggregate setter never did. Now
+  `equals → between` (or `→ in`) on either clears the operand — `between` over a bare
+  value was an invalid rule with no visible cause — and same-shape switches keep it.
+  An operator the engine no longer knows (a persisted legacy rule) is treated as
+  "shape unknown" via the new `knownValueShape`, so the node still builds and the
+  control can switch away instead of throwing.
+- `AGGREGATE_OPERATORS` / `AGGREGATE_OPERATOR_SET` moved from `builder/buildNodes`
+  to `schema/surface` so the validator can share the builder's list (json-rules' own
+  `AGGREGATE_OPERATORS` includes `notBetween`, which the compiler rejects).
+
 ## 0.26.1 — preset variables: the builder's shape is the identity
 
 - **A bare sub-condition template lost its card on the first tune.** The array

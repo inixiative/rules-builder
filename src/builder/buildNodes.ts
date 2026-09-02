@@ -31,7 +31,13 @@ import {
   writeSelectorClause,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
-import { describeModelFields, genericOperators, valueShapeForOperator } from '../schema/surface';
+import {
+  AGGREGATE_OPERATOR_SET,
+  AGGREGATE_OPERATORS,
+  describeModelFields,
+  genericOperators,
+  knownValueShape,
+} from '../schema/surface';
 import {
   defaultRule,
   groupChildrenOf,
@@ -141,6 +147,15 @@ export type VariableControl = {
   /** The live control: a leaf's {@link ValueControl}, or an aggregate rule's
    *  threshold control ({@link AggregateControl.value}). */
   value: ValueControl | AggregateControl['value'];
+  /** Present only when the slot declares `variable.operators`: the leaf's own
+   *  operator control (or the aggregate threshold's), its options narrowed to the
+   *  declared list — plus the saved operator when it sits outside the list, so a
+   *  rule authored before the list changed stays selectable. Turning it commits
+   *  through the underlying setter, which already writes `operator` vs
+   *  `dateOperator` and drops the operand for a no-operand operator; on the next
+   *  build `value.shape` derives from the new operator, so the value control
+   *  follows with no extra wiring. */
+  operator?: OperatorControl;
 };
 
 export type GroupNode = {
@@ -368,20 +383,6 @@ const arrayCat = (op: string | undefined): ArrayCat =>
  *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
 const AGGREGATE_MODES = ['sum', 'avg'] as const;
 
-/** The threshold comparisons an aggregate rule may use — mirrors the engine's
- *  toPrisma guards (`toPrisma/aggregate.ts`): single-value comparisons + `between`.
- *  `notBetween` is intentionally excluded (the compiler throws on it). */
-const AGGREGATE_OPERATORS = [
-  'equals',
-  'notEquals',
-  'lessThan',
-  'lessThanEquals',
-  'greaterThan',
-  'greaterThanEquals',
-  'between',
-] as const;
-const AGGREGATE_OPERATOR_SET = new Set<string>(AGGREGATE_OPERATORS);
-
 /** Author-time windowing keys the engine's `toPrisma()` rejects on an aggregate rule
  *  (`hasWindow`). The element `condition` is NOT windowing — it compiles fine. */
 const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
@@ -451,6 +452,26 @@ const presetVariables = (facet: Facet, built: BuilderNode): VariableControl[] =>
     // Prose for an option is whatever the slot's own control already calls that
     // value — the leaf's enum/sourced set carries the resolved value decor.
     const named = target.kind === 'leaf' ? target.value?.options : undefined;
+    const declared = slot.variable.operators as string[] | undefined;
+    const opCtl =
+      target.kind === 'leaf'
+        ? target.operator
+        : target.kind === 'array'
+          ? target.aggregate?.operator
+          : undefined;
+    const operator: OperatorControl | undefined =
+      declared && opCtl
+        ? {
+            value: opCtl.value,
+            options: [
+              ...declared,
+              ...(opCtl.value !== undefined && !declared.includes(opCtl.value)
+                ? [opCtl.value]
+                : []),
+            ].map((op) => opCtl.options.find((o) => o.value === op) ?? { value: op, label: op }),
+            set: opCtl.set,
+          }
+        : undefined;
     out.push({
       path: slot.path,
       field,
@@ -461,6 +482,7 @@ const presetVariables = (facet: Facet, built: BuilderNode): VariableControl[] =>
         return { value: option, label: named?.find((o) => o.value === key)?.label ?? key };
       }),
       value,
+      ...(operator ? { operator } : {}),
     });
   }
   return out;
@@ -536,7 +558,7 @@ const buildLeaf = (
         label: o,
       }))
     : [];
-  const shape: ValueShape = operator ? valueShapeForOperator(operator as never) : 'none';
+  const shape: ValueShape = (operator ? knownValueShape(operator) : undefined) ?? 'none';
   const valueOptions = declared?.options
     ? declared.options.map((o) => ({
         value: o.value,
@@ -599,10 +621,15 @@ const buildLeaf = (
       options: operatorOptions,
       set: (op) => {
         const isDate = operators?.date.includes(op as never) ?? false;
-        // A no-operand operator (isEmpty/isNotEmpty) must not inherit the previous
-        // operator's operand — validateRule rejects any value on it, leaving the
-        // leaf permanently invalid with no visible cause.
-        const dropOperand = valueShapeForOperator(op as never) === 'none';
+        // The operand follows the operator's shape: a no-operand operator
+        // (isEmpty/isNotEmpty) must not inherit one — validateRule rejects any value
+        // on it — and a scalar ↔ range ↔ list switch must not carry the old shape
+        // (`between` over a bare string is invalid with no visible cause). A
+        // same-shape switch keeps the operand.
+        const nextShape = knownValueShape(op);
+        const prevShape = operator === undefined ? undefined : knownValueShape(operator);
+        const dropOperand =
+          nextShape === 'none' || (prevShape !== undefined && prevShape !== nextShape);
         const { operator: _o, dateOperator: _d, value: v, path: p, bind: b, ...rest } = rec;
         ctx.commit(
           setNode(ctx.root, path, {
@@ -941,12 +968,25 @@ const buildArray = (
           operator: {
             value: rec.operator as string | undefined,
             options: AGGREGATE_OPERATORS.map((o) => ({ value: o, label: o })),
-            set: (nextOp) =>
-              ctx.commit(setNode(ctx.root, path, { ...rec, operator: nextOp } as Condition)),
+            set: (nextOp) => {
+              // A scalar ↔ range switch must not carry the old operand: `between`
+              // over a bare number (or `equals` over a pair) is an invalid rule
+              // with no visible cause. Same-shape switches keep the value.
+              const prevShape =
+                rec.operator === undefined ? undefined : knownValueShape(String(rec.operator));
+              const sameShape = prevShape !== undefined && prevShape === knownValueShape(nextOp);
+              const { value: _v, ...rest } = rec;
+              ctx.commit(
+                setNode(ctx.root, path, {
+                  ...(sameShape ? rec : rest),
+                  operator: nextOp,
+                } as Condition),
+              );
+            },
           },
           value: {
             current: rec.value as number | [number, number] | undefined,
-            shape: rec.operator ? valueShapeForOperator(rec.operator as never) : 'none',
+            shape: (rec.operator ? knownValueShape(String(rec.operator)) : undefined) ?? 'none',
             set: (v) => ctx.commit(setNode(ctx.root, path, { ...rec, value: v } as Condition)),
           },
         }

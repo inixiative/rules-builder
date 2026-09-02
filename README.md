@@ -215,7 +215,7 @@ value can be any JSON, so a marker inside it is indistinguishable from data):
     field: 'rewards',
     aggregate: { mode: 'sum', field: 'amount' },
     operator: 'greaterThanEquals',
-    variable: {},                                        // threshold: OPEN — inserts with no value, the save gate blocks until filled
+    variable: { operators: ['greaterThanEquals', 'lessThanEquals', 'equals'] },  // threshold: OPEN value + operator knob (>= is the default)
     condition: { all: [
       { field: 'createdAt', dateOperator: 'within', variable: { default: { this: 'year' } } },  // window: tunable, defaulted
       { field: 'status', operator: 'notEquals', value: 'rejected' },                            // identity — locked
@@ -224,11 +224,14 @@ value can be any JSON, so a marker inside it is indistinguishable from data):
 }
 ```
 
-`Variable` is the **value domain only** — `{ default?, options?, range? }`. The
-control's label is the slot's field decor, option prose is `labels.values`, the value
-shape comes from the operator, the allowed set from the lens. A default is a literal
-`RuleValue` / `DateExpr` — never a `bind` or `path`. `{ bind }` in a template is *not*
-a slot: the server fills it, the user never sees it.
+`Variable` is the **value domain plus an optional operator knob** — `{ default?,
+options?, range?, operators? }`. The control's label is the slot's field decor, option
+prose is `labels.values`, the value shape comes from the operator, the allowed set from
+the lens. A default is a literal `RuleValue` / `DateExpr` — never a `bind` or `path`.
+`{ bind }` in a template is *not* a slot: the server fills it, the user never sees it.
+`operators` lists what the slot's operator may switch among; the template's own
+`operator` / `dateOperator` is the default, and absent `operators` means the operator
+is identity (locked) — exactly the pre-0.27 behaviour.
 
 `Facet.condition` is a `FacetCondition`: a `Condition` whose rules may carry
 `variable` — a plain `Condition` is one, and a template with slots needs no cast.
@@ -240,25 +243,39 @@ are one facet, one id, and both recognize the rules the other spelling saved.
 - **Insert** — `presetSeed(facet)`: each slot takes its default; an open slot inserts
   with no value source at all (the state a freshly added leaf has).
 - **Recognize** — `matchFacet` compares the template with each slot taking the node's
-  own value source (`value`/`path`/`bind`, or still open) to the node: any value at a
-  slot, exact equality everywhere else. Fewest wildcard slots wins, so a fixed
-  `tier = gold` preset beats a variable `tier = ?` on a `gold` rule regardless of
-  facet order, and a matched preset beats any path facet on the same field. `facetId`
-  erases the default (like `defaultWhere`, it is editable, not identity), so two
-  presets differing only by default are one id — a validation violation, not two
-  cards. A `variable` key *inside* a rule's `value` is Json data, never a slot.
+  own value source (`value`/`path`/`bind`, or still open) — and, at a slot with
+  `operators`, the node's own `operator`/`dateOperator` — to the node: any value (and
+  any operator, at a knobbed slot — one outside the list still matches, like a value
+  outside `options`), exact equality everywhere else. The narrowest wildcard wins: a
+  slot counts once, a knobbed slot twice, so a fixed `tier = gold` preset beats a
+  variable `tier = ?` on a `gold` rule, a locked `>= ?` beats a knobbed `? ?` on a
+  `>=` rule, regardless of facet order — and a matched preset beats any path facet on
+  the same field. `facetId` erases the default value *and*, at a knobbed slot, the
+  default operator (like `defaultWhere`, both are editable, not identity), so two
+  presets differing only by a default are one id — a validation violation, not two
+  cards. The `operators` list is editable domain too, never identity — as `options`
+  is not. A `variable` key *inside* a rule's `value` is Json data, never a slot.
 - **Render** — the atomic node exposes `variables: VariableControl[]`, one per slot:
-  `{ path, field, label, variable, options, value }` where `value` is the leaf's own
-  `ValueControl` (or the aggregate threshold control) already built for that
-  position; `options` are labeled by whatever that control already calls the value.
-  Everything else on the card is inert. Zero variables is the plain atomic case.
-  `variableSlots(template)` lists the slots for non-builder consumers — paths address
-  the builder's shape, so read a saved rule as `getNode(normalizeGroups(node), slot.path)`.
+  `{ path, field, label, variable, options, value, operator? }` where `value` is the
+  leaf's own `ValueControl` (or the aggregate threshold control) already built for
+  that position; `options` are labeled by whatever that control already calls the
+  value; `operator` is present only for a slot with `operators` — the leaf's (or
+  threshold's) own `OperatorControl` narrowed to the declared list, plus the saved
+  operator when it sits outside it. Turning it commits through the ordinary setter,
+  so the operand drops on a no-operand operator and the value control's `shape`
+  follows on the next build. Everything else on the card is inert. Zero variables is
+  the plain atomic case. `variableSlots(template)` lists the slots for non-builder
+  consumers — paths address the builder's shape, so read a saved rule as
+  `getNode(normalizeGroups(node), slot.path)`.
 - **Validate** — the seed must be a valid rule against the lens; every `options`
-  entry must be admitted in its slot (the lens is asked directly); `selectors` on a
-  preset is a violation — a preset's editable slots are its variables; two presets
-  over one body whose slot sets cross (neither contains the other) are ambiguous — a
-  saved rule would match both at equal rank.
+  entry must be admitted in its slot (the lens is asked directly); every `operators`
+  entry must be offered for the slot's field kind — or be a threshold comparison
+  (`AGGREGATE_OPERATORS`) on an aggregate slot — the lens checker does not judge
+  operators, so the builder's own catalogs are asked; a no-operand operator
+  (`isEmpty`, `exists`, …) cannot share a slot with a value `default`/`options`;
+  `selectors` on a preset is a violation — a preset's editable slots are its
+  variables; two presets over one body whose slot sets cross (neither contains the
+  other) are ambiguous — a saved rule would match both at equal rank.
 
 Aggregate rules are never *path* facets (no `arrayOperator` for the whereless-prefix
 heuristic) but can be presets — the first consumer above is one.

@@ -35,6 +35,22 @@ export type RuleBuilderSource = {
 
 export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
 
+/** The threshold comparisons an aggregate rule may use — mirrors the engine's
+ *  toPrisma guards (`toPrisma/aggregate.ts`): single-value comparisons + `between`.
+ *  `notBetween` is intentionally excluded (the compiler throws on it). Shared by the
+ *  builder (the threshold picker) and the decoration validator (a preset's operator
+ *  knob on an aggregate slot). */
+export const AGGREGATE_OPERATORS = [
+  'equals',
+  'notEquals',
+  'lessThan',
+  'lessThanEquals',
+  'greaterThan',
+  'greaterThanEquals',
+  'between',
+] as const;
+export const AGGREGATE_OPERATOR_SET = new Set<string>(AGGREGATE_OPERATORS);
+
 /** Compose a serializable source into its narrowed lens (pre-projection). */
 export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing => {
   const lens = createLens({
@@ -249,3 +265,14 @@ export const describeModelFields = (
 export const valueShapeForOperator = (
   operator: Operator | DateOperator | ArrayOperator,
 ): ValueShape => getValueShape(operator);
+
+/** {@link valueShapeForOperator} for an operator that may not be in the catalog — a
+ *  persisted rule from an older engine, or a decoration typo. `undefined` instead of
+ *  the throw, so a setter or validator can treat it as "shape unknown". */
+export const knownValueShape = (operator: string): ValueShape | undefined => {
+  try {
+    return getValueShape(operator as never);
+  } catch {
+    return undefined;
+  }
+};

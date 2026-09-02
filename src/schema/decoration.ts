@@ -4,17 +4,22 @@ import {
   checkRuleAgainstLens,
   createLens,
   type DateExpr,
+  type DateOperator,
   exposedSurface,
   type FieldKind,
   type Lens,
+  type Operator,
   type RuleValue,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
 import { asGroupRoot, getNode, normalizeGroups, type RulePath, setNode } from '../core/tree';
 import {
+  AGGREGATE_OPERATOR_SET,
   type BuilderField,
   describeModelFields,
+  genericOperators,
+  knownValueShape,
   operatorsForKind,
   relationTarget,
   type SurfaceOptions,
@@ -96,10 +101,10 @@ type Templated<T> = T extends string | number | boolean | null | undefined | Dat
 export type FacetCondition = Templated<Condition>;
 
 /**
- * A value slot in a preset template — the value domain only. Everything else
- * lives where it already does: the control's label is the leaf's field decor,
- * option prose is `labels.values`, the value shape comes from the operator, the
- * allowed set from the lens.
+ * A slot in a preset template — the value domain, plus an optional operator knob.
+ * Everything else lives where it already does: the control's label is the leaf's
+ * field decor, option prose is `labels.values`, the value shape comes from the
+ * operator, the allowed set from the lens.
  */
 export type Variable = {
   /** What the slot starts as; absent = an open slot (required at save). A literal
@@ -112,6 +117,13 @@ export type Variable = {
   options?: (RuleValue | DateExpr)[];
   /** Bounds on a numeric slot — a builder-side gate, the engine doesn't care. */
   range?: { min?: number; max?: number; step?: number };
+  /** Operators the slot may switch among. The template's own `operator` /
+   *  `dateOperator` is the default; absent = the operator is identity (locked).
+   *  Every entry must be offered for the slot's field kind — or, on an aggregate
+   *  rule, be a threshold comparison ({@link validateDecoration} checks). A saved
+   *  operator outside the list still matches and is shown untouched — like
+   *  `options`. */
+  operators?: (Operator | DateOperator)[];
 };
 
 /** A preset facet aliases a whole pre-authored condition (atomic; no pickers). */
@@ -120,6 +132,14 @@ export const isPreset = (facet: Facet): boolean => facet.condition !== undefined
 export type VariableSlot = { path: RulePath; variable: Variable };
 
 const VALUE_SOURCE_KEYS = ['value', 'path', 'bind'] as const;
+const OPERATOR_KEYS = ['operator', 'dateOperator'] as const;
+
+/** A slot whose operator is a knob, not identity. */
+const knobbed = (slot: VariableSlot): boolean => slot.variable.operators !== undefined;
+const isKnobbedVariable = (variable: unknown): boolean =>
+  !!variable &&
+  typeof variable === 'object' &&
+  (variable as { operators?: unknown }).operators !== undefined;
 
 /** A template in the builder's own shape ({@link normalizeGroups}) — the shape
  *  slot paths address, ids fold, and recognition compares. */
@@ -145,35 +165,61 @@ export const variableSlots = (template: FacetCondition): VariableSlot[] => {
 };
 
 /** The template with each slot's `variable` replaced by `replacement(slot)` —
- *  the value-source key(s) that stand in for it, or nothing (an open slot). */
+ *  the value-source key(s) that stand in for it, or nothing (an open slot). A
+ *  replacement that carries an operator key supersedes the template's own
+ *  `operator`/`dateOperator`, so the two never sit side by side. */
 const mapSlots = (
   template: Condition,
   slots: VariableSlot[],
   replacement: (slot: VariableSlot) => Record<string, unknown>,
 ): Condition =>
   slots.reduce<Condition>((acc, slot) => {
-    const { variable: _v, ...rest } = getNode(acc, slot.path) as Record<string, unknown>;
-    return setNode(acc, slot.path, { ...rest, ...replacement(slot) } as Condition);
+    const repl = replacement(slot);
+    const {
+      variable: _v,
+      operator,
+      dateOperator,
+      ...rest
+    } = getNode(acc, slot.path) as Record<string, unknown>;
+    const lifted = OPERATOR_KEYS.some((key) => repl[key] !== undefined);
+    const own = lifted
+      ? {}
+      : {
+          ...(operator !== undefined ? { operator } : {}),
+          ...(dateOperator !== undefined ? { dateOperator } : {}),
+        };
+    return setNode(acc, slot.path, { ...rest, ...own, ...repl } as Condition);
   }, template);
 
-/** The template with its slot AND value-source keys blanked at `paths` — what is
- *  left is the body two presets are compared on. A path the template has no node
- *  at is left alone (the bodies then differ structurally anyway). */
-const maskAt = (template: Condition, paths: RulePath[]): Condition =>
-  paths.reduce<Condition>((acc, path) => {
+/** The template with its slot AND value-source keys blanked at `paths` — and its
+ *  operator keys blanked at `operatorPaths` (the knobbed slots) — what is left is
+ *  the body two presets are compared on. A path the template has no node at is
+ *  left alone (the bodies then differ structurally anyway). */
+const maskAt = (
+  template: Condition,
+  paths: RulePath[],
+  operatorPaths: RulePath[] = [],
+): Condition => {
+  const knobs = new Set(operatorPaths.map((p) => JSON.stringify(p)));
+  return paths.reduce<Condition>((acc, path) => {
     const at = getNode(acc, path);
     if (!at || typeof at !== 'object') return acc;
     const { variable: _v, value: _a, path: _p, bind: _b, ...rest } = at as Record<string, unknown>;
-    return setNode(acc, path, rest as Condition);
+    if (!knobs.has(JSON.stringify(path))) return setNode(acc, path, rest as Condition);
+    const { operator: _o, dateOperator: _d, ...body } = rest;
+    return setNode(acc, path, body as Condition);
   }, template);
+};
 
-const valueSourceOf = (node: unknown): Record<string, unknown> => {
+const pickKeys = (node: unknown, keys: readonly string[]): Record<string, unknown> => {
   if (!node || typeof node !== 'object') return {};
   const rec = node as Record<string, unknown>;
   const out: Record<string, unknown> = {};
-  for (const key of VALUE_SOURCE_KEYS) if (rec[key] !== undefined) out[key] = rec[key];
+  for (const key of keys) if (rec[key] !== undefined) out[key] = rec[key];
   return out;
 };
+const valueSourceOf = (node: unknown): Record<string, unknown> => pickKeys(node, VALUE_SOURCE_KEYS);
+const operatorOf = (node: unknown): Record<string, unknown> => pickKeys(node, OPERATOR_KEYS);
 
 /** The condition a preset inserts: every slot filled with its default; an open
  *  slot inserts with no value source at all — the tree state a freshly added
@@ -186,12 +232,16 @@ export const presetSeed = (facet: Facet): Condition => {
 };
 
 /** The template with each slot taking whatever value source `node` has at that
- *  position — so comparing the result to `node` asks "equal everywhere but the
- *  slots?". A slot the node hasn't filled stays open on both sides. Both sides
- *  are read on the builder's shape. */
+ *  position — and, at a knobbed slot, the node's operator too — so comparing the
+ *  result to `node` asks "equal everywhere but the slots?". A slot the node
+ *  hasn't filled stays open on both sides. Both sides are read on the builder's
+ *  shape. */
 const fillVariables = (template: Condition, slots: VariableSlot[], node: Condition): Condition => {
   const shaped = normalizeGroups(node);
-  return mapSlots(template, slots, ({ path }) => valueSourceOf(getNode(shaped, path)));
+  return mapSlots(template, slots, (slot) => {
+    const at = getNode(shaped, slot.path);
+    return { ...valueSourceOf(at), ...(knobbed(slot) ? operatorOf(at) : {}) };
+  });
 };
 
 /**
@@ -362,17 +412,21 @@ const isMetaKey = (key: string): boolean => key === 'coerceType' || key.startsWi
 /** The one comparator behind ids, `where` matching, and preset recognition. It
  *  compares the builder's shape ({@link normalizeGroups} — `X` and `{ all: [X] }`
  *  are one rule), and on a rule node erases a variable's body
- *  (default/options/range) to the bare marker: it is editable, so — like
- *  `defaultWhere` — it never folds into identity. Below a rule's `value` there is
- *  only data: a `variable` key there is a Json literal, and stays one. */
+ *  (default/options/range/operators) to the bare marker — and, when the variable
+ *  is an operator knob, the rule's own `operator`/`dateOperator` with it: both
+ *  are editable, so — like `defaultWhere` — they never fold into identity. Below
+ *  a rule's `value` there is only data: a `variable` key there is a Json literal,
+ *  and stays one. */
 const STRUCTURAL_KEYS = new Set(['all', 'any', 'condition', 'filter', 'if', 'then', 'else']);
 const canonical = (value: unknown, structural = true): unknown => {
   if (Array.isArray(value)) return value.map((v) => canonical(v, structural));
   if (value && typeof value === 'object') {
     const rec = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
+    const knob = structural && isKnobbedVariable(rec.variable);
     for (const key of Object.keys(rec).sort()) {
       if (isMetaKey(key)) continue;
+      if (knob && (key === 'operator' || key === 'dateOperator')) continue;
       if (structural && key === 'variable') out[key] = {};
       else if (structural && (key === 'condition' || key === 'filter'))
         out[key] = canonical(normalizeGroups(asGroupRoot(rec[key] as Condition)), true);
@@ -950,13 +1004,16 @@ export const matchFacet = (
   let best: Facet | undefined;
   let bestLead = -1;
   // A preset matches a node equal to its whole condition (coercion/order-insensitive)
-  // once each variable slot takes the node's own value source — whole-node equality,
-  // so it is the most specific claim and is settled before any path facet. Fewest
-  // wildcard slots wins (a fixed `100` beats a variable on a `100` rule); an exact
-  // tie — an ambiguous decoration, which validateDecoration reports — settles on
-  // the id, so array order never decides which card a saved rule wears.
+  // once each variable slot takes the node's own value source (and, at a knobbed
+  // slot, its operator) — whole-node equality, so it is the most specific claim and
+  // is settled before any path facet. The narrowest wildcard wins: a slot counts
+  // once, a knobbed slot twice (it also frees the operator), so a fixed `100` beats
+  // a variable on a `100` rule, and a locked `>= ?` beats a knobbed `? ?` on a `>=`
+  // rule. An exact tie — an ambiguous decoration, which validateDecoration
+  // reports — settles on the id, so array order never decides which card a saved
+  // rule wears.
   let bestPreset: Facet | undefined;
-  let bestPresetSlots = Number.POSITIVE_INFINITY;
+  let bestPresetWild = Number.POSITIVE_INFINITY;
   for (const facet of decoration.facets) {
     if (facet.condition === undefined) continue;
     const template = templateOf(facet);
@@ -964,12 +1021,13 @@ export const matchFacet = (
     const filled = slots.length ? fillVariables(template, slots, node) : template;
     if (nodeKey !== JSON.stringify(canonical(filled))) continue;
     if (slots.length === 0) return facet;
+    const wild = slots.length + slots.filter(knobbed).length;
     if (
-      slots.length < bestPresetSlots ||
-      (slots.length === bestPresetSlots && bestPreset && facetId(facet) < facetId(bestPreset))
+      wild < bestPresetWild ||
+      (wild === bestPresetWild && bestPreset && facetId(facet) < facetId(bestPreset))
     ) {
       bestPreset = facet;
-      bestPresetSlots = slots.length;
+      bestPresetWild = wild;
     }
   }
   if (bestPreset) return bestPreset;
@@ -1330,6 +1388,69 @@ export const validateDecoration = (lens: Lens, decoration: Decoration): string[]
   return violations;
 };
 
+/** Hop `segments` as relations from a model scope; `undefined` when a segment is
+ *  not a relation the lens knows. */
+const hopRelations = (
+  lens: Lens,
+  scope: { mapName: string; modelName: string },
+  segments: string[],
+): { mapName: string; modelName: string } | undefined => {
+  let at = scope;
+  for (const segment of segments) {
+    const entry = lens.maps[at.mapName]?.models[at.modelName]?.fields[segment];
+    if (!entry) return undefined;
+    const target = relationTarget(entry, at.mapName);
+    if (!target) return undefined;
+    at = target;
+  }
+  return at;
+};
+
+/** The catalog field a leaf slot addresses, resolved in the slot's own scope: a
+ *  `condition`/`filter` segment enters the enclosing rule's element model, a
+ *  dotted leaf traverses its to-one hops, and a sub-path under a `Json` column
+ *  gets the generic operator set (nothing below the column's boundary is typed). */
+const fieldAtSlot = (lens: Lens, template: Condition, path: RulePath): BuilderField | undefined => {
+  let scope = { mapName: lens.mapName, modelName: lens.model };
+  let cursor: unknown = template;
+  for (const segment of path) {
+    const rec = cursor as Record<string, unknown> | undefined;
+    if (!rec) return undefined;
+    if (typeof segment === 'number') {
+      const kids = Array.isArray(rec.all) ? rec.all : Array.isArray(rec.any) ? rec.any : undefined;
+      cursor = kids?.[segment];
+    } else if (segment === 'condition' || segment === 'filter') {
+      if (typeof rec.field !== 'string') return undefined;
+      const inner = hopRelations(lens, scope, rec.field.split('.'));
+      if (!inner) return undefined;
+      scope = inner;
+      cursor = rec[segment];
+    } else return undefined;
+  }
+  const rule = cursor as { field?: unknown } | undefined;
+  if (typeof rule?.field !== 'string') return undefined;
+  const segments = rule.field.split('.');
+  for (let i = 0; i < segments.length - 1; i++) {
+    const entry = lens.maps[scope.mapName]?.models[scope.modelName]?.fields[segments[i]];
+    if (!entry) return undefined;
+    if (entry.kind === 'scalar')
+      return {
+        name: rule.field,
+        label: rule.field,
+        kind: 'Json',
+        isList: false,
+        isBridge: false,
+        operators: genericOperators(),
+      };
+    const target = relationTarget(entry, scope.mapName);
+    if (!target) return undefined;
+    scope = target;
+  }
+  return describeModelFields(lens, scope.mapName, scope.modelName).find(
+    (f) => f.name === segments[segments.length - 1],
+  );
+};
+
 const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] => {
   const violations: string[] = [];
   const ids = new Set<string>();
@@ -1353,16 +1474,53 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
         violations.push(`preset '${name}' is not a valid rule against the lens`);
       const template = templateOf(facet);
       const slots = variableSlots(template);
-      for (const slot of slots)
+      for (const slot of slots) {
+        const rule = getNode(template, slot.path) as { field?: string; aggregate?: unknown };
         for (const option of slot.variable.options ?? []) {
           const withOption = mapSlots(template, slots, (s) =>
             s === slot ? { value: option } : {},
           );
           if (!checkRuleAgainstLens(withOption, lens).ok)
             violations.push(
-              `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(template, slot.path) as { field?: string }).field}' is not allowed by the lens`,
+              `preset '${name}' option ${JSON.stringify(option)} at '${rule.field}' is not allowed by the lens`,
             );
         }
+        // The lens checker does not judge operators, so the builder's own catalogs
+        // are asked: an aggregate slot takes threshold comparisons; a leaf slot
+        // takes what its field kind offers, resolved in the slot's own scope.
+        const operators = slot.variable.operators as string[] | undefined;
+        if (!operators) continue;
+        const admitted = new Set<string>();
+        if (rule.aggregate !== undefined) {
+          for (const op of operators)
+            if (AGGREGATE_OPERATOR_SET.has(op)) admitted.add(op);
+            else
+              violations.push(
+                `preset '${name}' operator '${op}' at '${rule.field}' is not an aggregate threshold comparison`,
+              );
+        } else {
+          const field = fieldAtSlot(lens, template, slot.path);
+          const offered = field
+            ? new Set<string>([...field.operators.field, ...field.operators.date])
+            : undefined;
+          for (const op of operators)
+            if (!offered || offered.has(op)) admitted.add(op);
+            else
+              violations.push(
+                `preset '${name}' operator '${op}' at '${rule.field}' is not offered for a ${field?.kind} field`,
+              );
+        }
+        // A no-operand operator beside a value default/options is unmodelable: the
+        // seed carries a value the engine rejects on that operator, and switching
+        // back would leave the slot open with no default. Only admitted operators
+        // are shaped — an unknown one was reported above, never thrown on.
+        if (slot.variable.default !== undefined || slot.variable.options?.length)
+          for (const op of admitted)
+            if (knownValueShape(op) === 'none')
+              violations.push(
+                `preset '${name}' slot at '${rule.field}' mixes a no-operand operator '${op}' with a value default/options`,
+              );
+      }
       // Two presets over one body whose slot sets cross (neither contains the
       // other) both match the same saved rules with equal rank — ambiguous. Nested
       // slot sets rank (fewer wins); equal sets are one id (reported above).
@@ -1373,7 +1531,10 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
           [...mine].every((p) => theirs.has(p)) || [...theirs].every((p) => mine.has(p));
         if (nested) continue;
         const union = [...slots, ...other.slots].map((s) => s.path);
-        if (sameConditions([maskAt(template, union)], [maskAt(other.template, union)]))
+        const knobs = [...slots, ...other.slots].filter(knobbed).map((s) => s.path);
+        if (
+          sameConditions([maskAt(template, union, knobs)], [maskAt(other.template, union, knobs)])
+        )
           violations.push(
             `presets '${other.name}' and '${name}' are ambiguous: one body, crossing variable slots — a saved rule would match both`,
           );
