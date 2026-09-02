@@ -31,7 +31,12 @@ import {
   writeSelectorClause,
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
-import { describeModelFields, genericOperators, valueShapeForOperator } from '../schema/surface';
+import {
+  describeModelFields,
+  genericOperators,
+  knownValueShape,
+  operandClass,
+} from '../schema/surface';
 import {
   defaultRule,
   groupChildrenOf,
@@ -536,7 +541,7 @@ const buildLeaf = (
         label: o,
       }))
     : [];
-  const shape: ValueShape = operator ? valueShapeForOperator(operator as never) : 'none';
+  const shape: ValueShape = (operator ? knownValueShape(operator) : undefined) ?? 'none';
   const valueOptions = declared?.options
     ? declared.options.map((o) => ({
         value: o.value,
@@ -599,10 +604,18 @@ const buildLeaf = (
       options: operatorOptions,
       set: (op) => {
         const isDate = operators?.date.includes(op as never) ?? false;
-        // A no-operand operator (isEmpty/isNotEmpty) must not inherit the previous
-        // operator's operand — validateRule rejects any value on it, leaving the
-        // leaf permanently invalid with no visible cause.
-        const dropOperand = valueShapeForOperator(op as never) === 'none';
+        // The operand follows the operator's class: a no-operand operator
+        // (isEmpty/isNotEmpty) must not inherit one — validateRule rejects any value
+        // on it — and a scalar ↔ range ↔ list ↔ window switch must not carry the old
+        // one (`between` over a bare string is an invalid rule with no visible
+        // cause). A same-class switch keeps it, so `equals → greaterThan` and
+        // `equals → contains` leave what the user typed alone. An operator the
+        // catalog does not know (a persisted legacy rule) has no class: the switch
+        // still commits and the operand is left as it is.
+        const next = operandClass(op);
+        const prev = operator === undefined ? undefined : operandClass(operator);
+        const dropOperand =
+          next === 'none' || (prev !== undefined && next !== undefined && prev !== next);
         const { operator: _o, dateOperator: _d, value: v, path: p, bind: b, ...rest } = rec;
         ctx.commit(
           setNode(ctx.root, path, {
@@ -941,12 +954,27 @@ const buildArray = (
           operator: {
             value: rec.operator as string | undefined,
             options: AGGREGATE_OPERATORS.map((o) => ({ value: o, label: o })),
-            set: (nextOp) =>
-              ctx.commit(setNode(ctx.root, path, { ...rec, operator: nextOp } as Condition)),
+            set: (nextOp) => {
+              // A scalar ↔ range switch must not carry the old operand: `between`
+              // over a bare number (or `equals` over a pair) is an invalid rule with
+              // no visible cause. Same-class switches keep the value; an operator the
+              // catalog does not know (a persisted legacy rule) leaves it alone.
+              const prev =
+                rec.operator === undefined ? undefined : operandClass(String(rec.operator));
+              const next = operandClass(nextOp);
+              const sameShape = prev === undefined || next === undefined || prev === next;
+              const { value: _v, ...rest } = rec;
+              ctx.commit(
+                setNode(ctx.root, path, {
+                  ...(sameShape ? rec : rest),
+                  operator: nextOp,
+                } as Condition),
+              );
+            },
           },
           value: {
             current: rec.value as number | [number, number] | undefined,
-            shape: rec.operator ? valueShapeForOperator(rec.operator as never) : 'none',
+            shape: (rec.operator ? knownValueShape(String(rec.operator)) : undefined) ?? 'none',
             set: (v) => ctx.commit(setNode(ctx.root, path, { ...rec, value: v } as Condition)),
           },
         }

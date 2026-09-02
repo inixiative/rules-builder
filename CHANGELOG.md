@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.26.2 — an operator switch and its operand
+
+- **Both operator setters drop a stale operand when the operand class changes.** The
+  leaf setter dropped it only for a no-operand operator; the aggregate threshold
+  setter never dropped it at all — so `equals -> between` left a bare value on a
+  range operator, an invalid rule the UI gave no cause for. Now a scalar / range /
+  list / date-value / date-window switch clears the operand on either setter, and a
+  same-class switch keeps it: `equals -> greaterThan` and `equals -> contains` leave
+  what the user typed alone.
+- **`knownValueShape` / `operandClass`** — `valueShapeForOperator` for an operator
+  the catalog does not know (a rule persisted by an older engine, or a decoration
+  typo). `undefined` instead of the throw, so such a rule still builds (`shape:
+  'none'`) and its control can switch away from it instead of tearing down the tree.
+
 ## 0.26.1 — preset variables: the builder's shape is the identity
 
 - **A bare sub-condition template lost its card on the first tune.** The array

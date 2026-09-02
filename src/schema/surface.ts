@@ -249,3 +249,35 @@ export const describeModelFields = (
 export const valueShapeForOperator = (
   operator: Operator | DateOperator | ArrayOperator,
 ): ValueShape => getValueShape(operator);
+
+/** {@link valueShapeForOperator} for an operator that may not be in the catalog — a
+ *  persisted rule from an older engine, or a decoration typo. `undefined` instead of
+ *  the throw, so a setter or a shape read can treat it as "shape unknown" and still
+ *  build the node. */
+export const knownValueShape = (operator: string): ValueShape | undefined => {
+  try {
+    return getValueShape(operator as never);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Shapes a single operand can move between untouched: a scalar, an ordered scalar,
+ *  a substring and a pattern are all one bare value, so `equals -> greaterThan` or
+ *  `equals -> contains` keeps what the user typed. A date value, a date window, a
+ *  range, a list and a day list each hold a different thing. */
+const INTERCHANGEABLE_SHAPES: ReadonlySet<ValueShape> = new Set([
+  'scalar',
+  'ordered',
+  'string',
+  'pattern',
+]);
+
+/** The class of operand an operator carries — two operators of the same class accept
+ *  each other's value. `undefined` for an operator the catalog does not know (a
+ *  persisted legacy rule), which a caller should read as "leave the operand alone". */
+export const operandClass = (operator: string): string | undefined => {
+  const shape = knownValueShape(operator);
+  if (shape === undefined) return undefined;
+  return INTERCHANGEABLE_SHAPES.has(shape) ? 'scalar' : shape;
+};
