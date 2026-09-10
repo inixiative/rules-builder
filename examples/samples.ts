@@ -12,6 +12,7 @@ export const sampleMaps: Record<string, FieldMap> = {
           id: { kind: 'scalar', type: 'Int' },
           email: { kind: 'scalar', type: 'String' },
           age: { kind: 'scalar', type: 'Int' },
+          creditLimit: { kind: 'scalar', type: 'Float' }, // an order's `total` compares to it via `$$.creditLimit`
           role: { kind: 'enum', type: 'UserRole' },
           tier: { kind: 'scalar', type: 'String' }, // sourced → pseudo-enum
           active: { kind: 'scalar', type: 'Boolean' },
@@ -94,6 +95,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       active: true,
       email: 'ada@acme.io',
       age: 34,
+      creditLimit: 100,
       role: 'admin',
       createdAt: '2026-01-15T09:00:00.000Z',
       metadata: { theme: 'dark' },
@@ -109,6 +111,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       active: true,
       email: 'bo@acme.io',
       age: 22,
+      creditLimit: 500,
       role: 'member',
       createdAt: '2026-03-20T14:30:00.000Z',
       metadata: { theme: 'light' },
@@ -124,6 +127,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       active: true,
       email: 'cy@acme.io',
       age: 41,
+      creditLimit: 250,
       role: 'member',
       createdAt: '2026-05-02T08:15:00.000Z',
       metadata: {},
@@ -135,6 +139,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       active: false,
       email: 'di@acme.io',
       age: 29,
+      creditLimit: 50,
       role: 'guest',
       createdAt: '2026-06-10T18:45:00.000Z',
       metadata: {},
@@ -146,6 +151,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
       active: false,
       email: 'ed@acme.io',
       age: 55,
+      creditLimit: 1000,
       role: 'guest',
       createdAt: '2026-06-28T11:00:00.000Z',
       metadata: {},
@@ -327,12 +333,35 @@ export const sampleTransitions: Workspace['transitions'] = {
   },
 };
 
+/**
+ * A saved rule that reaches out of the array element: "has an order whose total is over
+ * the user's own credit limit." Inside `orders any`, `$.` is the order and `$$.` the user
+ * row, so the comparison is authored as `total > $$.creditLimit` — a scope ref, check()-only.
+ */
+export const sampleRules: Workspace['rules'] = {
+  'over-limit order': {
+    source: { kind: 'lens', name: 'app-users' },
+    rule: {
+      all: [
+        {
+          field: 'orders',
+          arrayOperator: 'any',
+          condition: {
+            all: [{ field: 'total', operator: 'greaterThan', path: '$$.creditLimit' }],
+          },
+        },
+      ],
+    },
+  },
+};
+
 export const defaultWorkspace = (): Workspace => ({
   ...emptyWorkspace(),
   maps: sampleMaps,
   bridges: sampleBridges,
   lenses: sampleLenses,
   narrowings: sampleNarrowings,
+  rules: sampleRules,
   decorations: { segment: segmentDecoration },
   permissions: samplePermissions,
   transitions: sampleTransitions,

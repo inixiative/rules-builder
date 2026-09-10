@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.28.0 — scope refs: reach the enclosing element from inside an array rule
+
+- **The descriptor knows its enclosing scopes.** json-rules 2.23 resolves `$$.`, `$$$.`, …
+  up the array-operator stack on `path` and on `field`. `LeafNode.scopes` and
+  `ArrayNode.scopes` list the enclosing element scopes a prefixed `field` may name
+  (nearest first, values pre-prefixed for `field.set`); in path mode `value.path.scopes`
+  lists the current row as `$.` followed by each enclosing scope, values only.
+- **A prefixed `field` resolves against the scope it names** — kind, operators, enum set,
+  Json sub-path seam, and relation descent for a prefixed list field all come from the
+  ancestor; `field.set('$$.creditLimit')` commits the prefixed name.
+- **Validity is judged in situ.** A node is gated wrapped in the array rules it sits under,
+  against the anchor lens, so the gate sees the same scope stack `check()` will. Out of
+  bounds (`$$$.` one array deep) and unknown ancestor fields are invalid.
+- Peer `@inixiative/json-rules` ≥ 2.23.0 (`resolveScopeRef`).
+- Example: `User.creditLimit` + a saved "over-limit order" rule (`total > $$.creditLimit`
+  inside `orders any`); both renderers offer scopes as option groups and pick paths from a
+  select instead of a free-text box. The Builder tab no longer rebuilds the editor's source
+  on every draft edit (which re-emitted the draft in a render loop) and remounts the
+  uncontrolled editor when a saved rule is loaded.
+
 ## 0.27.0 — the aggregate threshold picker follows the declared targets
 
 - **The threshold comparisons come from the engine, narrowed per target.** The list was

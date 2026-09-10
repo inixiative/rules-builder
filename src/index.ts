@@ -8,6 +8,7 @@ export type {
   LeafNode,
   OperatorControl,
   PickOption,
+  ScopeOption,
   UseFilteredCollection,
   UseFilteredCollectionOptions,
   UseRuleBuilder,

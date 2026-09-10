@@ -9,6 +9,7 @@ export type {
   LeafNode,
   OperatorControl,
   PickOption,
+  ScopeOption,
   ValueControl,
   VariableControl,
 } from './buildNodes';

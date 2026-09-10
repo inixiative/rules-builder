@@ -32,6 +32,9 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
   const [renderer, setRenderer] = useState<'plain' | 'shadcn'>('shadcn');
   const [decorationName, setDecorationName] = useState('segment');
   const [ruleName, setRuleName] = useState('');
+  // The editor is uncontrolled (`rule` is read once at mount), so loading a saved rule
+  // remounts it — the counter is part of its key.
+  const [loaded, setLoaded] = useState(0);
   const choice = choices.find((c) => c.key === sourceKey) ?? choices[0];
 
   // Selecting a saved rule from the inventory loads it: its draft + its bound source.
@@ -42,10 +45,14 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
       patch({ rule: saved.rule });
       setSourceKey(refKey(saved.source));
       setRuleName(selected);
+      setLoaded((n) => n + 1);
     }
   }, [selected]);
 
-  const analysis = useMemo(() => {
+  // The surface depends on the workspace's schema, never on the draft rule: a `source`
+  // rebuilt on every edit hands the editor a new lens each keystroke, and its emit
+  // effect (keyed on the lens) would patch the draft back in a loop.
+  const surface = useMemo(() => {
     if (!choice) return null;
     try {
       const resolved = resolveRef(ws, choice.ref);
@@ -53,29 +60,28 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
       // engine compiles the source queries; app runs them over sample rows → fetched values
       // fold into the projection so option sets reflect the lens/narrowing, not the raw column.
       const sourceValues = runSources(resolved, sampleRows);
-      const surface = exposedSurface(resolved, { sourceValues });
+      const lens = exposedSurface(resolved, { sourceValues });
       const source: RuleBuilderSource = {
-        maps: surface.maps,
-        mapName: surface.mapName,
-        model: surface.model,
+        maps: lens.maps,
+        mapName: lens.mapName,
+        model: lens.model,
       };
-      return {
-        error: null as string | null,
-        source,
-        sourceValues,
-        description: describeRule(ws.rule, surface),
-        check: checkRuleAgainstLens(ws.rule, surface),
-      };
+      return { error: null as string | null, source, sourceValues, lens };
     } catch (err) {
-      return {
-        error: String(err),
-        source: null,
-        sourceValues: [],
-        description: null,
-        check: null,
-      };
+      return { error: String(err), source: null, sourceValues: [], lens: null };
     }
-  }, [choice, ws]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: the schema slices, not the draft
+  }, [choice, ws.maps, ws.bridges, ws.lenses, ws.narrowings]);
+
+  const analysis = useMemo(() => {
+    if (!surface) return null;
+    if (!surface.lens) return { ...surface, description: null, check: null };
+    return {
+      ...surface,
+      description: describeRule(ws.rule, surface.lens),
+      check: checkRuleAgainstLens(ws.rule, surface.lens),
+    };
+  }, [surface, ws.rule]);
 
   if (!choice) {
     return (
@@ -157,7 +163,7 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
           <Badge tone="danger">{analysis.error}</Badge>
         ) : analysis?.source && renderer === 'shadcn' ? (
           <RuleEditorShadcn
-            key={`${choice.key}:${decorationName}`}
+            key={`${choice.key}:${decorationName}:${loaded}`}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
             maxDepth={ws.maxDepth}
@@ -167,7 +173,7 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
           />
         ) : analysis?.source ? (
           <RuleEditor
-            key={`${choice.key}:${decorationName}`}
+            key={`${choice.key}:${decorationName}:${loaded}`}
             source={analysis.source}
             sourceValues={analysis.sourceValues}
             maxDepth={ws.maxDepth}

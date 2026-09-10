@@ -6,6 +6,7 @@ import {
   type GroupNode,
   type LeafNode,
   type RuleBuilderSource,
+  type ScopeOption,
   useRuleBuilder,
   type ValueControl,
 } from '../src';
@@ -36,15 +37,24 @@ const row: React.CSSProperties = {
   flexWrap: 'wrap',
 };
 
+type Group = { label: string; options: { value: string; label: string }[] };
+
+/** Each enclosing element scope as an `<optgroup>` — `$$.` is the element this
+ *  node's array sits in, `$$$.` the one outside that, up to the root row. */
+const scopeGroups = (scopes?: ScopeOption[]): Group[] =>
+  (scopes ?? []).map((s) => ({ label: `${s.prefix} ${s.label}`, options: iconize(s.options) }));
+
 const Picker = ({
   ariaLabel,
   value,
   options,
+  groups = [],
   onChange,
 }: {
   ariaLabel: string;
   value?: string;
   options: { value: string; label: string }[];
+  groups?: Group[];
   onChange: (v: string) => void;
 }) => (
   <select
@@ -60,6 +70,15 @@ const Picker = ({
       <option key={o.value} value={o.value}>
         {o.label}
       </option>
+    ))}
+    {groups.map((g) => (
+      <optgroup key={g.label} label={g.label}>
+        {g.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </optgroup>
     ))}
   </select>
 );
@@ -175,13 +194,20 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         ]}
         onChange={(m) => value.setMode(m as 'value' | 'path' | 'bind')}
       />
-      {value.mode === 'path' ? (
-        <input
-          aria-label="path"
-          placeholder="field.path"
-          style={sel}
-          value={value.path?.value ?? ''}
-          onChange={(e) => value.path?.set(e.target.value)}
+      {value.mode === 'path' && value.path ? (
+        // `$.` is this row, `$$.` the enclosing element, … A bare (context) path is not
+        // enumerable, so a saved one is kept selectable as itself.
+        <Picker
+          ariaLabel="path"
+          value={value.path.value}
+          options={
+            value.path.value &&
+            !value.path.scopes.some((s) => s.options.some((o) => o.value === value.path?.value))
+              ? [{ value: value.path.value, label: value.path.value }]
+              : []
+          }
+          groups={scopeGroups(value.path.scopes)}
+          onChange={value.path.set}
         />
       ) : value.mode === 'bind' ? (
         <input
@@ -228,6 +254,7 @@ const Leaf = ({ node }: { node: LeafNode }) => (
             ariaLabel="field"
             value={node.field.value}
             options={iconize(node.field.options)}
+            groups={scopeGroups(node.scopes)}
             onChange={node.field.set}
           />
           {node.field.acceptsSubPath && node.field.setSubPath && (
@@ -290,6 +317,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
         ariaLabel="field"
         value={node.field.value}
         options={iconize(node.field.options)}
+        groups={scopeGroups(node.scopes)}
         onChange={node.field.set}
       />
       {node.arrayOperator && (

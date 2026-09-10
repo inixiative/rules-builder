@@ -8,6 +8,7 @@ import {
   type GroupNode,
   type LeafNode,
   type RuleBuilderSource,
+  type ScopeOption,
   useRuleBuilder,
   type ValueControl,
 } from '../src';
@@ -17,6 +18,13 @@ import { Badge, Button, Input, MultiSelect, Select } from './shadcn';
  *  <option>s, so a {@link Decoration}'s icon rides along in the text. */
 const iconize = (options: readonly { value: string; label: string; icon?: string }[]) =>
   options.map((o) => ({ value: o.value, label: o.icon ? `${o.icon}  ${o.label}` : o.label }));
+
+/** Enclosing element scopes flattened for a plain select: `$$.` is the element this
+ *  node's array sits in, `$$$.` the one outside that, up to the root row. */
+const scoped = (scopes?: ScopeOption[]) =>
+  (scopes ?? []).flatMap((s) =>
+    s.options.map((o) => ({ value: o.value, label: `${s.prefix} ${s.label} · ${o.label}` })),
+  );
 
 /**
  * shadcn-style drop-in renderer for the headless rule builder — the SAME `root`
@@ -125,12 +133,19 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         value={value.mode}
         onChange={(m) => value.setMode(m as 'value' | 'path' | 'bind')}
       />
-      {value.mode === 'path' ? (
-        <Input
+      {value.mode === 'path' && value.path ? (
+        <Select
           aria-label="path"
-          placeholder="field.path"
-          value={value.path?.value ?? ''}
-          onChange={(e) => value.path?.set(e.target.value)}
+          placeholder="path"
+          options={[
+            ...(value.path.value &&
+            !value.path.scopes.some((s) => s.options.some((o) => o.value === value.path?.value))
+              ? [{ value: value.path.value, label: value.path.value }]
+              : []),
+            ...scoped(value.path.scopes),
+          ]}
+          value={value.path.value ?? ''}
+          onChange={value.path.set}
         />
       ) : value.mode === 'bind' ? (
         <Input
@@ -175,7 +190,7 @@ const Leaf = ({ node }: { node: LeafNode }) => (
           <Select
             aria-label="field"
             placeholder="field"
-            options={iconize(node.field.options)}
+            options={[...iconize(node.field.options), ...scoped(node.scopes)]}
             value={node.field.value ?? ''}
             onChange={node.field.set}
           />
@@ -373,7 +388,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
           <Select
             aria-label="field"
             placeholder="field"
-            options={iconize(node.field.options)}
+            options={[...iconize(node.field.options), ...scoped(node.scopes)]}
             value={node.field.value ?? ''}
             onChange={node.field.set}
           />

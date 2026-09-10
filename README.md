@@ -150,6 +150,26 @@ over its elements:
 `node.condition` and `node.filter` are nested `GroupNode`s scoped to the **related
 model's** surface — author them exactly like the top-level tree.
 
+### Scope references
+
+Inside an element sub-builder a rule can reach back out: json-rules resolves `$.` as
+the current element, `$$.` as the element of the enclosing array, `$$$.` the one
+outside that, up to the root row — on `path` (compare against an ancestor's value)
+and on `field` (rule on an ancestor's column from inside the element). The
+descriptor exposes what is reachable so a renderer never spells a prefix:
+
+- `LeafNode.scopes` / `ArrayNode.scopes` — the enclosing scopes a prefixed `field`
+  may name, nearest first; each carries its `prefix`, the model's label, and
+  pickable `options` whose values are already prefixed (`'$$.creditLimit'`) for
+  `field.set`. Absent at the root.
+- `value.path.scopes` (path mode) — the value locations a `path` may name: the
+  current row as `$.`, then each enclosing scope. Relations and lists are not
+  offered; a bare context path is not enumerable.
+
+Validity is judged in situ: a leaf's `valid` gates the node wrapped in the array rules
+it sits under, so `$$.creditLimit` is valid one array deep and `$$$.creditLimit` is not.
+Scope refs are check()-only beyond `path: '$.x'` on `toSql` — `describe()` reports it.
+
 ## Decoration — hoisting, relabeling & aliasing
 
 By default the root selector offers only the anchor model's own fields; to reach

@@ -5,6 +5,7 @@ import {
   exposedSurface,
   type FieldKind,
   type Lens,
+  resolveScopeRef,
   type ValueShape,
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
@@ -58,6 +59,11 @@ export type PickOption = {
   compilesToPrisma?: boolean;
 };
 
+/** One element scope a `$`-prefixed ref may name: its prefix (`$.`, `$$.`, …), the
+ *  model's display label, and the fields pickable there, each option's `value`
+ *  already prefixed so it can be handed straight to `field.set` / `path.set`. */
+export type ScopeOption = { prefix: string; label: string; options: PickOption[] };
+
 export type FieldControl = {
   value?: string;
   options: PickOption[];
@@ -90,8 +96,11 @@ export type ValueControl = {
    *  'bind' = a named binding supplied at execution time (`{ bind }`). */
   mode: 'value' | 'path' | 'bind';
   setMode: (mode: 'value' | 'path' | 'bind') => void;
-  /** Present in 'path' mode — the RHS field-reference path (e.g. `user.email`). */
-  path?: { value?: string; set: (p: string) => void };
+  /** Present in 'path' mode — the RHS field-reference path (e.g. `user.email`). `scopes`
+   *  lists the value locations a scope ref may name: the current row as `$.`, then each
+   *  enclosing array element outward (`$$.`, `$$$.`, …). A bare path is a context ref
+   *  the builder cannot enumerate. */
+  path?: { value?: string; set: (p: string) => void; scopes: ScopeOption[] };
   /** Present in 'bind' mode — the binding name resolved at execution time. */
   bind?: { value?: string; set: (name: string) => void };
 };
@@ -120,6 +129,9 @@ export type LeafNode = {
   /** On an atomic node: one control per variable slot of the preset (empty for a
    *  plain preset). See {@link VariableControl}. */
   variables?: VariableControl[];
+  /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first
+   *  (`$$.` is the element this leaf's array sits in). Absent at the root. */
+  scopes?: ScopeOption[];
   /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
   valid: boolean;
   remove: () => void;
@@ -288,6 +300,9 @@ export type ArrayNode = {
   filter?: GroupNode;
   /** Drop the filter sub-condition entirely. */
   removeFilter?: () => void;
+  /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first —
+   *  a prefixed list field iterates an ancestor's collection. Absent at the root. */
+  scopes?: ScopeOption[];
   /** Gated via checkRuleAgainstLens (validates field + nested condition). */
   valid: boolean;
   remove: () => void;
@@ -307,8 +322,68 @@ type Ctx = {
   surfaceOpts: SurfaceOptions;
 };
 /** What a node sees: the surface to validate against + its selectable fields. On
- *  descent into an array node's elements, this swaps to the related model. */
-type Scope = { lens: Lens; fields: BuilderField[]; decoration?: Decoration };
+ *  descent into an array node's elements, this swaps to the related model; the
+ *  scopes it descended through stay reachable as `ancestors` (root first), and `via`
+ *  names the array field that opened this scope. */
+type Scope = {
+  lens: Lens;
+  fields: BuilderField[];
+  decoration?: Decoration;
+  ancestors: Scope[];
+  via?: string;
+};
+
+type Located = { frame: Scope; name: string; prefix: string };
+
+/** Where a (possibly `$`-prefixed) field name resolves: the scope it names and the
+ *  name within it. Undefined when the prefix reaches past the root. */
+const locate = (name: string, scope: Scope): Located | undefined => {
+  const target = resolveScopeRef(name, [...scope.ancestors, scope]);
+  if ('outOfBounds' in target) return undefined;
+  return {
+    frame: target.scope,
+    name: target.path,
+    prefix: name.slice(0, name.length - target.path.length),
+  };
+};
+
+/** The node as the engine will meet it: wrapped in the array rules that descended
+ *  to this scope, so the lens gate resolves scope refs against the same stack. */
+const enclose = (scope: Scope, node: Condition): Condition => {
+  let out = node;
+  for (let s: Scope | undefined = scope; s?.via; s = s.ancestors[s.ancestors.length - 1]) {
+    out = { field: s.via, arrayOperator: 'any', condition: out } as Condition;
+  }
+  return out;
+};
+
+const scopeLabel = (scope: Scope, ctx: Ctx): string =>
+  modelDecor(ctx.decoration, scope.lens.mapName, scope.lens.model).label ?? scope.lens.model;
+
+const prefixedOptions = (fields: BuilderField[], prefix: string): PickOption[] =>
+  fields.map((f) => ({ value: `${prefix}${f.name}`, label: f.label, icon: f.icon }));
+
+/** Enclosing scopes a prefixed `field` may name, nearest first. A hoisted facet
+ *  seeds a whole bare-field node, so it is never offered under a prefix. */
+const enclosingScopes = (scope: Scope, ctx: Ctx): ScopeOption[] | undefined => {
+  if (scope.ancestors.length === 0) return undefined;
+  return [...scope.ancestors].reverse().map((frame, i) => {
+    const prefix = `${'$'.repeat(i + 2)}.`;
+    const fields = selectableFields(frame.fields).filter((f) => !f.seed);
+    return { prefix, label: scopeLabel(frame, ctx), options: prefixedOptions(fields, prefix) };
+  });
+};
+
+/** Value locations a `path` may name — the current row as `$.`, then each enclosing
+ *  scope. A path names a value, so relations and lists are not offered. */
+const pathScopes = (scope: Scope, ctx: Ctx): ScopeOption[] =>
+  [scope, ...[...scope.ancestors].reverse()].map((frame, i) => {
+    const prefix = `${'$'.repeat(i + 1)}.`;
+    const fields = frame.fields.filter(
+      (f) => f.selectable !== false && !f.relation && !f.isList && !f.seed,
+    );
+    return { prefix, label: scopeLabel(frame, ctx), options: prefixedOptions(fields, prefix) };
+  });
 
 /**
  * Author-time partition pin. A grouped field (surface `groupBy` axes) narrows its
@@ -499,20 +574,24 @@ const buildLeaf = (
 
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
-  // Resolve the base field: an exact match, or a Json column carrying a dotted sub-path.
+  // Resolve the base field in the scope its prefix names: an exact match, or a Json
+  // column carrying a dotted sub-path. An out-of-bounds prefix resolves nothing.
+  const located = fieldName === undefined ? undefined : locate(fieldName, scope);
+  const frameFields = located?.frame.fields ?? [];
+  const localName = located?.name;
   let field = pinField(
-    scope.fields.find((f) => f.name === fieldName),
+    frameFields.find((f) => f.name === localName),
     axisSiblings(ctx.root, path),
   );
   let baseName = fieldName;
   let subPath: string | undefined;
-  if (!field && fieldName?.includes('.')) {
-    const head = fieldName.slice(0, fieldName.indexOf('.'));
-    const candidate = scope.fields.find((f) => f.name === head);
+  if (!field && located && localName?.includes('.')) {
+    const head = localName.slice(0, localName.indexOf('.'));
+    const candidate = frameFields.find((f) => f.name === head);
     if (candidate?.acceptsSubPath) {
       field = candidate;
-      baseName = head;
-      subPath = fieldName.slice(head.length + 1);
+      baseName = `${located.prefix}${head}`;
+      subPath = localName.slice(head.length + 1);
     }
   }
   // A sub-path leaf lands BELOW the Json column's boundary, on a value the column does
@@ -571,9 +650,16 @@ const buildLeaf = (
         icon: f.icon,
       })),
       set: (name) => {
-        const next = scope.fields.find((f) => f.name === name);
+        const at = locate(name, scope);
+        const next = at?.frame.fields.find((f) => f.name === at.name);
         if (next)
-          ctx.commit(setNode(ctx.root, path, ruleForField(next, rec.__id as string | undefined)));
+          ctx.commit(
+            setNode(
+              ctx.root,
+              path,
+              ruleForField({ ...next, name }, rec.__id as string | undefined),
+            ),
+          );
       },
       valid: fieldValid,
       acceptsSubPath: field?.acceptsSubPath,
@@ -648,6 +734,7 @@ const buildLeaf = (
                 const { value: _v, bind: _b, ...rest } = rec;
                 ctx.commit(setNode(ctx.root, path, { ...rest, path: p } as Condition));
               },
+              scopes: pathScopes(scope, ctx),
             }
           : undefined,
       bind:
@@ -663,7 +750,8 @@ const buildLeaf = (
     },
     hoist: leafHoist,
     atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
-    valid: checkRuleAgainstLens(node, scope.lens).ok,
+    scopes: enclosingScopes(scope, ctx),
+    valid: checkRuleAgainstLens(enclose(scope, node), ctx.anchorLens).ok,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -678,7 +766,8 @@ const buildArray = (
 ): ArrayNode => {
   const rec = node as Rec;
   const fieldName = rec.field as string | undefined;
-  const field = scope.fields.find((f) => f.name === fieldName);
+  const located = fieldName === undefined ? undefined : locate(fieldName, scope);
+  const field = located?.frame.fields.find((f) => f.name === located.name);
   const op = rec.arrayOperator as string | undefined;
   const cat = arrayCat(op);
   const rel = field?.relation;
@@ -719,7 +808,8 @@ const buildArray = (
           ? relFields.map((f) => (f.name === overrideLeaf.name ? { ...f, ...overrideLeaf } : f))
           : relFields;
         const relDecoration = scopedDecoration(ctx.decoration, rel.mapName, rel.modelName);
-        if (!relDecoration) return { lens: relLens, fields };
+        const ancestors = [...scope.ancestors, scope];
+        if (!relDecoration) return { lens: relLens, fields, ancestors, via: fieldName };
         // The scope's own facets lead its picker, exactly like the anchor root.
         const hoisted = describeFacets(relLens, relDecoration, ctx.surfaceOpts);
         const consumed = consumedTopFields(relDecoration);
@@ -730,6 +820,8 @@ const buildArray = (
             ...(consumed.size ? fields.filter((f) => !consumed.has(f.name)) : fields),
           ],
           decoration: relDecoration,
+          ancestors,
+          via: fieldName,
         };
       })()
     : scope;
@@ -849,7 +941,8 @@ const buildArray = (
         icon: f.icon,
       })),
       set: (name) => {
-        const next = scope.fields.find((f) => f.name === name);
+        const at = locate(name, scope);
+        const next = at?.frame.fields.find((f) => f.name === at.name);
         if (!next) return;
         const id = rec.__id ? { __id: rec.__id as string } : {};
         // In aggregate mode, re-pointing at another list relation keeps the aggregate
@@ -867,7 +960,9 @@ const buildArray = (
           );
           return;
         }
-        ctx.commit(setNode(ctx.root, path, ruleForField(next, rec.__id as string | undefined)));
+        ctx.commit(
+          setNode(ctx.root, path, ruleForField({ ...next, name }, rec.__id as string | undefined)),
+        );
       },
       valid: field !== undefined,
     },
@@ -989,7 +1084,10 @@ const buildArray = (
             ctx.commit(setNode(ctx.root, path, restRec as Condition));
           }
         : undefined,
-    valid: checkRuleAgainstLens(node, scope.lens).ok && (aggregateValidation?.ok ?? true),
+    scopes: enclosingScopes(scope, ctx),
+    valid:
+      checkRuleAgainstLens(enclose(scope, node), ctx.anchorLens).ok &&
+      (aggregateValidation?.ok ?? true),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
@@ -1015,7 +1113,12 @@ const buildGroup = (
   const branchFacet = matched && !preset && path.length > 0 ? matched : undefined;
   const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
   const groupScope: Scope = branch
-    ? { lens: scope.lens, fields: relabelRelations(branch.fields, ctx.decoration) }
+    ? {
+        lens: scope.lens,
+        fields: relabelRelations(branch.fields, ctx.decoration),
+        ancestors: scope.ancestors,
+        via: scope.via,
+      }
     : scope;
   // The facet actually applied to this group: a preset (anywhere) or a branch (nested).
   const groupFacet = preset ? matched : branchFacet;
@@ -1193,5 +1296,10 @@ export const buildRoot = (
     decoration: opts.decoration,
     surfaceOpts: opts.surfaceOpts ?? {},
   };
-  return buildNode(normalized, [], 0, ctx, { lens, fields, decoration: opts.decoration });
+  return buildNode(normalized, [], 0, ctx, {
+    lens,
+    fields,
+    decoration: opts.decoration,
+    ancestors: [],
+  });
 };
