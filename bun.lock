@@ -7,8 +7,8 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.2",
         "@happy-dom/global-registrator": "^20.10.3",
-        "@inixiative/config": "^0.5.31",
-        "@inixiative/json-rules": "^2.24.0",
+        "@inixiative/config": "^0.5.36",
+        "@inixiative/json-rules": "^2.25.0",
         "@tailwindcss/vite": "^4.3.1",
         "@testing-library/dom": "^10.4.1",
         "@testing-library/react": "^16.3.2",
@@ -119,9 +119,9 @@
 
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.10.6", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.10.6" } }, "sha512-Nu/IjRkkNxmeG2ywWsyJSO4d1BrWTqVzxCPL+gXj0b97klhmjd6wLzt6Bx/laNpkZ3WLW7zNCqmtMIbIlahqug=="],
 
-    "@inixiative/config": ["@inixiative/config@0.5.31", "", { "peerDependencies": { "@biomejs/biome": ">=2.5.0", "tsup": ">=8.0.0", "typescript": ">=5.9.0" }, "optionalPeers": ["@biomejs/biome", "tsup", "typescript"], "bin": { "inixiative-config": "dist/cli.js" } }, "sha512-2xejR53r24hV2Ka2BkHZDG3uLM8fJpgMA+hrC/SFNBvt9176+etQ9ff2Y9LtwzG7cfGYSay8K+prxjdRvQGqsQ=="],
+    "@inixiative/config": ["@inixiative/config@0.5.36", "", { "peerDependencies": { "@biomejs/biome": ">=2.5.0", "tsup": ">=8.0.0", "typescript": ">=5.9.0" }, "optionalPeers": ["@biomejs/biome", "tsup", "typescript"], "bin": { "inixiative-config": "dist/cli.js" } }, "sha512-8ly3Qe4FYAvX31deHjKn3yYM680Spg/mJmE9Rc30h7GRTEQj0moL+V8ERb1E4Qkx8HDsTR9X/VQAvNdZQdU2Ig=="],
 
-    "@inixiative/json-rules": ["@inixiative/json-rules@2.24.0", "", { "dependencies": { "dayjs": "^1.11.13", "fastest-levenshtein": "^1.0.16" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"] }, "sha512-XNmZ3TqGugQreBGU78PUknabb7UqtrBOFwOlrrPXrou2QMXaal5YYNv5ZsD9o+Jsh74y0s8YbbBi3LcCGJijkg=="],
+    "@inixiative/json-rules": ["@inixiative/json-rules@2.25.0", "", { "dependencies": { "dayjs": "^1.11.13", "fastest-levenshtein": "^1.0.16" }, "peerDependencies": { "typescript": "^5.0.0" }, "optionalPeers": ["typescript"] }, "sha512-3NVyr6ejR1XcIBWOPFnJ7rAtCpH3Hp7HfCWlkGG7QBw2Wy4/qf6+QXbVbJF64LhWJ6nkJnt7Ciy99TsdKccU/A=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
