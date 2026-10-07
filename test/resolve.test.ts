@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type Condition, checkRuleAgainstLens, type FieldMap } from '@inixiative/json-rules';
+import { type Condition, type FieldMap, validateRuleInLens } from '@inixiative/json-rules';
 import { describeModelFields, resolve } from '../src/schema/surface';
 
 const map: FieldMap = {
@@ -58,11 +58,11 @@ describe('resolve — fetched sourceValues fold onto the surface', () => {
     expect(tier?.kind).toBe('String'); // keeps native operators
   });
 
-  test('checkRuleAgainstLens gates rule values against the folded set', () => {
+  test('validateRuleInLens gates rule values against the folded set', () => {
     const lens = resolve(source, { sourceValues });
     const good: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
     const bad: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'platinum' }] };
-    expect(checkRuleAgainstLens(good, lens).ok).toBe(true);
-    expect(checkRuleAgainstLens(bad, lens).ok).toBe(false);
+    expect(validateRuleInLens(good, lens).ok).toBe(true);
+    expect(validateRuleInLens(bad, lens).ok).toBe(false);
   });
 });

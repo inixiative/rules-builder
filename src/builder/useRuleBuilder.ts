@@ -1,10 +1,10 @@
 import {
   type Condition,
+  coerceRule,
   describeRule,
   type Lens,
   type RuleDescription,
   type RuleTarget,
-  stampCoercions,
   validateRule,
 } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -106,7 +106,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   // kinds so check() compares widget-authored values (date strings, stringified
   // numbers) against wire-format rows without inferring types.
   const clean = useCallback(
-    (t: Condition): Condition => stampCoercions(stripMeta(trimEmptyGroups(t) ?? EMPTY), lens),
+    (t: Condition): Condition => coerceRule(stripMeta(trimEmptyGroups(t) ?? EMPTY), lens),
     [lens],
   );
 

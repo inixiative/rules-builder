@@ -128,7 +128,7 @@ export const DocsTab = () => (
     <Panel title="Type coercion (coerceType)">
       <P>
         The builder auto-injects coercion: <Mono>value</Mono> / <Mono>onChange</Mono> run json-rules
-        2.13's <Mono>stampCoercions</Mono> against the composed lens, so every field rule carries{' '}
+        <Mono>coerceRule</Mono> against the composed lens, so every field rule carries{' '}
         <Mono>{"coerceType: 'Int' | 'Float' | 'Boolean' | 'DateTime' | …"}</Mono> from its field
         kind — never inferred from the value's shape. <Mono>check()</Mono> then coerces both sides:
         dates land on epoch ms (Date objects, ISO strings in any zone, date-only strings — naive

@@ -1,4 +1,4 @@
-import { type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
+import { assertValidFieldMaps, type FieldMap } from '@inixiative/json-rules';
 import { useEffect, useState } from 'react';
 import { Badge, EditorHeader, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
@@ -78,7 +78,7 @@ export const FieldmapsTab = ({ ws, patch, selected }: TabProps & { selected?: st
       const maps = { ...ws.maps };
       if (selected && selected !== newName) delete maps[selected]; // rename
       maps[newName] = parsed;
-      validateFieldMapSet({ maps });
+      assertValidFieldMaps({ maps });
       patch({ maps });
       setError(null);
     } catch (e) {

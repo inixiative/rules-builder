@@ -1,10 +1,10 @@
 import {
-  exposedSurface,
   type FieldKind,
   type FieldMap,
   type FieldMapEntry,
   type Lens,
   type LensNarrowing,
+  projectLens,
 } from '@inixiative/json-rules';
 import { useMemo } from 'react';
 import { relationTarget, toFieldKind } from './surface';
@@ -68,7 +68,7 @@ export const lensValuePicker = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: LensValuePickerOptions = {},
 ): LensValueOption[] => {
-  const lens = exposedSurface(lensOrNarrowing);
+  const lens = projectLens(lensOrNarrowing, { by: 'model' });
   const startMap = opts.mapName ?? lens.mapName;
   const startModel = opts.model ?? lens.model;
   const maxDepth = opts.maxDepth ?? 0;

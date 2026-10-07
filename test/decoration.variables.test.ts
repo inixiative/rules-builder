@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { type Condition, check, checkRuleAgainstLens, type FieldMap } from '@inixiative/json-rules';
+import { type Condition, check, type FieldMap, validateRuleInLens } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import {
   type ArrayNode,
@@ -332,7 +332,7 @@ describe('variables — through the hook', () => {
     expect(result.current.validate('check').ok).toBe(true);
 
     const emitted = result.current.value;
-    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(validateRuleInLens(emitted, result.current.lens).ok).toBe(true);
     const now = new Date();
     const thisYear = now.toISOString();
     const run = (rewards: Record<string, unknown>[]) => check(emitted, { rewards }, { now });

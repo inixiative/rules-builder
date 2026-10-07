@@ -3,7 +3,7 @@ import {
   check,
   type EngineGlobalsState,
   engineGlobals,
-  sourceValuesFromRows,
+  materializeSources,
 } from '@inixiative/json-rules';
 import { useMemo } from 'react';
 import { composeNarrowed } from '../schema/surface';
@@ -32,7 +32,7 @@ export type UseFilteredCollection<T> = UseRuleBuilder & {
  * Headless rule builder over a collection in hand: `useRuleBuilder` plus the
  * in-memory half of the rules duality. The builder owns the one Condition;
  * sourced fields' option sets materialize from the rows themselves
- * (`sourceValuesFromRows` — declare `sources` on the source's narrowing and a
+ * (`materializeSources` — declare `sources` on the source's narrowing and a
  * plain column becomes a pseudo-enum picker of the values that actually occur);
  * `data` is the rows passing the emitted (coercion-stamped) rule via `check()`.
  * For collections fetched whole — a calendar range, a Kanban board — where the
@@ -45,7 +45,7 @@ export const useFilteredCollection = <T extends Record<string, unknown>>(
   const { rows, checkOptions, caseInsensitive, fuzzy, ...builderOpts } = opts;
 
   const sourceValues = useMemo(
-    () => sourceValuesFromRows(composeNarrowed(opts.source), rows, checkOptions),
+    () => materializeSources(composeNarrowed(opts.source), rows, checkOptions),
     [opts.source, rows, checkOptions],
   );
 

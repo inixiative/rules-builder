@@ -3,8 +3,8 @@ import {
   type Condition,
   check,
   createLens,
-  exposedSurface,
   type FieldMap,
+  projectLens,
 } from '@inixiative/json-rules';
 import {
   type Decoration,
@@ -28,7 +28,9 @@ const map: FieldMap = {
     },
   },
 };
-const lens = exposedSurface(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const lens = projectLens(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }), {
+  by: 'model',
+});
 
 const npsFacet = (slug: string, label: string): Decoration['facets'][number] => ({
   path: 'customFields.value',

@@ -1,12 +1,13 @@
 import {
   type Condition,
-  checkRuleAgainstLens,
   createLens,
-  exposedSurface,
   type FieldKind,
+  getAggregateOperators,
   type Lens,
-  resolveScopeRef,
+  projectLens,
+  readScopeRef,
   type ValueShape,
+  validateRuleInLens,
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
 import { addRule, asGroupRoot, getNode, type RulePath, removeNode, setNode } from '../core/tree';
@@ -33,7 +34,6 @@ import {
 } from '../schema/decoration';
 import type { BuilderField, SurfaceOptions } from '../schema/surface';
 import {
-  aggregateOperators,
   describeModelFields,
   genericOperators,
   knownValueShape,
@@ -132,7 +132,7 @@ export type LeafNode = {
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first
    *  (`$$.` is the element this leaf's array sits in). Absent at the root. */
   scopes?: ScopeOption[];
-  /** Gated against the allowed value set (sourced/enum) via checkRuleAgainstLens. */
+  /** Gated against the allowed value set (sourced/enum) via validateRuleInLens. */
   valid: boolean;
   remove: () => void;
 };
@@ -303,7 +303,7 @@ export type ArrayNode = {
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first —
    *  a prefixed list field iterates an ancestor's collection. Absent at the root. */
   scopes?: ScopeOption[];
-  /** Gated via checkRuleAgainstLens (validates field + nested condition). */
+  /** Gated via validateRuleInLens (validates field + nested condition). */
   valid: boolean;
   remove: () => void;
 };
@@ -338,7 +338,7 @@ type Located = { frame: Scope; name: string; prefix: string };
 /** Where a (possibly `$`-prefixed) field name resolves: the scope it names and the
  *  name within it. Undefined when the prefix reaches past the root. */
 const locate = (name: string, scope: Scope): Located | undefined => {
-  const target = resolveScopeRef(name, [...scope.ancestors, scope]);
+  const target = readScopeRef(name, [...scope.ancestors, scope]);
   if ('outOfBounds' in target) return undefined;
   return {
     frame: target.scope,
@@ -438,11 +438,11 @@ const pinField = (
   return { ...field, options, enumValues: options.map((o) => o.value) };
 };
 
-const COUNT_OPS = new Set(['atLeast', 'atMost', 'exactly']);
-const PREDICATE_OPS = new Set(['all', 'any', 'none']);
 type ArrayCat = 'presence' | 'count' | 'predicate';
-const arrayCat = (op: string | undefined): ArrayCat =>
-  op && COUNT_OPS.has(op) ? 'count' : op && PREDICATE_OPS.has(op) ? 'predicate' : 'presence';
+const arrayCat = (op: string | undefined): ArrayCat => {
+  const shape = op === undefined ? undefined : knownValueShape(op, 'array');
+  return shape === 'count' || shape === 'predicate' ? shape : 'presence';
+};
 
 /** The `sum`/`avg` modes the engine's `AggregateMode` supports. `min`/`max` could be
  *  added here if the engine adds them; element *count* is intentionally not a mode —
@@ -461,8 +461,8 @@ const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
  * - `field` must terminate at a list (`many`) relation.
  * - `aggregate.field` must exist on the related model and be a numeric scalar
  *   (`compilesToPrisma`) OR a `Json` column (valid-but-flagged, check()-only).
- * - `operator` must be one the declared targets compile ({@link aggregateOperators} —
- *   `toPrisma` has no range complement, so it drops `notBetween`).
+ * - `operator` must be an aggregate comparison (`getAggregateOperators()`; every
+ *   target compiles them all).
  * - no authored windowing ({@link AGGREGATE_WINDOW_KEYS}).
  */
 const validateAggregate = (
@@ -603,13 +603,14 @@ const buildLeaf = (
   const operators =
     subPath === undefined ? field?.operators : genericOperators(ctx.surfaceOpts.targets);
   const operator = (rec.dateOperator ?? rec.operator) as string | undefined;
+  const family = rec.dateOperator !== undefined ? 'date' : 'field';
   const operatorOptions = operators
     ? [...operators.field, ...operators.date].map((o) => ({
         value: o,
         label: o,
       }))
     : [];
-  const shape: ValueShape = (operator ? knownValueShape(operator) : undefined) ?? 'none';
+  const shape: ValueShape = (operator ? knownValueShape(operator, family) : undefined) ?? 'none';
   const valueOptions = declared?.options
     ? declared.options.map((o) => ({
         value: o.value,
@@ -687,8 +688,8 @@ const buildLeaf = (
         // `equals → contains` leave what the user typed alone. An operator the
         // catalog does not know (a persisted legacy rule) has no class: the switch
         // still commits and the operand is left as it is.
-        const next = operandClass(op);
-        const prev = operator === undefined ? undefined : operandClass(operator);
+        const next = operandClass(op, isDate ? 'date' : 'field');
+        const prev = operator === undefined ? undefined : operandClass(operator, family);
         const dropOperand =
           next === 'none' || (prev !== undefined && next !== undefined && prev !== next);
         const { operator: _o, dateOperator: _d, value: v, path: p, bind: b, ...rest } = rec;
@@ -751,7 +752,7 @@ const buildLeaf = (
     hoist: leafHoist,
     atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
     scopes: enclosingScopes(scope, ctx),
-    valid: checkRuleAgainstLens(enclose(scope, node), ctx.anchorLens).ok,
+    valid: validateRuleInLens(enclose(scope, node), ctx.anchorLens).ok,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -793,12 +794,13 @@ const buildArray = (
   // Elements belong to the related model → author condition/filter against its surface.
   const relScope: Scope = rel
     ? (() => {
-        const relLens = exposedSurface(
+        const relLens = projectLens(
           createLens({
             maps: scope.lens.maps,
             mapName: rel.mapName,
             model: rel.modelName,
           }),
+          { by: 'model' },
         );
         const relFields = relabelRelations(
           describeModelFields(relLens, rel.mapName, rel.modelName, ctx.surfaceOpts),
@@ -900,7 +902,7 @@ const buildArray = (
   // that `sum`/`avg` reduces. Offered only when the element relation resolves.
   const aggTargetFields = rel ? relScope.fields.filter((f) => f.aggregatable) : [];
   const aggTargetField = rel ? relScope.fields.find((f) => f.name === agg.field) : undefined;
-  const aggOperators = aggregateOperators(ctx.surfaceOpts.targets);
+  const aggOperators = getAggregateOperators();
   const aggregateValidation = isAggregate
     ? validateAggregate(rec, field, aggTargetField, aggOperators)
     : undefined;
@@ -1045,8 +1047,10 @@ const buildArray = (
               // no visible cause. Same-class switches keep the value; an operator the
               // catalog does not know (a persisted legacy rule) leaves it alone.
               const prev =
-                rec.operator === undefined ? undefined : operandClass(String(rec.operator));
-              const next = operandClass(nextOp);
+                rec.operator === undefined
+                  ? undefined
+                  : operandClass(String(rec.operator), 'field');
+              const next = operandClass(nextOp, 'field');
               const sameShape = prev === undefined || next === undefined || prev === next;
               const { value: _v, ...rest } = rec;
               ctx.commit(
@@ -1059,7 +1063,8 @@ const buildArray = (
           },
           value: {
             current: rec.value as number | [number, number] | undefined,
-            shape: (rec.operator ? knownValueShape(String(rec.operator)) : undefined) ?? 'none',
+            shape:
+              (rec.operator ? knownValueShape(String(rec.operator), 'field') : undefined) ?? 'none',
             set: (v) => ctx.commit(setNode(ctx.root, path, { ...rec, value: v } as Condition)),
           },
         }
@@ -1086,7 +1091,7 @@ const buildArray = (
         : undefined,
     scopes: enclosingScopes(scope, ctx),
     valid:
-      checkRuleAgainstLens(enclose(scope, node), ctx.anchorLens).ok &&
+      validateRuleInLens(enclose(scope, node), ctx.anchorLens).ok &&
       (aggregateValidation?.ok ?? true),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.

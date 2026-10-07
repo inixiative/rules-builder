@@ -4,11 +4,9 @@ import {
   type Bridge,
   createLens,
   type DateOperator,
-  exposedSurface,
   type FieldKind,
   type FieldMap,
   type FieldMapEntry,
-  getAggregateOperators,
   getArrayOperators,
   getOperatorsForKind,
   getValueShape,
@@ -16,6 +14,8 @@ import {
   type LensNarrowing,
   NUMERIC_KINDS,
   type Operator,
+  type OperatorFamily,
+  projectLens,
   type RuleTarget,
   type SourceOption,
   type SourceValues,
@@ -54,7 +54,7 @@ export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing
  * projection, never by mutating the maps.
  */
 export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens =>
-  exposedSurface(composeNarrowed(source), { sourceValues: opts.sourceValues });
+  projectLens(composeNarrowed(source), { sourceValues: opts.sourceValues, by: 'model' });
 
 export type BuilderField = {
   name: string;
@@ -147,14 +147,6 @@ const fieldAndDateOperators = (
   );
   return { field, date };
 };
-
-/** The aggregate threshold comparisons every declared target can compile — the
- *  engine's own list, narrowed the way {@link operatorsForKind} narrows a field's.
- *  No targets means no narrowing: whatever the engine supports anywhere. */
-export const aggregateOperators = (targets?: RuleTarget[]): readonly Operator[] =>
-  getAggregateOperators().filter((op) =>
-    supportedByAllTargets(op, targets, (t) => getAggregateOperators(t)),
-  );
 
 const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
   getArrayOperators().filter((op) =>
@@ -257,15 +249,19 @@ export const describeModelFields = (
 
 export const valueShapeForOperator = (
   operator: Operator | DateOperator | ArrayOperator,
-): ValueShape => getValueShape(operator);
+  family: OperatorFamily,
+): ValueShape => getValueShape(operator, family);
 
 /** {@link valueShapeForOperator} for an operator that may not be in the catalog — a
  *  persisted rule from an older engine, or a decoration typo. `undefined` instead of
  *  the throw, so a setter or a shape read can treat it as "shape unknown" and still
  *  build the node. */
-export const knownValueShape = (operator: string): ValueShape | undefined => {
+export const knownValueShape = (
+  operator: string,
+  family: OperatorFamily,
+): ValueShape | undefined => {
   try {
-    return getValueShape(operator as never);
+    return getValueShape(operator, family);
   } catch {
     return undefined;
   }
@@ -285,8 +281,8 @@ const INTERCHANGEABLE_SHAPES: ReadonlySet<ValueShape> = new Set([
 /** The class of operand an operator carries — two operators of the same class accept
  *  each other's value. `undefined` for an operator the catalog does not know (a
  *  persisted legacy rule), which a caller should read as "leave the operand alone". */
-export const operandClass = (operator: string): string | undefined => {
-  const shape = knownValueShape(operator);
+export const operandClass = (operator: string, family: OperatorFamily): string | undefined => {
+  const shape = knownValueShape(operator, family);
   if (shape === undefined) return undefined;
   return INTERCHANGEABLE_SHAPES.has(shape) ? 'scalar' : shape;
 };

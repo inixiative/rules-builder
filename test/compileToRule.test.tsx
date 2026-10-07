@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { type Condition, check, checkRuleAgainstLens, type FieldMap } from '@inixiative/json-rules';
+import { type Condition, check, type FieldMap, validateRuleInLens } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
@@ -45,7 +45,7 @@ describe('a decoration facet compiles to a rule that passes the lens gate and ev
     act(() => leaf.value?.set('tech'));
 
     const emitted = result.current.value;
-    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(validateRuleInLens(emitted, result.current.lens).ok).toBe(true);
     expect(check(emitted, { account: { industry: 'tech' } })).toBe(true);
     expect(check(emitted, { account: { industry: 'saas' } })).not.toBe(true);
   });
@@ -77,7 +77,7 @@ describe('a decoration facet compiles to a rule that passes the lens gate and ev
     act(() => value.value?.set(5));
 
     const emitted = result.current.value;
-    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(validateRuleInLens(emitted, result.current.lens).ok).toBe(true);
     expect(check(emitted, { customFields: [{ key: 'nps', value: 9 }] })).toBe(true);
     expect(check(emitted, { customFields: [{ key: 'nps', value: 1 }] })).not.toBe(true);
     // the locked where actually scopes it: a non-nps element does not satisfy it.
@@ -105,7 +105,7 @@ describe('a decoration facet compiles to a rule that passes the lens gate and ev
     expect(group.hoist?.label).toBe('Mature');
 
     const emitted = result.current.value;
-    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(validateRuleInLens(emitted, result.current.lens).ok).toBe(true);
     expect(check(emitted, { tier: 'gold', account: { industry: 'tech' } })).toBe(true);
     expect(check(emitted, { tier: 'silver', account: { industry: 'tech' } })).not.toBe(true);
 
@@ -130,7 +130,7 @@ describe('a decoration facet compiles to a rule that passes the lens gate and ev
     act(() => inner.value?.set('tech'));
 
     const emitted = result.current.value;
-    expect(checkRuleAgainstLens(emitted, result.current.lens).ok).toBe(true);
+    expect(validateRuleInLens(emitted, result.current.lens).ok).toBe(true);
     expect(check(emitted, { account: { industry: 'tech' } })).toBe(true);
     expect(check(emitted, { account: { industry: 'saas' } })).not.toBe(true);
   });
