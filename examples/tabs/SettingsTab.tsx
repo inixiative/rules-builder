@@ -1,4 +1,4 @@
-import { type Bridge, type FieldMap, validateFieldMapSet } from '@inixiative/json-rules';
+import { assertValidFieldMaps, type Bridge, type FieldMap } from '@inixiative/json-rules';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { defaultWorkspace } from '../samples';
 import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';
@@ -71,7 +71,7 @@ export const SettingsTab = ({
           replace(importWorkspace(draft));
           break;
         case 'maps':
-          validateFieldMapSet({ maps: parsed as Record<string, FieldMap> });
+          assertValidFieldMaps({ maps: parsed as Record<string, FieldMap> });
           patch({ maps: parsed as Record<string, FieldMap> });
           break;
         case 'bridges':

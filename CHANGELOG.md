@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.29.0 — json-rules 3.0
+
+- **Peer `@inixiative/json-rules` ^3.0.0.** Every call reads 3.0's one name per verb:
+  `projectLens(…, { by: 'model' })` for the surface, `validateRuleInLens` for the gate,
+  `coerceRule`, `readScopeRef`, `materializeSources`, `toSourceQueries`.
+- **An operator's shape is read in its family.** `between` is both a field and a date
+  operator with different operands, so `valueShapeForOperator(operator, family)` takes
+  the family (`'field' | 'date' | 'array'`), as `getValueShape` now does. A leaf reads it
+  from whether it carries `operator` or `dateOperator`; the array-node category comes
+  from the catalog's `count` / `predicate` shapes instead of a local list.
+- **The aggregate threshold picker offers every comparison.** Every target compiles them
+  all in 3.0 (`toPrisma` gained `notBetween`), so the `targets` narrowing is gone and a
+  `toPrisma` builder now offers and accepts `notBetween`.
+- **`notStartsWith` / `notEndsWith`** appear on string fields: operators come from the
+  catalog.
+- Example: field-map and narrowing checks use the throwing `assertValidFieldMaps` /
+  `assertValidNarrowing` (3.0's `validate*` return `{ ok, errors }`); the Builder tab
+  lists the lens gate's `errors` with their codes.
+
 ## 0.28.0 — scope refs: reach the enclosing element from inside an array rule
 
 - **The descriptor knows its enclosing scopes.** json-rules 2.23 resolves `$$.`, `$$$.`, …

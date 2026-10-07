@@ -1,9 +1,9 @@
 import {
-  exposedSurface,
+  assertValidNarrowing,
   type Lens,
   type LensNarrowing,
   type ModelNarrowing,
-  validateNarrowing,
+  projectLens,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { runSources } from '../../src';
@@ -49,7 +49,7 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
   const parentSurface = useMemo<Lens | null>(() => {
     try {
       const resolved = resolveRef(ws, draft.parent);
-      return resolved ? exposedSurface(resolved) : null;
+      return resolved ? projectLens(resolved, { by: 'model' }) : null;
     } catch {
       return null;
     }
@@ -76,8 +76,8 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
         fields: [] as ReturnType<typeof describeModelFields>,
       };
     try {
-      validateNarrowing(resolvedChain as LensNarrowing);
-      const surface = exposedSurface(resolvedChain);
+      assertValidNarrowing(resolvedChain as LensNarrowing);
+      const surface = projectLens(resolvedChain, { by: 'model' });
       return {
         error: null as string | null,
         fields: describeModelFields(surface, parentSurface.mapName, parentSurface.model),
@@ -244,7 +244,7 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
           <Badge tone="danger">{analysis.error}</Badge>
         ) : (
           <>
-            <Badge tone="ok">valid — validateNarrowing passed</Badge>
+            <Badge tone="ok">valid — assertValidNarrowing passed</Badge>
             <div style={{ fontSize: 12 }}>
               <div
                 style={{

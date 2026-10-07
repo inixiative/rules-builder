@@ -123,14 +123,11 @@ describe('buildRoot — aggregate nodes', () => {
     expect(a.valid).toBe(false);
   });
 
-  test('notBetween is rejected for a toPrisma builder — its having filter has no complement', () => {
+  test('notBetween is offered and valid for a toPrisma builder — every target compiles it', () => {
     const rule = aggRule({ operator: 'notBetween', value: [1, 2] });
     const a = build(rule, { targets: ['toPrisma'] }).children[0] as ArrayNode;
-    expect(a.valid).toBe(false);
-    expect(a.aggregate?.operator.options.map((o) => o.value)).not.toContain('notBetween');
-    // check() and toSql() both compile it, so an undeclared or check builder offers it.
-    const anywhere = build(rule).children[0] as ArrayNode;
-    expect(anywhere.aggregate?.operator.options.map((o) => o.value)).toContain('notBetween');
+    expect(a.valid).toBe(true);
+    expect(a.aggregate?.operator.options.map((o) => o.value)).toContain('notBetween');
   });
 
   test('authored windowing (take/skip/orderBy/filter) is rejected', () => {
@@ -143,7 +140,7 @@ describe('buildRoot — aggregate nodes', () => {
     expect((build(aggRule({ filter: { all: [] } })).children[0] as ArrayNode).valid).toBe(false);
   });
 
-  test('the operator picker offers exactly what the declared targets compile', () => {
+  test('the operator picker offers every aggregate comparison, whatever the targets', () => {
     const a = build(aggRule(), { targets: ['toPrisma'] }).children[0] as ArrayNode;
     expect(a.aggregate?.operator.options.map((o) => o.value)).toEqual([
       'equals',
@@ -153,6 +150,7 @@ describe('buildRoot — aggregate nodes', () => {
       'greaterThan',
       'greaterThanEquals',
       'between',
+      'notBetween',
     ]);
   });
 

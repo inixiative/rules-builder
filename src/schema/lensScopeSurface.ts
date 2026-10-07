@@ -1,4 +1,4 @@
-import { exposedSurface, type Lens, type LensNarrowing } from '@inixiative/json-rules';
+import { type Lens, type LensNarrowing, projectLens } from '@inixiative/json-rules';
 import { useMemo } from 'react';
 import { type LensValueOption, leafOption } from './lensValuePicker';
 import { relationTarget } from './surface';
@@ -43,7 +43,7 @@ export const lensScopeSurface = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: LensScopeSurfaceOptions = {},
 ): LensScope => {
-  const lens = exposedSurface(lensOrNarrowing);
+  const lens = projectLens(lensOrNarrowing, { by: 'model' });
   const startMap = opts.mapName ?? lens.mapName;
   const startModel = opts.model ?? lens.model;
   const values: LensValueOption[] = [];

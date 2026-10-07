@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createLens, exposedSurface, type FieldMap } from '@inixiative/json-rules';
+import { createLens, type FieldMap, projectLens } from '@inixiative/json-rules';
 import { describeModelFields, valueShapeForOperator } from '../src/schema/surface';
 
 const map: FieldMap = {
@@ -23,7 +23,9 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member', 'guest'] },
 };
 
-const lens = exposedSurface(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const lens = projectLens(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }), {
+  by: 'model',
+});
 const fields = (model = 'User', opts = {}) =>
   Object.fromEntries(describeModelFields(lens, 'app', model, opts).map((f) => [f.name, f]));
 
@@ -33,6 +35,8 @@ describe('describeModelFields — operators by kind', () => {
     expect(f.kind).toBe('String');
     expect(f.operators.field).toContain('contains');
     expect(f.operators.field).toContain('startsWith');
+    expect(f.operators.field).toContain('notStartsWith');
+    expect(f.operators.field).toContain('notEndsWith');
     expect(f.operators.array).toEqual([]);
   });
 
@@ -87,7 +91,9 @@ describe('describeModelFields — pseudo-enums and unknown types', () => {
         },
       },
     };
-    const l = exposedSurface(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }));
+    const l = projectLens(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }), {
+      by: 'model',
+    });
     const f = describeModelFields(l, 'app', 'User')[0];
     expect(f.enumValues).toEqual(['gold', 'silver']); // → select in the UI
     expect(f.kind).toBe('String'); // operators still string-based
@@ -98,7 +104,9 @@ describe('describeModelFields — pseudo-enums and unknown types', () => {
     const m: FieldMap = {
       models: { User: { fields: { handle: { kind: 'scalar', type: 'Citext' } } } },
     };
-    const l = exposedSurface(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }));
+    const l = projectLens(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }), {
+      by: 'model',
+    });
     const f = describeModelFields(l, 'app', 'User')[0];
     expect(f.kind).toBe('String');
     expect(f.operators.field.length).toBeGreaterThan(0);
@@ -107,10 +115,11 @@ describe('describeModelFields — pseudo-enums and unknown types', () => {
 
 describe('valueShapeForOperator drives the value slot', () => {
   test('maps operators to their value shapes', () => {
-    expect(valueShapeForOperator('equals')).toBe('scalar');
-    expect(valueShapeForOperator('between')).toBe('range');
-    expect(valueShapeForOperator('within')).toBe('dateWindow');
-    expect(valueShapeForOperator('all')).toBe('predicate');
-    expect(valueShapeForOperator('isEmpty')).toBe('none');
+    expect(valueShapeForOperator('equals', 'field')).toBe('scalar');
+    expect(valueShapeForOperator('between', 'field')).toBe('range');
+    expect(valueShapeForOperator('between', 'date')).toBe('dateRange');
+    expect(valueShapeForOperator('within', 'date')).toBe('dateWindow');
+    expect(valueShapeForOperator('all', 'array')).toBe('predicate');
+    expect(valueShapeForOperator('isEmpty', 'field')).toBe('none');
   });
 });

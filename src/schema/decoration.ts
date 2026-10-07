@@ -1,13 +1,13 @@
 import {
   type ArrayOperator,
   type Condition,
-  checkRuleAgainstLens,
   createLens,
   type DateExpr,
-  exposedSurface,
   type FieldKind,
   type Lens,
+  projectLens,
   type RuleValue,
+  validateRuleInLens,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo } from 'react';
 import { ruleForField } from '../builder/nodes';
@@ -355,7 +355,7 @@ export const facetId = (facet: Facet): string => {
 };
 
 // A rehydrated node carries metadata the authored `where` never has (coerceType
-// from stampCoercions, `_`-prefixed editor keys like __id/__groupId — the same
+// from coerceRule, `_`-prefixed editor keys like __id/__groupId — the same
 // prefix stripMeta strips). Drop it and sort keys so the leading-block comparison
 // is order- and coercion-insensitive.
 const isMetaKey = (key: string): boolean => key === 'coerceType' || key.startsWith('_');
@@ -586,7 +586,7 @@ export const leadingIdentityCount = (lens: Lens, facet: Facet, node: Condition):
  * its `prefix.…` dotted path so a leaf emits the real path. It walks the branch
  * model's exposed surface — the lens already fixes the depth (a narrowing decides
  * what's reachable), so there is no cap here; a per-chain `seen` guard terminates
- * on recursive schemas, exactly as `exposedSurface` does. It reaches:
+ * on recursive schemas, exactly as `projectLens` does. It reaches:
  *  - scalar/enum values of the branch model and its nested to-one relations
  *    (`account.owner.email`) — the nested-branch case as flattened deep paths;
  *  - **list relations** at each level, kept selectable so they build a nested array
@@ -1085,8 +1085,9 @@ export const stampFacetIds = (
     const rel = relationScopeOf(lens, next.field as string | undefined);
     const scoped = rel ? scopedDecoration(decoration, rel.mapName, rel.modelName) : undefined;
     if (rel && scoped) {
-      const relLens = exposedSurface(
+      const relLens = projectLens(
         createLens({ maps: lens.maps, mapName: rel.mapName, model: rel.modelName }),
+        { by: 'model' },
       );
       next.condition = stampFacetIds(next.condition as Condition, relLens, scoped);
     }
@@ -1317,7 +1318,9 @@ export const validateDecoration = (lens: Lens, decoration: Decoration): string[]
       continue;
     }
     for (const mapName of bindings) {
-      const scopeLens = exposedSurface(createLens({ maps: lens.maps, mapName, model: modelPart }));
+      const scopeLens = projectLens(createLens({ maps: lens.maps, mapName, model: modelPart }), {
+        by: 'model',
+      });
       violations.push(
         ...validateFacetList(
           scopeLens,
@@ -1349,7 +1352,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
         violations.push(
           `preset '${name}' cannot carry 'selectors' — its editable slots are variables`,
         );
-      if (!checkRuleAgainstLens(presetSeed(facet), lens).ok)
+      if (!validateRuleInLens(presetSeed(facet), lens).ok)
         violations.push(`preset '${name}' is not a valid rule against the lens`);
       const template = templateOf(facet);
       const slots = variableSlots(template);
@@ -1358,7 +1361,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
           const withOption = mapSlots(template, slots, (s) =>
             s === slot ? { value: option } : {},
           );
-          if (!checkRuleAgainstLens(withOption, lens).ok)
+          if (!validateRuleInLens(withOption, lens).ok)
             violations.push(
               `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(template, slot.path) as { field?: string }).field}' is not allowed by the lens`,
             );

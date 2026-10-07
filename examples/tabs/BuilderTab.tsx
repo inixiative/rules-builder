@@ -1,4 +1,4 @@
-import { check, checkRuleAgainstLens, describeRule, exposedSurface } from '@inixiative/json-rules';
+import { check, describeRule, projectLens, validateRuleInLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { type RuleBuilderSource, runSources } from '../../src';
 import { RuleEditor } from '../RuleTree';
@@ -60,7 +60,7 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
       // engine compiles the source queries; app runs them over sample rows → fetched values
       // fold into the projection so option sets reflect the lens/narrowing, not the raw column.
       const sourceValues = runSources(resolved, sampleRows);
-      const lens = exposedSurface(resolved, { sourceValues });
+      const lens = projectLens(resolved, { sourceValues, by: 'model' });
       const source: RuleBuilderSource = {
         maps: lens.maps,
         mapName: lens.mapName,
@@ -79,7 +79,7 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
     return {
       ...surface,
       description: describeRule(ws.rule, surface.lens),
-      check: checkRuleAgainstLens(ws.rule, surface.lens),
+      check: validateRuleInLens(ws.rule, surface.lens),
     };
   }, [surface, ws.rule]);
 
@@ -195,15 +195,15 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
               targets: {analysis.description.supportedTargets.join(', ') || '—'}
             </Badge>
             <Badge tone={analysis.check.ok ? 'ok' : 'danger'}>
-              checkRuleAgainstLens:{' '}
-              {analysis.check.ok ? 'ok' : `${analysis.check.violations.length} violation(s)`}
+              validateRuleInLens:{' '}
+              {analysis.check.ok ? 'ok' : `${analysis.check.errors.length} error(s)`}
             </Badge>
           </Row>
           {!analysis.check.ok && (
             <div style={{ display: 'grid', gap: 4 }}>
-              {analysis.check.violations.map((v, i) => (
-                <Badge key={`${v.path}-${i}`} tone="danger">
-                  {v.path}: {v.reason}
+              {analysis.check.errors.map((e, i) => (
+                <Badge key={`${e.path}-${i}`} tone="danger">
+                  {e.path}: {e.message} ({e.code})
                 </Badge>
               ))}
             </div>

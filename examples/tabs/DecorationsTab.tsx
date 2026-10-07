@@ -1,4 +1,4 @@
-import { exposedSurface } from '@inixiative/json-rules';
+import { projectLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { type Decoration, type Facet, validateDecoration } from '../../src';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
@@ -218,7 +218,7 @@ export const DecorationsTab = ({ ws, patch, selected }: TabProps & { selected?: 
     try {
       const resolved = resolveRef(ws, against.ref);
       if (!resolved) return ['surface not resolvable'];
-      return validateDecoration(exposedSurface(resolved), draft);
+      return validateDecoration(projectLens(resolved, { by: 'model' }), draft);
     } catch (err) {
       return [String(err)];
     }

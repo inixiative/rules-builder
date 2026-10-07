@@ -4,8 +4,8 @@ import {
   type Condition,
   check,
   createLens,
-  exposedSurface,
   type FieldMap,
+  projectLens,
 } from '@inixiative/json-rules';
 import {
   consumedTopFields,
@@ -56,8 +56,9 @@ const bridges: Bridge[] = [
   },
 ];
 
-const lens = exposedSurface(
+const lens = projectLens(
   createLens({ maps: { prisma, salesforce }, bridges, mapName: 'prisma', model: 'User' }),
+  { by: 'model' },
 );
 
 const byName = (decoration: Decoration) =>
@@ -111,7 +112,7 @@ describe('describeFacets — leaf facets', () => {
   });
 });
 
-const eav = exposedSurface(
+const eav = projectLens(
   createLens({
     maps: {
       prisma: {
@@ -149,6 +150,7 @@ const eav = exposedSurface(
     mapName: 'prisma',
     model: 'User',
   }),
+  { by: 'model' },
 );
 
 describe('describeFacets — collection facets', () => {
@@ -419,7 +421,7 @@ describe('consumedTopFields / matchFacet', () => {
 });
 
 describe('describeFacets / matchFacet — branch facets', () => {
-  const branchLens = exposedSurface(
+  const branchLens = projectLens(
     createLens({
       maps: {
         app: {
@@ -437,6 +439,7 @@ describe('describeFacets / matchFacet — branch facets', () => {
       mapName: 'app',
       model: 'User',
     }),
+    { by: 'model' },
   );
 
   test('a to-one relation seeds a group of prefixed conditions', () => {

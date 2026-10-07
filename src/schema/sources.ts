@@ -3,7 +3,7 @@ import {
   type Lens,
   type LensNarrowing,
   type SourceValues,
-  sourceQueries,
+  toSourceQueries,
 } from '@inixiative/json-rules';
 
 export type { SourceValues } from '@inixiative/json-rules';
@@ -25,7 +25,7 @@ export const runSources = (
   lensOrNarrowing: Lens | LensNarrowing,
   rows: SourceRows,
 ): SourceValues[] =>
-  sourceQueries(lensOrNarrowing).map((q) => {
+  toSourceQueries(lensOrNarrowing).map((q) => {
     const matched = (rows[q.model] ?? []).filter((r) => check(q.composedWhere, r) === true);
     const seen = new Set<string>();
     const options: { value: string; label?: string }[] = [];

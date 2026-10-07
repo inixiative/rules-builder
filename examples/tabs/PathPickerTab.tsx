@@ -1,4 +1,4 @@
-import { createLens, exposedSurface } from '@inixiative/json-rules';
+import { createLens, projectLens } from '@inixiative/json-rules';
 import { useMemo, useState } from 'react';
 import { lensValuePicker } from '../../src/schema/lensValuePicker';
 import { Badge, Code, Empty, Panel, Row, Select, tokens } from '../ui';
@@ -43,7 +43,7 @@ export const PathPickerTab = ({ ws }: TabProps) => {
       try {
         const resolved = resolveRef(ws, parseRef(key));
         if (resolved) {
-          const s = exposedSurface(resolved);
+          const s = projectLens(resolved, { by: 'model' });
           setMapName(s.mapName);
           setModel(s.model);
           return;

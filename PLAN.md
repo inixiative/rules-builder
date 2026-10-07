@@ -12,7 +12,7 @@ Composes a json-rules `Condition` against a **lens**, without writing JSON.
 The builder is driven by a **lens**, not a hand-written schema:
 
 1. The server narrows a lens and produces an **exposed surface** with
-   `exposedSurface(lensOrNarrowing)` (json-rules ≥ 2.8) — a `Lens` (maps intact,
+   `projectLens(lensOrNarrowing, { by: 'model' })` (json-rules ≥ 3.0) — a `Lens` (maps intact,
    the navigable graph) containing only what the narrowing exposes. Never ship
    the raw lens.
 2. The builder reads that surface for field metadata and the json-rules **operator
@@ -20,7 +20,7 @@ The builder is driven by a **lens**, not a hand-written schema:
    engine can actually run.
 3. A finished rule is classified with `describeRule(rule, lens)` (sources touched,
    bridges crossed ⇒ check-only, valid targets) and gated with
-   `checkRuleAgainstLens` before execution.
+   `validateRuleInLens` before execution.
 
 ### Layers
 
@@ -41,7 +41,7 @@ The builder is driven by a **lens**, not a hand-written schema:
 - ✅ Slot contracts.
 - ✅ React layer: `useRuleBuilder` hook (wraps the tree engine + surface), recursive
   `RuleBuilder` / `RuleGroup` / `RuleRow`, value slot rendering, live
-  classification via `describeRule` + `checkRuleAgainstLens`.
+  classification via `describeRule` + `validateRuleInLens`.
 - ✅ Hydration seam (`src/hydration/`): `hydrateFieldMaps` projects fetched table
   contents onto fields as gated pseudo-enums (`kind:'enum'` + `values`); wired into
   `RuleBuilderSource.hydration` → `composeSurface`. A consumer fetches from the DB,
@@ -58,7 +58,7 @@ Design: `docs/plans/2026-06-27-lifecycle-demo-and-hydration-design.md`.
 
 ## Slot value shapes
 
-`valueShapeForOperator` returns the json-rules `ValueShape` an operator expects;
+`valueShapeForOperator(operator, family)` returns the json-rules `ValueShape` an operator expects;
 the renderer maps it to a slot: `scalar`/`ordered`→input, `string`→text,
 `array`→multiselect, `range`/`dateRange`→two inputs, `dateValue`→date picker,
 `dateWindow`→relative/period picker, `dayList`→weekday multiselect,

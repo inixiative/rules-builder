@@ -10,6 +10,7 @@ const map: FieldMap = {
         tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
         age: { kind: 'scalar', type: 'Int' },
         metadata: { kind: 'scalar', type: 'Json' },
+        joinedAt: { kind: 'scalar', type: 'DateTime' },
       },
     },
   },
@@ -46,7 +47,12 @@ describe('buildRoot — descriptor tree', () => {
   test('leaf exposes field / operator / value controls with options', () => {
     const leaf = build(cond()).children[0] as LeafNode;
     expect(leaf.field.value).toBe('tier');
-    expect(leaf.field.options.map((o) => o.value).sort()).toEqual(['age', 'metadata', 'tier']);
+    expect(leaf.field.options.map((o) => o.value).sort()).toEqual([
+      'age',
+      'joinedAt',
+      'metadata',
+      'tier',
+    ]);
     expect(leaf.operator.value).toBe('equals');
     expect(leaf.operator.options.map((o) => o.value)).toContain('in');
     expect(leaf.value.current).toBe('gold');
@@ -55,6 +61,16 @@ describe('buildRoot — descriptor tree', () => {
       { value: 'gold', label: 'gold' },
       { value: 'silver', label: 'silver' },
     ]);
+  });
+
+  test('a shared operator name reads its shape from the family the leaf uses', () => {
+    const shapeOf = (rule: Condition) =>
+      (build({ all: [{ ...(rule as object), __id: 'a' } as Condition] }).children[0] as LeafNode)
+        .value.shape;
+    expect(
+      shapeOf({ field: 'joinedAt', dateOperator: 'between', value: ['2026-01-01', '2026-02-01'] }),
+    ).toBe('dateRange');
+    expect(shapeOf({ field: 'age', operator: 'between', value: [1, 2] })).toBe('range');
   });
 
   test('valid reflects the sourced/enum gate', () => {
