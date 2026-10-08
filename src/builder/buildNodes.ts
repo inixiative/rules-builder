@@ -35,6 +35,7 @@ import {
   genericOperators,
   knownValueShape,
   operandClass,
+  relationTarget,
   viewAt,
   viewRoot,
   visitOf,
@@ -761,10 +762,30 @@ const buildLeaf = (
     hoist: leafHoist,
     atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
     scopes: enclosingScopes(scope, ctx),
-    valid: validateRuleInLens(enclose(scope, node), ctx.view.lens).ok,
+    // The gate, and the value set the visit offers (a sourced field's fetched options, cut
+    // to its partition) — the gate knows no fetched set.
+    valid: valueValid && validateRuleInLens(enclose(scope, node), ctx.view.lens).ok,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
+};
+
+/** The target of a (possibly dotted) list relation the lens shows from `at`. */
+const listRelationAt = (
+  at: ViewAt,
+  name: string,
+): { mapName: string; modelName: string } | undefined => {
+  const segments = name.split('.');
+  let scope = at;
+  for (const [i, seg] of segments.entries()) {
+    const visit = visitOf(scope);
+    const entry = visit && Object.hasOwn(visit.fields, seg) ? visit.fields[seg] : undefined;
+    const target = entry && visit ? relationTarget(entry, visit.mapName) : undefined;
+    if (!target || !entry) return undefined;
+    if (i === segments.length - 1) return entry.isList ? target : undefined;
+    scope = viewAt(scope, seg);
+  }
+  return undefined;
 };
 
 const buildArray = (
@@ -780,7 +801,10 @@ const buildArray = (
   const field = located?.frame.fields.find((f) => f.name === located.name);
   const op = rec.arrayOperator as string | undefined;
   const cat = arrayCat(op);
-  const rel = field?.relation;
+  // A dotted list field no picker offers (`account.contracts`, authored outside a branch)
+  // still resolves its relation through the visits, so its subtree is built, not hidden.
+  const rel =
+    field?.relation ?? (located ? listRelationAt(located.frame.at, located.name) : undefined);
   const isAggregate = isAggregateNode(node);
   const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
   const aggMode: 'sum' | 'avg' = agg.mode === 'avg' ? 'avg' : 'sum';

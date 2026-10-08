@@ -54,8 +54,7 @@ export const leafOption = (
  * Enumerate the value-locations reachable through a lens — every leaf scalar/enum,
  * optionally across the relations it turns on, up to `maxDepth`, as dotted paths from
  * the start. Each visit reads what the lens shows on that path. Relations are traversed
- * but never emitted (you pick a value, not a relation), and a model is not re-entered
- * along one path. Pure.
+ * but never emitted (you pick a value, not a relation). Pure.
  */
 export const lensValuePicker = (
   lensOrNarrowing: Lens | LensNarrowing,
@@ -65,29 +64,21 @@ export const lensValuePicker = (
   const maxDepth = opts.maxDepth ?? 0;
   const out: LensValueOption[] = [];
 
-  const walk = (
-    scope: ReturnType<typeof viewRoot>,
-    prefix: string,
-    depth: number,
-    seen: Set<string>,
-  ): void => {
+  const walk = (scope: ReturnType<typeof viewRoot>, prefix: string, depth: number): void => {
     const visit = visitOf(scope);
     if (!visit) return;
-    const key = `${visit.mapName}:${visit.model}`;
-    if (seen.has(key)) return;
-    const nextSeen = new Set([...seen, key]);
 
     for (const [name, entry] of Object.entries(visit.fields)) {
       const path = prefix ? `${prefix}.${name}` : name;
       if (relationTarget(entry, visit.mapName)) {
-        if (depth < maxDepth) walk(viewAt(scope, name), path, depth + 1, nextSeen);
+        if (depth < maxDepth) walk(viewAt(scope, name), path, depth + 1);
         continue;
       }
       out.push(leafOption(name, entry, path, opts.labels));
     }
   };
 
-  walk(viewAt(viewRoot(view), opts.at ?? ''), '', 0, new Set());
+  walk(viewAt(viewRoot(view), opts.at ?? ''), '', 0);
   return out;
 };
 

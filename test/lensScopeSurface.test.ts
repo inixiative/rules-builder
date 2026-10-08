@@ -49,7 +49,25 @@ const map: FieldMap = {
 };
 
 const source = { maps: { app: map }, mapName: 'app', model: 'Recipient' };
-const lens = composeNarrowed(withAllRelations(source));
+// What an app spells: the account chain and the fan-mission loop, with the same chain
+// below the loop's recipient.
+const accountChain = {
+  relations: {
+    owner: { relations: { team: { relations: { region: {} } } } },
+    opportunities: {},
+  },
+};
+const lens = composeNarrowed({
+  ...source,
+  narrowing: {
+    root: {
+      relations: {
+        account: accountChain,
+        fanMissions: { relations: { recipient: { relations: { account: accountChain } } } },
+      },
+    },
+  },
+});
 
 const surface = (opts = {}) => {
   const { values, loops } = lensScopeSurface(lens, opts);
@@ -101,11 +119,21 @@ describe('lensScopeSurface', () => {
     expect(Object.keys(loops).sort()).toEqual(['account.opportunities', 'fanMissions']);
   });
 
-  test('cycles terminate — a model already on the path is cut', () => {
+  test('the lens ends every path — a model-default edge is crossed once', () => {
+    const open = lensScopeSurface(composeNarrowed(withAllRelations(source)));
+    const paths = open.values.map((o) => o.path);
+    // A model may recur (User → manager → User) — each edge only once.
+    expect(paths).toContain('account.owner.manager.name');
+    expect(paths.some((p) => p.includes('.manager.manager'))).toBe(false);
+    // Recipient → Account → Recipient: Recipient.account is already crossed.
+    expect(paths).toContain('account.primaryContact.email');
+    expect(paths.some((p) => p.startsWith('account.primaryContact.account'))).toBe(false);
+    expect(open.loops.map((o) => o.path)).toContain('account.primaryContact.fanMissions');
+  });
+
+  test('a model a spelled path leaves is not followed back', () => {
     const { values } = surface();
-    // Recipient → Account → Recipient
     expect(Object.keys(values).some((p) => p.startsWith('account.primaryContact'))).toBe(false);
-    // User → User
     expect(Object.keys(values).some((p) => p.includes('.manager'))).toBe(false);
   });
 

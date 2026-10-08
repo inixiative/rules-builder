@@ -66,12 +66,14 @@ describe('resolve — fetched sourceValues fold onto the view and the gate', () 
     expect(tier?.kind).toBe('String'); // keeps native operators
   });
 
-  test('the gate (view.lens) refuses a value outside the fetched set', () => {
-    const { lens } = resolve(source, { sourceValues });
-    const good: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
-    const bad: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'platinum' }] };
-    expect(validateRuleInLens(good, lens).ok).toBe(true);
-    expect(validateRuleInLens(bad, lens).ok).toBe(false);
+  test('the fetched set rides the visit at its path; the gate (view.lens) does not know it', () => {
+    const view = resolve(source, { sourceValues });
+    expect(view.visit('User')?.fields.tier.options?.map((o) => o.value)).toEqual([
+      'gold',
+      'silver',
+    ]);
+    const platinum: Condition = { field: 'tier', operator: 'equals', value: 'platinum' };
+    expect(validateRuleInLens(platinum, view.lens).ok).toBe(true);
   });
 
   test('the caller maps are never mutated', () => {

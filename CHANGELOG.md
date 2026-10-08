@@ -11,8 +11,13 @@ Breaking, with no compatibility path (no users).
   described every rule against `projectLens(…, { by: 'model' })`, which is a bare lens —
   under 3.4 every relation rule was invalid, coercion skipped relation paths and
   `describe()` errored. The leaf/array `valid` flags, `coerceRule`, `describeRule` and
-  preset validation now read the narrowed lens. Fetched `sourceValues` are folded onto the
-  maps first, so the gate still refuses a value outside a sourced field's fetched set.
+  preset validation now read the narrowed lens.
+- **Fetched values are held per path.** The surface used to carry `sourceValues` per model,
+  so the gate refused a value outside a fetched set on every path to that model. The gate
+  now knows no fetched set (json-rules takes no per-path `sourceValues`); a leaf's `valid`
+  folds in its `value.valid` — the set the visit offers, fetched options at their own path
+  cut to the values the schema allows — and preset variable options are checked against the
+  slot's visit the same way.
 - **Each scope reads the visit the lens shows on its path.** `resolve(source)` returns a
   `LensView` — `{ lens, mapName, model, visit(at) }` — read through the path projection
   (`projectLens`). An element scope reads the visit at its relation's dotted path, so its
@@ -37,7 +42,12 @@ Breaking, with no compatibility path (no users).
   projected whole. `buildActionRoot` takes `view`.
 - **`lensValuePicker` / `lensScopeSurface`** walk the visits the lens shows; their start is
   `{ at }` (a dotted path from the anchor) instead of `{ mapName, model }`, and a loop portal
-  carries its own `at` to re-anchor with.
+  carries its own `at` to re-anchor with. The model-repeat cut is gone: the lens ends every
+  path, and a model may recur along one (`owner.manager.name`).
+- A dotted list field no picker offers (`account.contracts` outside a branch) resolves its
+  relation through the visits, so its condition subtree is built rather than hidden.
+- `validateDecoration` reports a `models[…]` violation once, naming every visit it holds at,
+  and walks only visits that can reach a `models` key's model.
 - A field whose map entry declares `options` keeps their labels and partition `groups` on
   every visit (cut to the values the lens allows there); the path projection rebuilds
   unfetched options from the allowed values alone.

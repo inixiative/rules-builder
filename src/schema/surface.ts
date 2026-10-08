@@ -52,46 +52,10 @@ const layersOf = (narrowing: RuleBuilderSource['narrowing']): readonly Narrowing
 
 export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
 
-/** Fetched option sets folded onto the maps' own field entries (a copy), unioned per model.
- *  The lens gate reads a field's `options` as its allowed set, so a value outside a sourced
- *  field's fetched set is refused by the gate as it is by the picker. */
-const hydrate = (
-  maps: Record<string, FieldMap>,
-  sourceValues: readonly SourceValues[] | undefined,
-): Record<string, FieldMap> => {
-  if (!sourceValues?.length) return maps;
-  const out: Record<string, FieldMap> = { ...maps };
-  for (const sv of sourceValues) {
-    const map = Object.hasOwn(out, sv.mapName) ? out[sv.mapName] : undefined;
-    const model = map && Object.hasOwn(map.models, sv.model) ? map.models[sv.model] : undefined;
-    const entry =
-      model && Object.hasOwn(model.fields, sv.field) ? model.fields[sv.field] : undefined;
-    if (!map || !model || !entry) continue;
-    const byKey = new Map<string, SourceOption>();
-    for (const o of [...(entry.options ?? []), ...sv.options])
-      byKey.set(JSON.stringify([o.groups ?? null, o.value]), o);
-    out[sv.mapName] = {
-      ...map,
-      models: {
-        ...map.models,
-        [sv.model]: {
-          ...model,
-          fields: { ...model.fields, [sv.field]: { ...entry, options: [...byKey.values()] } },
-        },
-      },
-    };
-  }
-  return out;
-};
-
-/** Compose a serializable source into its narrowed lens — the gate. With `sourceValues`, the
- *  fetched option sets are folded onto the maps first, so the gate admits only fetched values. */
-export const composeNarrowed = (
-  source: RuleBuilderSource,
-  sourceValues?: readonly SourceValues[],
-): Lens | LensNarrowing => {
+/** Compose a serializable source into its narrowed lens — the gate. */
+export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing => {
   const lens = createLens({
-    maps: hydrate(source.maps, sourceValues),
+    maps: source.maps,
     bridges: source.bridges,
     mapName: source.mapName,
     model: source.model,
@@ -193,10 +157,13 @@ export const createView = (lens: Lens | LensNarrowing, opts: ResolveOptions = {}
 
 /**
  * Resolve a serializable source (+ optional fetched `sourceValues`) to the view the builder
- * reads: the narrowed lens (the gate, fetched values folded in) and its path projection.
+ * reads: the narrowed lens (the gate) and its path projection, each sourced field's fetched
+ * options attached at its own path. The gate knows no fetched set — a node's value is held
+ * to the fetched options of the visit it sits on by the builder (`value.valid`, folded into
+ * `valid`), since json-rules takes no per-path `sourceValues` on the gate.
  */
 export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): LensView =>
-  createView(composeNarrowed(source, opts.sourceValues), opts);
+  createView(composeNarrowed(source), opts);
 
 /**
  * The view of a raw record: every column, and every relation turned on wherever its model is

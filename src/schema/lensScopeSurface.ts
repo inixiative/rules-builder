@@ -36,8 +36,8 @@ export type LensScopeSurfaceOptions = {
 /**
  * Split what a lens shows at one scope into flat `values` and `loops`.
  *
- * The lens is the depth: the to-one relations it turns on are traversed (cut per path
- * when a model repeats), because every leaf below them is still a single value on the
+ * The lens is the depth: the to-one relations it turns on are traversed — it ends every
+ * path (each model-default edge once per path) — because every leaf below them is still a single value on the
  * scope's row. A to-many relation is not a value and is not traversed — it is emitted
  * in `loops`, and its own scope comes from calling this again with `{ at: loop.at }`.
  * Each visit reads what the lens shows on that path. A scalar list column stays a value
@@ -51,12 +51,9 @@ export const lensScopeSurface = (
   const values: LensValueOption[] = [];
   const loops: LensLoopOption[] = [];
 
-  const walk = (scope: ViewAt, prefix: string, seen: Set<string>): void => {
+  const walk = (scope: ViewAt, prefix: string): void => {
     const visit = visitOf(scope);
     if (!visit) return;
-    const key = `${visit.mapName}:${visit.model}`;
-    if (seen.has(key)) return;
-    const nextSeen = new Set([...seen, key]);
 
     for (const [name, entry] of Object.entries(visit.fields)) {
       const path = prefix ? `${prefix}.${name}` : name;
@@ -73,14 +70,14 @@ export const lensScopeSurface = (
           });
           continue;
         }
-        walk(next, path, nextSeen);
+        walk(next, path);
         continue;
       }
       values.push(leafOption(name, entry, path, opts.labels));
     }
   };
 
-  walk(start, '', new Set());
+  walk(start, '');
   return { values, loops };
 };
 

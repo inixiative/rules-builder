@@ -91,7 +91,13 @@ reads the visit the lens shows at that relation — and gates, coerces and descr
 rule against the narrowed lens itself (`useRuleBuilder().lens`), never against a projected
 surface. `narrowing` may also be a list of parent-less layers, outermost first, each
 narrowing the one before. `withAllRelations(source)` turns every relation on in the first
-layer — the posture of a raw record, or of a first-layer grant.
+layer — the posture of a first-layer grant. A view projects every path its lens shows, and
+with every relation on a densely connected schema has very many (each edge once per path);
+for a raw record use `rawView(source)`, which walks visits on demand.
+
+A sourced field's fetched options (`sourceValues`) ride the visit at their own path: the
+picker offers them there and the node's `valid` holds its value to them. The lens gate does
+not know fetched sets, so another path to the same model keeps its declared values.
 
 ### Rendering values
 
@@ -431,13 +437,13 @@ with a registry stores its own by-name reference.
 - `useRuleBuilder(opts)` → `{ value, root, lens, view, setCondition, validate, describe }` — `lens` is the narrowed lens (the gate), `view` what the builder reads
 - `useFilteredCollection({ ...opts, rows, checkOptions? })` → the same surface plus `data` (rows passing the current rule)
 - `buildRoot(condition, view, fields, maxDepth, commit)` — the pure tree builder behind the hook
-- `resolve(source, { sourceValues })` → `LensView`: the narrowed lens (`view.lens`, fetched values folded in so the gate admits only them) and `view.visit(at)`, the fields the lens shows at a dotted path from the anchor (`'User'`, `'User.orders'`)
+- `resolve(source, { sourceValues })` → `LensView`: the narrowed lens (`view.lens`, the gate) and `view.visit(at)`, the fields the lens shows at a dotted path from the anchor (`'User'`, `'User.orders'`)
 - `createView(lensOrNarrowing, { sourceValues })` — the same over a lens in hand; `rawView(source)` — a raw record, every relation on (permissions, transitions)
 - `composeNarrowed(source)` — the source's narrowed lens; `withAllRelations(source)` — every relation turned on in its first layer
 - `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })` — the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
 - `runSources(lensOrNarrowing, rows)` — DISTINCT option sets for sourced fields
 - `lensValuePicker` / `useLensValuePicker` — the field/path picker atom (`{ at, maxDepth }`)
-- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (cycle-cut), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
+- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens ends every path), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule` — validated rule serialization
 
 See [PLAN.md](./PLAN.md) for the architecture.

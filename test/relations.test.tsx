@@ -258,3 +258,82 @@ describe('model-default relations: each edge once per path', () => {
     ]);
   });
 });
+
+describe('fetched source values are held per path', () => {
+  const sourced: RuleBuilderSource = {
+    maps: {
+      app: {
+        models: {
+          User: {
+            fields: {
+              orders: { kind: 'object', type: 'Order', isList: true },
+              org: { kind: 'object', type: 'Org' },
+            },
+          },
+          Org: { fields: { orders: { kind: 'object', type: 'Order', isList: true } } },
+          Order: {
+            fields: {
+              status: {
+                kind: 'scalar',
+                type: 'String',
+                options: [{ value: 'open' }, { value: 'closed' }, { value: 'void' }],
+              },
+            },
+          },
+        },
+      },
+    },
+    mapName: 'app',
+    model: 'User',
+    narrowing: {
+      root: {
+        relations: {
+          orders: { sources: { status: true } },
+          org: { relations: { orders: {} } },
+        },
+      },
+    },
+  };
+  const sourceValues = [
+    {
+      path: 'User.orders',
+      mapName: 'app',
+      model: 'Order',
+      field: 'status',
+      options: [{ value: 'open' }, { value: 'platinum' }],
+    },
+  ];
+  const statusLeaf = (list: string, value: string) => {
+    const result = renderHook(() =>
+      useRuleBuilder({
+        source: sourced,
+        sourceValues,
+        defaultValue: {
+          all: [
+            {
+              field: list,
+              arrayOperator: 'any',
+              condition: { all: [{ field: 'status', operator: 'equals', value }] },
+            },
+          ],
+        },
+      }),
+    ).result;
+    return ((result.current.root as GroupNode).children[0] as ArrayNode).condition
+      ?.children[0] as LeafNode;
+  };
+
+  test('the sourced path offers and admits only its fetched values, cut to what the schema allows', () => {
+    expect(statusLeaf('orders', 'open').value?.options?.map((o) => o.value)).toEqual(['open']);
+    expect(statusLeaf('orders', 'open').valid).toBe(true);
+    expect(statusLeaf('orders', 'closed').valid).toBe(false);
+    // Fetched but outside the declared set: never offered, never admitted.
+    expect(statusLeaf('orders', 'platinum').valid).toBe(false);
+  });
+
+  test('another path to the same model keeps the declared set — no fetch narrows it', () => {
+    const leaf = statusLeaf('org.orders', 'closed');
+    expect(leaf.value?.options?.map((o) => o.value)).toEqual(['open', 'closed', 'void']);
+    expect(leaf.valid).toBe(true);
+  });
+});

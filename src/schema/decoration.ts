@@ -4,6 +4,7 @@ import {
   type DateExpr,
   type FieldKind,
   type FieldMapEntry,
+  getLensRoot,
   type RuleValue,
   validateRuleInLens,
 } from '@inixiative/json-rules';
@@ -1264,7 +1265,8 @@ export const validateDecoration = (view: LensView, decoration: Decoration): stri
   const violations = validateFacetList(viewRoot(view), decoration.facets, '');
   // models[...] lists validate at every element scope the runtime builds them in: each
   // visit of the model the lens reaches through a list relation.
-  const visits = shownVisits(view);
+  const models = Object.keys(decoration.models ?? {});
+  const visits = models.length ? shownVisits(view, models) : [];
   for (const [scopeKey, facets] of Object.entries(decoration.models ?? {})) {
     const [mapPart, modelPart] = scopeKey.includes(':')
       ? scopeKey.split(':', 2)
@@ -1284,27 +1286,57 @@ export const validateDecoration = (view: LensView, decoration: Decoration): stri
       );
       continue;
     }
+    // One violation per message, naming every visit it holds at.
+    const byMessage = new Map<string, { model: string; paths: string[] }>();
     for (const { scope, visit } of bound)
-      violations.push(
-        ...validateFacetList(
-          scope,
-          facets,
-          `models['${scopeKey}'] @ ${visit.mapName}:${visit.model} (${scope.at}): `,
-        ),
-      );
+      for (const message of validateFacetList(scope, facets, '')) {
+        const entry = byMessage.get(message) ?? {
+          model: `${visit.mapName}:${visit.model}`,
+          paths: [],
+        };
+        entry.paths.push(scope.at);
+        byMessage.set(message, entry);
+      }
+    for (const [message, { model, paths }] of byMessage)
+      violations.push(`models['${scopeKey}'] @ ${model} (${paths.join(', ')}): ${message}`);
   }
   return violations;
 };
 
-/** Every visit the lens shows; `throughList` marks one an array `condition` surface is
- *  built on — reached through a list relation. */
+/** The visits the lens shows that can lead to a `models[...]` key's model; `throughList`
+ *  marks one an array `condition` surface is built on — reached through a list relation.
+ *  A branch whose model can't reach a wanted model on the schema at all is never walked
+ *  (the lens shows a subset of the schema's relations). */
 const shownVisits = (
   view: LensView,
+  keys: string[],
 ): { scope: ViewAt; visit: ViewVisit; throughList: boolean }[] => {
+  const wanted = (mapName: string, model: string) =>
+    keys.some((k) => k === model || k === `${mapName}:${model}`);
+  // Reverse reachability over the schema: models some relation path leads from to a wanted one.
+  const { maps } = getLensRoot(view.lens);
+  const edges: [string, string][] = [];
+  const reaches = new Set<string>();
+  for (const [mapName, map] of Object.entries(maps))
+    for (const [model, entry] of Object.entries(map.models)) {
+      if (wanted(mapName, model)) reaches.add(`${mapName}:${model}`);
+      for (const field of Object.values(entry.fields)) {
+        const target = relationTarget(field, mapName);
+        if (target) edges.push([`${mapName}:${model}`, `${target.mapName}:${target.modelName}`]);
+      }
+    }
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [from, to] of edges)
+      if (reaches.has(to) && !reaches.has(from)) {
+        reaches.add(from);
+        grew = true;
+      }
+  }
   const out: { scope: ViewAt; visit: ViewVisit; throughList: boolean }[] = [];
   const walk = (scope: ViewAt, throughList: boolean) => {
     const visit = visitOf(scope);
-    if (!visit) return;
+    if (!visit || !reaches.has(`${visit.mapName}:${visit.model}`)) return;
     out.push({ scope, visit, throughList });
     for (const [name, entry] of Object.entries(visit.fields))
       if (relationTarget(entry, visit.mapName)) walk(viewAt(scope, name), entry.isList === true);
@@ -1336,6 +1368,38 @@ const encloseAt = (scope: ViewAt, node: Condition): Condition | undefined => {
     (inner, field) => ({ field, arrayOperator: 'any', condition: inner }) as Condition,
     node,
   );
+};
+
+/** Whether the field at a slot offers `option` at the visit the slot sits on — a sourced
+ *  field's fetched set there, which the gate does not know. A field with no value set, an
+ *  aggregate threshold or a slot the walk can't place offers anything. */
+const slotOffers = (
+  scope: ViewAt,
+  template: Condition,
+  path: RulePath,
+  option: unknown,
+): boolean => {
+  if (typeof option !== 'string') return true;
+  let at: ViewAt | undefined = scope;
+  for (let i = 0; i < path.length && at; i++) {
+    const seg = path[i];
+    if (seg !== 'condition' && seg !== 'filter') continue;
+    const owner = getNode(template, path.slice(0, i)) as { field?: string } | undefined;
+    at = relationScopeOf(at, owner?.field)?.at;
+  }
+  const field = (getNode(template, path) as { field?: string; aggregate?: unknown } | undefined)
+    ?.field;
+  const leaf = getNode(template, path) as { aggregate?: unknown } | undefined;
+  if (!at || !field || leaf?.aggregate !== undefined) return true;
+  const segments = field.split('.');
+  for (const seg of segments.slice(0, -1)) {
+    at = hopAt(at, seg)?.next;
+    if (!at) return true;
+  }
+  const allowed = describeScopeFields(at).find(
+    (f) => f.name === segments[segments.length - 1],
+  )?.enumValues;
+  return !allowed || allowed.includes(option);
 };
 
 /** Whether the narrowed lens admits `rule` authored at `scope`. */
@@ -1372,7 +1436,7 @@ const validateFacetList = (scope: ViewAt, list: Facet[], prefix: string): string
           const withOption = mapSlots(template, slots, (s) =>
             s === slot ? { value: option } : {},
           );
-          if (!admittedAt(scope, withOption))
+          if (!admittedAt(scope, withOption) || !slotOffers(scope, template, slot.path, option))
             violations.push(
               `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(template, slot.path) as { field?: string }).field}' is not allowed by the lens`,
             );
