@@ -220,42 +220,33 @@ describe('presets through relations', () => {
   });
 });
 
-describe('model-default relations: each edge once per path', () => {
-  const recursive: RuleBuilderSource = {
-    ...source,
-    narrowing: {
-      mapDefaults: {
-        app: {
-          models: { User: { relations: { orders: {} } }, Order: { relations: { user: {} } } },
-        },
-      },
-    },
+describe('model-default relations grow a tree', () => {
+  const defaults = {
+    app: { models: { User: { relations: { orders: {} } }, Order: { relations: { user: {} } } } },
   };
-
-  test('the back-edge is on in the element scope; the edge already crossed is not', () => {
-    const backEdge: Condition = {
-      field: 'orders',
-      arrayOperator: 'any',
-      condition: { all: [{ field: 'user.name', operator: 'equals', value: 'x' }] },
-    };
-    const orders = (rootOf({ all: [backEdge] }, undefined, recursive).current.root as GroupNode)
+  const backEdge: Condition = {
+    field: 'orders',
+    arrayOperator: 'any',
+    condition: { all: [{ field: 'user.name', operator: 'equals', value: 'x' }] },
+  };
+  const ordersNode = (narrowing: RuleBuilderSource['narrowing']) =>
+    (rootOf({ all: [backEdge] }, undefined, { ...source, narrowing }).current.root as GroupNode)
       .children[0] as ArrayNode;
-    expect(orders.valid).toBe(true);
-    expect((orders.condition?.children[0] as LeafNode).valid).toBe(true);
 
-    const again: Condition = {
-      field: 'orders',
-      arrayOperator: 'any',
-      condition: {
-        all: [{ field: 'user.orders', arrayOperator: 'any', condition: { all: [] } }],
-      },
-    };
-    const twice = (rootOf({ all: [again] }, undefined, recursive).current.root as GroupNode)
-      .children[0] as ArrayNode;
-    expect(twice.valid).toBe(false);
-    expect(Object.keys(resolve(recursive).visit('User.orders.user')?.fields ?? {})).toEqual([
-      'name',
-    ]);
+  test('a second reach of a model is off in the tree, and offered once spelled', () => {
+    // Order.user leads back to User, the anchor: not reached again by the defaults.
+    const tree = ordersNode({ mapDefaults: defaults });
+    expect(tree.valid).toBe(false);
+    expect(
+      resolve({ ...source, narrowing: { mapDefaults: defaults } }).visit('User.orders.user'),
+    ).toBeUndefined();
+
+    const spelled = ordersNode({
+      mapDefaults: defaults,
+      root: { relations: { orders: { relations: { user: {} } } } },
+    });
+    expect(spelled.valid).toBe(true);
+    expect((spelled.condition?.children[0] as LeafNode).valid).toBe(true);
   });
 });
 

@@ -77,7 +77,9 @@ function Leaf({ node }: { node: LeafNode }) {
 Since json-rules 3.4 a relation is a field, off by default: a bare `source` offers its
 anchor's columns and nothing else. The source's `narrowing` (its first layer) turns
 relations on — along a path (`root.relations`) or wherever a model is visited
-(`mapDefaults[map].models[Model].relations`, each edge crossed once per path):
+(`mapDefaults[map].models[Model].relations`). Model-default turn-ons grow a tree from the
+anchor and each spelled path — each model once, at its nearest reach — so a second way to a
+model is spelled under `root.relations`:
 
 ```ts
 const source = {
@@ -91,9 +93,9 @@ reads the visit the lens shows at that relation — and gates, coerces and descr
 rule against the narrowed lens itself (`useRuleBuilder().lens`), never against a projected
 surface. `narrowing` may also be a list of parent-less layers, outermost first, each
 narrowing the one before. `withAllRelations(source)` turns every relation on in the first
-layer — the posture of a first-layer grant. A view projects every path its lens shows, and
-with every relation on a densely connected schema has very many (each edge once per path);
-for a raw record use `rawView(source)`, which walks visits on demand.
+layer, and spells the anchor's own at the root — the posture of a raw record or a
+first-layer grant. A view resolves each visit on demand (json-rules `lensVisit`), so nothing
+is enumerated; `rawView(source)` is the raw-record view permissions and transitions gate.
 
 A sourced field's fetched options (`sourceValues`) ride the visit at their own path: the
 picker offers them there and the node's `valid` holds its value to them. The lens gate does
@@ -443,7 +445,7 @@ with a registry stores its own by-name reference.
 - `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })` — the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
 - `runSources(lensOrNarrowing, rows)` — DISTINCT option sets for sourced fields
 - `lensValuePicker` / `useLensValuePicker` — the field/path picker atom (`{ at, maxDepth }`)
-- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens ends every path), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
+- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule` — validated rule serialization
 
 See [PLAN.md](./PLAN.md) for the architecture.

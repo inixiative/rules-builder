@@ -119,16 +119,32 @@ describe('lensScopeSurface', () => {
     expect(Object.keys(loops).sort()).toEqual(['account.opportunities', 'fanMissions']);
   });
 
-  test('the lens ends every path — a model-default edge is crossed once', () => {
+  test('the model defaults grow a tree — each model once, at its nearest reach', () => {
     const open = lensScopeSurface(composeNarrowed(withAllRelations(source)));
-    const paths = open.values.map((o) => o.path);
-    // A model may recur (User → manager → User) — each edge only once.
-    expect(paths).toContain('account.owner.manager.name');
-    expect(paths.some((p) => p.includes('.manager.manager'))).toBe(false);
-    // Recipient → Account → Recipient: Recipient.account is already crossed.
-    expect(paths).toContain('account.primaryContact.email');
-    expect(paths.some((p) => p.startsWith('account.primaryContact.account'))).toBe(false);
-    expect(open.loops.map((o) => o.path)).toContain('account.primaryContact.fanMissions');
+    // User is reached at account.owner, so neither its manager (User again) nor the
+    // Recipient behind account.primaryContact (the anchor's own model) is reached again.
+    expect(open.values.map((o) => o.path).sort()).toEqual([
+      'account.industry',
+      'account.owner.name',
+      'account.owner.team.name',
+      'account.owner.team.region.name',
+      'email',
+      'role',
+      'tags',
+    ]);
+    expect(open.loops.map((o) => o.path).sort()).toEqual(['account.opportunities', 'fanMissions']);
+    // A second reach is spelled.
+    const spelled = lensScopeSurface(
+      composeNarrowed({
+        ...source,
+        narrowing: {
+          root: {
+            relations: { account: { relations: { owner: { relations: { manager: {} } } } } },
+          },
+        },
+      }),
+    );
+    expect(spelled.values.map((o) => o.path)).toContain('account.owner.manager.name');
   });
 
   test('a model a spelled path leaves is not followed back', () => {

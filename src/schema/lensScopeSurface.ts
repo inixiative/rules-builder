@@ -37,7 +37,7 @@ export type LensScopeSurfaceOptions = {
  * Split what a lens shows at one scope into flat `values` and `loops`.
  *
  * The lens is the depth: the to-one relations it turns on are traversed — it ends every
- * path (each model-default edge once per path) — because every leaf below them is still a single value on the
+ * path (model defaults grow a tree, each model at its nearest reach) — because every leaf below them is still a single value on the
  * scope's row. A to-many relation is not a value and is not traversed — it is emitted
  * in `loops`, and its own scope comes from calling this again with `{ at: loop.at }`.
  * Each visit reads what the lens shows on that path. A scalar list column stays a value

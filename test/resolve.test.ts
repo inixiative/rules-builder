@@ -123,19 +123,25 @@ describe('relations — off until the narrowing turns them on (json-rules 3.4)',
     expect(view.visit('User.posts')).toBeUndefined();
   });
 
-  test('a model-default relation crosses each edge once per path', () => {
-    const view = resolve({
-      ...orgSource,
-      narrowing: {
-        mapDefaults: {
-          app: { models: { User: { relations: { org: {} } }, Org: { relations: { users: {} } } } },
+  test('the model defaults grow a tree: each model once, a second reach spelled', () => {
+    const defaults = {
+      app: { models: { User: { relations: { org: {} } }, Org: { relations: { users: {} } } } },
+    };
+    const root = viewRoot(resolve({ ...orgSource, narrowing: { mapDefaults: defaults } }));
+    // Org.users leads back to User, the anchor: already reached.
+    expect(names(describeScopeFields(viewAt(root, 'org')))).toEqual(['name']);
+    const spelled = viewRoot(
+      resolve({
+        ...orgSource,
+        narrowing: {
+          mapDefaults: defaults,
+          root: { relations: { org: { relations: { users: {} } } } },
         },
-      },
-    });
-    const root = viewRoot(view);
-    expect(names(describeScopeFields(viewAt(root, 'org')))).toEqual(['name', 'users']);
-    // User.org was crossed on the way to org.users — off there.
-    expect(names(describeScopeFields(viewAt(root, 'org.users')))).toEqual(['name']);
+      }),
+    );
+    expect(names(describeScopeFields(viewAt(spelled, 'org')))).toEqual(['name', 'users']);
+    // From the spelled node the tree grows again: User.org is on the spelled path, so off.
+    expect(names(describeScopeFields(viewAt(spelled, 'org.users')))).toEqual(['name']);
   });
 });
 
@@ -157,32 +163,27 @@ describe('a layered narrowing — a chain, outermost first', () => {
     });
     const view = resolve(source);
     expect(names(describeScopeFields(viewRoot(view)))).toEqual(['name', 'org']);
-    expect(names(describeScopeFields(viewAt(viewRoot(view), 'org')))).toEqual([
-      'name',
-      'parent',
-      'users',
-    ]);
+    // Org's parent and users lead to models already on the path.
+    expect(names(describeScopeFields(viewAt(viewRoot(view), 'org')))).toEqual(['name']);
   });
 });
 
 describe('rawView — the record a permission or transition gates', () => {
-  test('every relation on, each edge once per path; the gate agrees', () => {
-    const view = rawView(orgSource);
-    const root = viewRoot(view);
-    expect(names(describeScopeFields(root))).toEqual(['name', 'org', 'posts']);
-    expect(names(describeScopeFields(viewAt(root, 'org')))).toEqual(['name', 'parent', 'users']);
-    // Org.parent already crossed at org.parent.
-    expect(names(describeScopeFields(viewAt(root, 'org.parent')))).toEqual(['name', 'users']);
-    expect(view.visit('User.org.users.org')).toBeUndefined();
+  test('every relation of the record on, self-relations included; the gate agrees', () => {
+    const orgView = rawView({ ...orgSource, model: 'Org' });
+    const root = viewRoot(orgView);
+    expect(names(describeScopeFields(root))).toEqual(['name', 'parent', 'users']);
+    // users → User: its posts reached for the first time; its org leads back to Org.
+    expect(names(describeScopeFields(viewAt(root, 'users')))).toEqual(['name', 'posts']);
     expect(
-      validateRuleInLens({ field: 'org.parent.name', operator: 'equals', value: 'x' }, view.lens)
-        .ok,
+      validateRuleInLens({ field: 'parent.name', operator: 'equals', value: 'x' }, orgView.lens).ok,
     ).toBe(true);
     expect(
       validateRuleInLens(
-        { field: 'org.parent.parent.name', operator: 'equals', value: 'x' },
-        view.lens,
+        { field: 'parent.parent.name', operator: 'equals', value: 'x' },
+        orgView.lens,
       ).ok,
     ).toBe(false);
+    expect(orgView.visit('Org.parent.parent')).toBeUndefined();
   });
 });

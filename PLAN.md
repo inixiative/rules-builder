@@ -14,9 +14,9 @@ The builder is driven by a **lens**, not a hand-written schema:
 1. The server narrows a lens and hands the builder a serializable **source** — maps,
    anchor and parent-less narrowing layers. Relations are off until the first layer turns
    them on (json-rules ≥ 3.4).
-2. The builder reads it as a **view** (`resolve`): the narrowed lens, and its path
-   projection (`projectLens`) for field metadata — each scope reads the fields the lens
-   shows on that path — plus the json-rules **operator catalog** for valid operators
+2. The builder reads it as a **view** (`resolve`): the narrowed lens, and each visit
+   resolved on demand (`lensVisit`) for field metadata — each scope reads the fields the
+   lens shows on that path — plus the json-rules **operator catalog** for valid operators
    (target-aware), so it always matches what the engine can actually run.
 3. Every rule is gated (`validateRuleInLens`), coerced (`coerceRule`) and classified
    (`describeRule`: sources touched, bridges crossed ⇒ check-only, valid targets) against

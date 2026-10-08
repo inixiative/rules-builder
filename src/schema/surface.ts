@@ -13,12 +13,12 @@ import {
   getValueShape,
   type Lens,
   type LensNarrowing,
+  lensVisit,
   type ModelNarrowing,
   type NarrowingDefaults,
   NUMERIC_KINDS,
   type Operator,
   type OperatorFamily,
-  projectLens,
   type RuleTarget,
   type SourceOption,
   type SourceValues,
@@ -67,10 +67,13 @@ export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing
 };
 
 /**
- * The source with every relation of every model turned on at the model defaults of its first
- * layer (each edge crossed once per path), merged over what that layer already says. The
- * posture of a raw record, and of a first-layer grant, which may read any relation on the
- * schema; later layers still narrow it.
+ * The source with every relation turned on in its first layer, merged over what that layer
+ * already says: every model's relations at the model defaults — json-rules grows them as a
+ * tree from the anchor and each spelled path, each model at its nearest reach — and the
+ * anchor's own relations spelled at the root, so the record's every relation is on there (a
+ * self-relation included, which the tree would not reach again). The posture of a raw record,
+ * and of a first-layer grant; later layers still narrow it. Deeper paths the tree leaves off
+ * are spelled under `root.relations`.
  */
 export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource => {
   const base = createLens({
@@ -80,6 +83,11 @@ export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource =
     model: source.model,
   });
   const [first = {}, ...rest] = layersOf(source.narrowing);
+  const anchor: Record<string, ModelNarrowing> = {};
+  for (const [name, entry] of Object.entries(
+    base.maps[source.mapName]?.models[source.model]?.fields ?? {},
+  ))
+    if (relationTarget(entry, source.mapName)) anchor[name] = {};
   const mapDefaults: Record<string, NarrowingDefaults> = { ...first.mapDefaults };
   for (const [mapName, map] of Object.entries(base.maps))
     for (const [modelName, model] of Object.entries(map.models)) {
@@ -97,7 +105,8 @@ export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource =
         },
       };
     }
-  const layer = { ...first, mapDefaults };
+  const root = { ...first.root, relations: { ...anchor, ...first.root?.relations } };
+  const layer = { ...first, root, mapDefaults };
   return { ...source, narrowing: rest.length ? [layer, ...rest] : layer };
 };
 
@@ -122,37 +131,27 @@ export type LensView = {
 /** A scope of a view: the visit at `at`, a key of `view.visit`. */
 export type ViewAt = { view: LensView; at: string };
 
-/** A view over a lens or narrowing, read through its path projection (`projectLens`).
- *  `sourceValues` attach each sourced field's fetched options at its path. A field whose
- *  map entry declares `options` keeps them (labels and partition `groups`), cut to the
- *  values the lens allows there — the path projection rebuilds unfetched options from the
- *  allowed values alone, which drops both. */
+/** A view over a lens or narrowing: each visit resolved on demand by json-rules' `lensVisit`
+ *  (the gate's own rules, nothing enumerated) and kept. `sourceValues` attach each sourced
+ *  field's fetched options at its path. */
 export const createView = (lens: Lens | LensNarrowing, opts: ResolveOptions = {}): LensView => {
-  const paths = projectLens(lens, { sourceValues: opts.sourceValues });
-  const base = getLensRoot(lens);
-  const fetched = new Set((opts.sourceValues ?? []).map((sv) => `${sv.path}|${sv.field}`));
-  const visits = new Map<string, ViewVisit>();
+  const { mapName, model } = getLensRoot(lens);
+  const visits = new Map<string, ViewVisit | undefined>();
   const visit = (at: string): ViewVisit | undefined => {
-    if (!Object.hasOwn(paths, at)) return undefined;
-    const cached = visits.get(at);
-    if (cached) return cached;
-    const projected = paths[at];
-    const declared = base.maps[projected.mapName]?.models[projected.model]?.fields ?? {};
-    const fields: Record<string, FieldMapEntry> = {};
-    for (const [name, entry] of Object.entries(projected.fields)) {
-      const own = Object.hasOwn(declared, name) ? declared[name].options : undefined;
-      if (!own || fetched.has(`${at}|${name}`)) {
-        fields[name] = entry;
-        continue;
-      }
-      const allowed = entry.values && new Set(entry.values);
-      fields[name] = { ...entry, options: allowed ? own.filter((o) => allowed.has(o.value)) : own };
-    }
-    const out = { mapName: projected.mapName, model: projected.model, fields };
+    if (visits.has(at)) return visits.get(at);
+    const dot = at.indexOf('.');
+    const head = dot < 0 ? at : at.slice(0, dot);
+    const shown =
+      head === model
+        ? lensVisit(lens, dot < 0 ? '' : at.slice(dot + 1), { sourceValues: opts.sourceValues })
+        : null;
+    const out = shown
+      ? { mapName: shown.mapName, model: shown.model, fields: shown.fields }
+      : undefined;
     visits.set(at, out);
     return out;
   };
-  return { lens, mapName: base.mapName, model: base.model, visit };
+  return { lens, mapName, model, visit };
 };
 
 /**
@@ -166,58 +165,21 @@ export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): L
   createView(composeNarrowed(source), opts);
 
 /**
- * The view of a raw record: every column, and every relation turned on wherever its model is
- * visited, each edge (`Model.relation`) crossed once per path — the cap json-rules applies to a
- * model-default relation. What a permission or transition gates is the record itself, not a
- * narrowed lens. Its visits are walked on demand, so a wide schema is never projected whole.
+ * The view of a raw record: every column, and every relation turned on at the model defaults
+ * ({@link withAllRelations}) — the tree json-rules grows from them, each model at its nearest
+ * reach. What a permission or transition gates is the record itself, not a narrowed lens.
  */
-export const rawView = (source: Omit<RuleBuilderSource, 'narrowing'>): LensView => {
-  const raw = {
-    maps: source.maps,
-    bridges: source.bridges,
-    mapName: source.mapName,
-    model: source.model,
-  };
-  const base = createLens(raw);
-  const lens = composeNarrowed(withAllRelations(raw));
-
-  const modelAt = (mapName: string, modelName: string) => {
-    const map = Object.hasOwn(base.maps, mapName) ? base.maps[mapName] : undefined;
-    return map && Object.hasOwn(map.models, modelName)
-      ? { map, model: map.models[modelName] }
-      : undefined;
-  };
-  const visit = (at: string): ViewVisit | undefined => {
-    const [anchor, ...hops] = at.split('.');
-    if (anchor !== source.model) return undefined;
-    let mapName = source.mapName;
-    let modelName = source.model;
-    const crossed = new Set<string>();
-    for (const hop of hops) {
-      const entry = modelAt(mapName, modelName)?.model.fields[hop];
-      const target = entry && relationTarget(entry, mapName);
-      const edge = `${mapName}:${modelName}.${hop}`;
-      if (!target || crossed.has(edge)) return undefined;
-      crossed.add(edge);
-      mapName = target.mapName;
-      modelName = target.modelName;
-    }
-    const found = modelAt(mapName, modelName);
-    if (!found) return undefined;
-    const fields: Record<string, FieldMapEntry> = {};
-    for (const [name, entry] of Object.entries(found.model.fields)) {
-      if (relationTarget(entry, mapName)) {
-        if (!crossed.has(`${mapName}:${modelName}.${name}`)) fields[name] = entry;
-        continue;
-      }
-      const values =
-        entry.kind === 'enum' ? (entry.values ?? found.map.enums?.[entry.type]) : entry.values;
-      fields[name] = values ? { ...entry, values } : entry;
-    }
-    return { mapName, model: modelName, fields };
-  };
-  return { lens, mapName: source.mapName, model: source.model, visit };
-};
+export const rawView = (source: Omit<RuleBuilderSource, 'narrowing'>): LensView =>
+  createView(
+    composeNarrowed(
+      withAllRelations({
+        maps: source.maps,
+        bridges: source.bridges,
+        mapName: source.mapName,
+        model: source.model,
+      }),
+    ),
+  );
 
 /** The anchor's scope. */
 export const viewRoot = (view: LensView): ViewAt => ({ view, at: view.model });

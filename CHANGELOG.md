@@ -19,10 +19,11 @@ Breaking, with no compatibility path (no users).
   cut to the values the schema allows — and preset variable options are checked against the
   slot's visit the same way.
 - **Each scope reads the visit the lens shows on its path.** `resolve(source)` returns a
-  `LensView` — `{ lens, mapName, model, visit(at) }` — read through the path projection
-  (`projectLens`). An element scope reads the visit at its relation's dotted path, so its
-  own relations stay (0.29 re-anchored a bare lens there, which drops them) and a relation
-  turned on elsewhere, or an edge already crossed, is not offered. Decoration facets resolve,
+  `LensView` — `{ lens, mapName, model, visit(at) }` — each visit resolved on demand by
+  json-rules `lensVisit` (the gate's own rules; nothing is enumerated, so any schema is
+  cheap). An element scope reads the visit at its relation's dotted path, so its own
+  relations stay (0.29 re-anchored a bare lens there, which drops them), and a relation the
+  lens doesn't show on that path — off, or outside the model-default tree — is not offered. Decoration facets resolve,
   seed, match and stamp through the same visits; branch fields follow only relations the
   lens turns on.
 - **API.** `buildRoot(condition, view, …)`; `describeScopeFields(scope, opts)` beside
@@ -36,21 +37,22 @@ Breaking, with no compatibility path (no users).
   anchor, a to-one-only model) is reported.
 - **Layered sources.** `RuleBuilderSource.narrowing` may be a list of parent-less layers,
   outermost first; `composeNarrowed` chains them. `withAllRelations(source)` turns every
-  relation on in the first layer.
-- **Permissions and transitions gate the raw record:** `rawView(source)` — every relation on,
-  each edge crossed once per path (the cap json-rules applies), walked on demand rather than
-  projected whole. `buildActionRoot` takes `view`.
+  relation on in the first layer: every model's at the model defaults (json-rules grows them
+  as a tree, each model once at its nearest reach) and the anchor's own spelled at the root,
+  so a raw record's self-relations are on.
+- **Permissions and transitions gate the raw record:** `rawView(source)` — the view of
+  `withAllRelations` over the record; its rel walks read every relation of each resource.
+  `buildActionRoot` takes `view`.
 - **`lensValuePicker` / `lensScopeSurface`** walk the visits the lens shows; their start is
   `{ at }` (a dotted path from the anchor) instead of `{ mapName, model }`, and a loop portal
-  carries its own `at` to re-anchor with. The model-repeat cut is gone: the lens ends every
-  path, and a model may recur along one (`owner.manager.name`).
+  carries its own `at` to re-anchor with. The model-repeat cut is gone: the lens decides how
+  deep a path goes (a spelled `owner.manager.name` is reached).
 - A dotted list field no picker offers (`account.contracts` outside a branch) resolves its
   relation through the visits, so its condition subtree is built rather than hidden.
 - `validateDecoration` reports a `models[…]` violation once, naming every visit it holds at,
   and walks only visits that can reach a `models` key's model.
-- A field whose map entry declares `options` keeps their labels and partition `groups` on
-  every visit (cut to the values the lens allows there); the path projection rebuilds
-  unfetched options from the allowed values alone.
+- `useFilteredCollection`: json-rules 3.4's `materializeSources` throws on rows missing a key a
+  source or the grants on its path read — the collection in hand must carry them.
 - A bare value `path` is a root-row column in 3.4 (`context` is gone); docs no longer call it
   a context ref.
 - Example: the Builder tab authors against the ref's source (layers included) and gates

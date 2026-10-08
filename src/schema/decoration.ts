@@ -603,7 +603,7 @@ export const leadingIdentityCount = (scope: ViewAt, facet: Facet, node: Conditio
  * The field surface a branch facet's group is authored against, each re-`name`d to
  * its `prefix.…` dotted path so a leaf emits the real path. It walks the visits the
  * lens shows below the branch — the lens fixes the depth (only relations turned on
- * are followed, each model-default edge once per path), so there is no cap here. It
+ * are followed, and model defaults grow a tree), so there is no cap here. It
  * reaches:
  *  - scalar/enum values of the branch model and its nested to-one relations
  *    (`account.owner.email`) — the nested-branch case as flattened deep paths;
