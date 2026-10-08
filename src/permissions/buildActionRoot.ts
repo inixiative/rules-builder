@@ -1,6 +1,12 @@
 import type { Condition } from '@inixiative/json-rules';
 import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
-import type { BuilderField, LensView } from '../schema/surface';
+import {
+  type BuilderField,
+  describeScopeFields,
+  type LensView,
+  viewAt,
+  viewRoot,
+} from '../schema/surface';
 import {
   type ActionPath,
   actionKind,
@@ -57,8 +63,9 @@ type BaseNode = {
   kind: KindControl;
   remove?: () => void;
 };
-/** A `rel` walk as a path of hops: one segment per relation crossed, each scoped to the resource
- *  reached so far (intra-map relations + bridges). `target` is the final resource. */
+/** A `rel` walk as a path of hops: one segment per relation crossed, each offering the to-one
+ *  relations shown where the walk stands (intra-map relations + bridges) — the view's visit at
+ *  the path walked so far, so a narrowed lens gates every hop. `target` is the final resource. */
 export type RelControl = {
   segments: Control[];
   /** Relations available to append as the next hop (of the final resource). */
@@ -85,7 +92,9 @@ export type BuildActionOptions = {
   siblingActions: string[];
   /** Action names per resource (`map:model`) — the `rel` walk's target actions. */
   actionsByResource: Record<string, string[]>;
-  /** Fields of any resource (`map:model`) — needed to scope hops past the first. */
+  /** Raw-record builders only (permissions, transitions gate the record, not a lens): the
+   *  fields of the resource (`map:model`) a hop reaches. Absent, every hop reads the view's
+   *  visit at the path walked so far — what a lens-authored builder must do. */
   resourceFields?: (resource: string) => BuilderField[];
   maxDepth?: number;
   commit: (next: ActionRule) => void;
@@ -146,14 +155,20 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
     const currentResource = `${ctx.view.mapName}:${ctx.view.model}`;
-    const fieldsAt = (resource: string): BuilderField[] =>
-      resource === currentResource ? ctx.fields : (ctx.resourceFields?.(resource) ?? []);
+    // What a hop offers where the walk stands: the view's visit at the path walked so far (a
+    // narrowed lens gates every hop), or — for a raw-record builder — the resource's own fields.
+    const fieldsAt = (walked: string[], resource: string): BuilderField[] =>
+      walked.length === 0
+        ? ctx.fields
+        : ctx.resourceFields
+          ? ctx.resourceFields(resource)
+          : describeScopeFields(viewAt(viewRoot(ctx.view), walked.join('.')));
     const relTargetOf = (f: BuilderField | undefined): string | undefined =>
       f?.relation ? `${f.relation.mapName}:${f.relation.modelName}` : undefined;
     // Only to-one relations are walkable — a hop evaluates a single record, so the "many" side
     // (a list relation / the one→many bridge direction) is never a valid rel target.
-    const relOptionsAt = (resource: string) =>
-      fieldsAt(resource)
+    const relOptionsAt = (walked: string[], resource: string) =>
+      fieldsAt(walked, resource)
         .filter((f) => f.relation && !f.isList)
         .map((f) => opt(f.name));
     // Editing the relation path can move the target resource, so the previously-picked action
@@ -165,14 +180,17 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
     let resource = currentResource;
     let resolved = true;
     const segments: Control[] = segs.map((seg, i) => {
-      const optionsResource = resource;
-      const next = relTargetOf(fieldsAt(resource).find((x) => x.name === seg));
+      // A hop past an unresolved one stands nowhere: it offers nothing.
+      const options = resolved ? relOptionsAt(segs.slice(0, i), resource) : [];
+      const next = options.some((o) => o.value === seg)
+        ? relTargetOf(fieldsAt(segs.slice(0, i), resource).find((x) => x.name === seg))
+        : undefined;
       if (next) resource = next;
       else resolved = false;
       // Changing a hop truncates everything past it (deeper hops are scoped to it).
       return {
         value: seg,
-        options: relOptionsAt(optionsResource),
+        options,
         set: (r) => setRel([...segs.slice(0, i), r].join('.')),
       };
     });
@@ -182,7 +200,7 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
       ...base,
       rel: {
         segments,
-        addOptions: target ? relOptionsAt(target) : [],
+        addOptions: target ? relOptionsAt(segs, target) : [],
         addSegment: (r) => setRel([...segs, r].join('.')),
         removeLast: segs.length ? () => setRel(segs.slice(0, -1).join('.')) : undefined,
         action: {

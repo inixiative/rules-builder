@@ -56,10 +56,12 @@ const NODE = `function Node({ node }) {
   return <Leaf node={node} />; // field / operator / value controls
 }`;
 
-const SOURCES = `import { runSources } from '@inixiative/rules-builder';
+const SOURCES = `import { materializeSources } from '@inixiative/json-rules';
+import { composeNarrowed } from '@inixiative/rules-builder';
 
-const sourceValues = runSources(narrowing, rows); // DISTINCT options per sourced field
-useRuleBuilder({ source, sourceValues });          // sourced fields render as selects`;
+// rows in hand (or toSourceQueries + materializeSourceQuery against a DB)
+const sourceValues = materializeSources(composeNarrowed(source), rows, { now });
+useRuleBuilder({ source, sourceValues }); // sourced fields render as selects`;
 
 const SAVE = `import { stringifySavedRule, parseSavedRule } from '@inixiative/rules-builder';
 

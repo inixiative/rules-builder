@@ -1,4 +1,13 @@
-import type { Bridge, FieldMap } from '@inixiative/json-rules';
+import {
+  type Bridge,
+  type FieldMap,
+  getLensRoot,
+  indexBridges,
+  type Lens,
+  type LensNarrowing,
+  materializeSources,
+  type SourceValues,
+} from '@inixiative/json-rules';
 import type { Decoration } from '../src';
 import type { SavedLens, SavedNarrowing, Workspace } from './workspace';
 import { emptyWorkspace } from './workspace';
@@ -91,6 +100,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
     // prettier-ignore
     {
       id: 1,
+      accountId: 1,
       tier: 'gold',
       active: true,
       email: 'ada@acme.io',
@@ -107,6 +117,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
     },
     {
       id: 2,
+      accountId: 2,
       tier: 'silver',
       active: true,
       email: 'bo@acme.io',
@@ -123,6 +134,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
     },
     {
       id: 3,
+      accountId: 3,
       tier: 'silver',
       active: true,
       email: 'cy@acme.io',
@@ -135,6 +147,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
     }, // duplicate tier → distinct
     {
       id: 4,
+      accountId: 4,
       tier: 'bronze',
       active: false,
       email: 'di@acme.io',
@@ -164,6 +177,41 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
     { id: 3, industry: 'health' },
     { id: 4, industry: 'tech' }, // duplicate → distinct
   ],
+};
+
+/**
+ * Each sourced field's options over the sample rows: json-rules `materializeSources` over the
+ * lens's anchor collection, each row holding the far side of its bridges inline (the
+ * `indexBridges` shape, as a fetch across a bridge loads it). A source the rows can't serve
+ * (an unlinked `mapDefaults` source) offers nothing here.
+ */
+export const sampleSourceValues = (lens: Lens | LensNarrowing): SourceValues[] => {
+  const root = getLensRoot(lens);
+  const bridges = root.bridges ?? [];
+  const raw = Object.fromEntries(
+    bridges
+      .flatMap((b) => b.endpoints)
+      .map((e) => [`${e.fieldMap}:${e.model}`, sampleRows[e.model] ?? []]),
+  );
+  try {
+    const index = indexBridges(root, raw);
+    const rows = (sampleRows[root.model] ?? []).map((row) => {
+      const out: Record<string, unknown> = { ...row };
+      for (const { endpoints } of bridges) {
+        const [a, b] = endpoints;
+        const here = a.fieldMap === root.mapName && a.model === root.model ? a : b;
+        const far = here === a ? b : a;
+        if (here.fieldMap !== root.mapName || here.model !== root.model) continue;
+        const key = row[here.on];
+        out[`${far.fieldMap}:${far.model}`] =
+          key == null ? null : (index[far.fieldMap]?.[far.model]?.[far.on]?.[String(key)] ?? null);
+      }
+      return out;
+    });
+    return materializeSources(lens, rows, { now: new Date() });
+  } catch {
+    return [];
+  }
 };
 
 /** A cross-map lens: anchored at app.User with the bridge attached, so app + crm are both reachable. */

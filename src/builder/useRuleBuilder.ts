@@ -23,6 +23,7 @@ import {
   type LensView,
   type RuleBuilderSource,
   resolve,
+  schemaOf,
   viewRoot,
 } from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
@@ -142,7 +143,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     lens,
     view,
     setCondition: (c) => setTree(ingest(c)),
-    validate: (target) => validateRule(value, { target }),
+    validate: (target) => validateRule(value, { target, ...schemaOf(lens) }),
     describe: () => describeRule(value, lens),
   };
 };

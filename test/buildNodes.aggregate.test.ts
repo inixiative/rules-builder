@@ -14,6 +14,7 @@ const map: FieldMap = {
   models: {
     User: {
       fields: {
+        id: { kind: 'scalar', type: 'String' },
         tier: { kind: 'scalar', type: 'String' },
         orders: { kind: 'object', type: 'Order', isList: true },
         account: { kind: 'object', type: 'Account' }, // to-one relation
@@ -27,6 +28,8 @@ const map: FieldMap = {
         metadata: { kind: 'scalar', type: 'Json' }, // check()-only aggregate target
         occurredAt: { kind: 'scalar', type: 'DateTime' },
         status: { kind: 'enum', type: 'OrderStatus' },
+        userId: { kind: 'scalar', type: 'String' },
+        user: { kind: 'object', type: 'User', fromFields: ['userId'], toFields: ['id'] },
       },
     },
     Account: { fields: { name: { kind: 'scalar', type: 'String' } } },
@@ -136,14 +139,19 @@ describe('buildRoot — aggregate nodes', () => {
     expect(a.aggregate?.operator.options.map((o) => o.value)).toContain('notBetween');
   });
 
-  test('authored windowing (take/skip/orderBy/filter) is rejected', () => {
-    expect((build(aggRule({ take: 1 })).children[0] as ArrayNode).valid).toBe(false);
-    expect((build(aggRule({ skip: 2 })).children[0] as ArrayNode).valid).toBe(false);
-    expect(
-      (build(aggRule({ orderBy: [{ field: 'total', dir: 'desc' }] })).children[0] as ArrayNode)
-        .valid,
-    ).toBe(false);
-    expect((build(aggRule({ filter: { all: [] } })).children[0] as ArrayNode).valid).toBe(false);
+  test('authored windowing is valid where json-rules takes it on every target', () => {
+    const windows = [
+      { take: 1 },
+      { skip: 2 },
+      { orderBy: [{ field: 'total', dir: 'desc' }] },
+      { filter: { all: [] } },
+    ];
+    const valid = (over: Record<string, unknown>, targets?: SurfaceOptions['targets']) =>
+      (build(aggRule(over), { targets }).children[0] as ArrayNode).valid;
+    // check() runs any window; toPrisma folds a filter-only window into the condition; toSql none.
+    expect(windows.map((w) => valid(w))).toEqual([true, true, true, true]);
+    expect(windows.map((w) => valid(w, ['toPrisma']))).toEqual([false, false, false, true]);
+    expect(windows.map((w) => valid(w, ['toSql']))).toEqual([false, false, false, false]);
   });
 
   test('the operator picker offers every aggregate comparison, whatever the targets', () => {
@@ -162,7 +170,7 @@ describe('buildRoot — aggregate nodes', () => {
 
   test('the element window is authored via the condition sub-builder scoped to the related model', () => {
     const a = build(aggRule()).children[0] as ArrayNode;
-    expect(a.filter).toBeUndefined(); // no separate window control on an aggregate
+    expect(a.filter?.kind).toBe('group'); // check() takes a filter window on an aggregate
     expect(a.condition?.kind).toBe('group');
     const inner = a.condition?.children[0] as LeafNode;
     expect(inner.field.value).toBe('occurredAt');
@@ -174,6 +182,7 @@ describe('buildRoot — aggregate nodes', () => {
       'quantity',
       'status',
       'total',
+      'userId',
     ]);
   });
 

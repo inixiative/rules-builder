@@ -181,6 +181,15 @@ export const rawView = (source: Omit<RuleBuilderSource, 'narrowing'>): LensView 
     ),
   );
 
+/** The schema `validateRule` compiles a target against: the narrowed lens's root, as
+ *  json-rules' `describeRule` passes it. */
+export const schemaOf = (
+  lens: Lens | LensNarrowing,
+): { map: Lens; mapName: string; model: string } => {
+  const root = getLensRoot(lens);
+  return { map: root, mapName: root.mapName, model: root.model };
+};
+
 /** The anchor's scope. */
 export const viewRoot = (view: LensView): ViewAt => ({ view, at: view.model });
 

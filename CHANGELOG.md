@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.31.0 — validity is json-rules' answer, on the builder's targets
+
+Breaking, with no compatibility path (no users).
+
+- **Peer `@inixiative/json-rules` ^3.5.0.**
+- **`validate(target)` passes the schema.** `useRuleBuilder().validate` called `validateRule`
+  without `map`/`mapName`/`model`, so it refused every column compare toPrisma compiles and
+  contradicted `describe()`. It now passes the narrowed lens's root, as json-rules
+  `describeRule` does.
+- **A node's `valid` includes every target.** A leaf and an array/aggregate node are valid when
+  the lens gate passes and json-rules `validateRule` (with the lens's schema) passes on each of
+  `targets` (default `check`). A column compare toPrisma can't compile (different types, an
+  enclosing scope, a bare root path below a relation) is no longer reported valid.
+- **The path picker offers only compilable refs.** `value.path.scopes` lists refs of the field's
+  own kind (an enum: its own enum type) that every target takes; a scope with nothing to offer
+  is left out (under toPrisma, every enclosing `$$.` scope).
+- **Aggregates defer to json-rules.** The builder's copy of the engine's aggregate rules
+  (`validateAggregate`, which refused any window) is deleted. `filter` is offered on an
+  aggregate where every target takes a window (check, toPrisma; not toSql) or one is already
+  authored. The aggregate target picker's own validity (a number, or a check()-only Json column)
+  still folds into `valid`.
+- **`useActionRuleBuilder` rel walks are gated by the lens at every hop.** Each hop reads the
+  view's visit at the path walked so far; deeper hops no longer read the raw record (which
+  offered `account.parent` where the lens refused it). `BuildActionOptions.resourceFields` is
+  now for raw-record builders only (`usePermissionBuilder`, `useTransitionBuilder`, which gate
+  the record itself).
+- **Removed `runSources` and `SourceRows`.** It re-implemented source materialization wrongly
+  (dropped grouped sources, picked labels differently, ignored a bridged source's `recheck`, took
+  no clock). Use json-rules `toSourceQueries` + `materializeSourceQuery` against a database, or
+  `materializeSources(lens, rows, { now })` over rows in hand. `SourceValues` is still
+  re-exported from json-rules.
+
 ## 0.30.0 — json-rules 3.4: relations are fields, off until the narrowing turns them on
 
 Breaking, with no compatibility path (no users).
