@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.30.0 — json-rules 3.4: relations are fields, off until the narrowing turns them on
+
+Breaking, with no compatibility path (no users).
+
+- **Peer `@inixiative/json-rules` ^3.4.0.** A relation is off until the source's first
+  narrowing turns it on (`root.relations`, `mapDefaults…models.M.relations`); a bare
+  source offers its anchor's columns only.
+- **Gated against the narrowed lens, never the surface.** 0.29 validated, coerced and
+  described every rule against `projectLens(…, { by: 'model' })`, which is a bare lens —
+  under 3.4 every relation rule was invalid, coercion skipped relation paths and
+  `describe()` errored. The leaf/array `valid` flags, `coerceRule`, `describeRule` and
+  preset validation now read the narrowed lens. Fetched `sourceValues` are folded onto the
+  maps first, so the gate still refuses a value outside a sourced field's fetched set.
+- **Each scope reads the visit the lens shows on its path.** `resolve(source)` returns a
+  `LensView` — `{ lens, mapName, model, visit(at) }` — read through the path projection
+  (`projectLens`). An element scope reads the visit at its relation's dotted path, so its
+  own relations stay (0.29 re-anchored a bare lens there, which drops them) and a relation
+  turned on elsewhere, or an edge already crossed, is not offered. Decoration facets resolve,
+  seed, match and stamp through the same visits; branch fields follow only relations the
+  lens turns on.
+- **API.** `buildRoot(condition, view, …)`; `describeScopeFields(scope, opts)` beside
+  `describeModelFields` (which reads a model-keyed Lens); `createView`, `viewRoot`, `viewAt`,
+  `visitOf`; decoration functions take a scope (`ViewAt`) where they took a Lens, and
+  `validateDecoration` / `useFacetFields` take the view. `useRuleBuilder` returns `lens`
+  (the narrowed lens) and `view`.
+- **`validateDecoration`** gates presets in situ against the narrowed lens, wrapped in the
+  array rules that reach their scope; a `models[…]` list validates at every element scope
+  the lens reaches through a list relation, and one that is never an element scope (the
+  anchor, a to-one-only model) is reported.
+- **Layered sources.** `RuleBuilderSource.narrowing` may be a list of parent-less layers,
+  outermost first; `composeNarrowed` chains them. `withAllRelations(source)` turns every
+  relation on in the first layer.
+- **Permissions and transitions gate the raw record:** `rawView(source)` — every relation on,
+  each edge crossed once per path (the cap json-rules applies), walked on demand rather than
+  projected whole. `buildActionRoot` takes `view`.
+- **`lensValuePicker` / `lensScopeSurface`** walk the visits the lens shows; their start is
+  `{ at }` (a dotted path from the anchor) instead of `{ mapName, model }`, and a loop portal
+  carries its own `at` to re-anchor with.
+- A field whose map entry declares `options` keeps their labels and partition `groups` on
+  every visit (cut to the values the lens allows there); the path projection rebuilds
+  unfetched options from the allowed values alone.
+- A bare value `path` is a root-row column in 3.4 (`context` is gone); docs no longer call it
+  a context ref.
+- Example: the Builder tab authors against the ref's source (layers included) and gates
+  against its narrowed lens; `vip-active` turns `orders`, `enrichments` and `crm:Account` on;
+  narrowing where-editors read their menu with every relation on; the decoration validator
+  and path picker read views.
+
 ## 0.29.0 — json-rules 3.0
 
 - **Peer `@inixiative/json-rules` ^3.0.0.** Every call reads 3.0's one name per verb:

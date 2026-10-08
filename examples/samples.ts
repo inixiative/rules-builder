@@ -244,13 +244,16 @@ export const segmentDecoration: Decoration = {
   },
 };
 
-/** Two narrowings: one off the lens, one chained off that narrowing — each only restricts further. */
+/** Narrowings off the lens, one chained off another — each only restricts further. A bare lens
+ *  turns no relation on, so the first narrowing over it is what opens `orders` and the rest. */
 export const sampleNarrowings: Record<string, SavedNarrowing> = {
   'vip-active': {
     parent: { kind: 'lens', name: 'app-users' },
     narrowing: {
       root: {
         picks: ['id', 'email', 'tier', 'role', 'active', 'metadata'],
+        // Relations are off until the first narrowing turns them on (json-rules 3.4).
+        relations: { orders: {}, enrichments: {}, 'crm:Account': {} },
         where: { all: [{ field: 'active', operator: 'equals', value: true }] },
         enumPicks: { role: ['admin', 'member'] },
         sources: { tier: { all: [{ field: 'active', operator: 'equals', value: true }] } },
@@ -270,6 +273,10 @@ export const sampleNarrowings: Record<string, SavedNarrowing> = {
   'admins-only': {
     parent: { kind: 'narrowing', name: 'vip-active' },
     narrowing: { root: { enumPicks: { role: ['admin'] } } },
+  },
+  'with-orders': {
+    parent: { kind: 'lens', name: 'app-users' },
+    narrowing: { root: { relations: { orders: {} } } },
   },
 };
 
@@ -340,7 +347,7 @@ export const sampleTransitions: Workspace['transitions'] = {
  */
 export const sampleRules: Workspace['rules'] = {
   'over-limit order': {
-    source: { kind: 'lens', name: 'app-users' },
+    source: { kind: 'narrowing', name: 'with-orders' },
     rule: {
       all: [
         {

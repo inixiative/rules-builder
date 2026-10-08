@@ -6,8 +6,8 @@ import {
   projectLens,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
-import { runSources } from '../../src';
-import { describeModelFields } from '../../src/schema/surface';
+import { createView, runSources } from '../../src';
+import { describeScopeFields, viewRoot } from '../../src/schema/surface';
 import { sampleRows } from '../samples';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { narrowingAncestors, type ParentRef, resolveRef, type SavedNarrowing } from '../workspace';
@@ -49,7 +49,10 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
   const parentSurface = useMemo<Lens | null>(() => {
     try {
       const resolved = resolveRef(ws, draft.parent);
-      return resolved ? projectLens(resolved, { by: 'model' }) : null;
+      if (!resolved) return null;
+      // A base lens is the menu — every column, every relation, none turned on yet; a
+      // narrowing's menu is what it shows, so a child layer can only narrow it.
+      return 'parent' in resolved ? projectLens(resolved, { by: 'model' }) : resolved;
     } catch {
       return null;
     }
@@ -73,19 +76,18 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
     if (!resolvedChain || !parentSurface)
       return {
         error: 'Parent not resolvable.',
-        fields: [] as ReturnType<typeof describeModelFields>,
+        fields: [] as ReturnType<typeof describeScopeFields>,
       };
     try {
       assertValidNarrowing(resolvedChain as LensNarrowing);
-      const surface = projectLens(resolvedChain, { by: 'model' });
       return {
         error: null as string | null,
-        fields: describeModelFields(surface, parentSurface.mapName, parentSurface.model),
+        fields: describeScopeFields(viewRoot(createView(resolvedChain))),
       };
     } catch (e) {
       return {
         error: String(e),
-        fields: [] as ReturnType<typeof describeModelFields>,
+        fields: [] as ReturnType<typeof describeScopeFields>,
       };
     }
   }, [resolvedChain, parentSurface]);

@@ -1,5 +1,5 @@
 import type { Bridge, FieldMap } from '@inixiative/json-rules';
-import { type BuilderField, describeModelFields, resolve } from '../schema/surface';
+import { type BuilderField, describeScopeFields, rawView, viewRoot } from '../schema/surface';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
 import { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
@@ -73,7 +73,7 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
   const resourceFields = (res: string): BuilderField[] => {
     const [m, mdl] = splitResource(res);
     if (!maps[m]?.models[mdl]) return [];
-    return describeModelFields(resolve({ maps, bridges, mapName: m, model: mdl }), m, mdl);
+    return describeScopeFields(viewRoot(rawView({ maps, bridges, mapName: m, model: mdl })));
   };
 
   const actionRoot = (resource: string, action: string): ActionRuleNode | null => {
@@ -81,10 +81,10 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
     if (rule === undefined) return null;
     const [mapName, model] = splitResource(resource);
     if (!maps[mapName]?.models[model]) return null;
-    const lens = resolve({ maps, bridges, mapName, model });
-    const fields = describeModelFields(lens, mapName, model);
+    const view = rawView({ maps, bridges, mapName, model });
+    const fields = describeScopeFields(viewRoot(view));
     return buildActionRoot(rule, {
-      lens,
+      view,
       fields,
       siblingActions: actionsOf(resource).filter((a) => a !== action),
       actionsByResource,

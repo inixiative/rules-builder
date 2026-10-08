@@ -6,7 +6,7 @@ import {
   type GroupNode,
   type LeafNode,
 } from '../src/builder/buildNodes';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeScopeFields, resolve, viewRoot, withAllRelations } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -35,8 +35,8 @@ const map: FieldMap = {
   enums: { OrderStatus: ['pending', 'paid'] },
 };
 
-const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeModelFields(lens, 'app', 'User');
+const lens = resolve(withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const fields = describeScopeFields(viewRoot(lens));
 
 let committed: Condition | undefined;
 const build = (c: Condition) => {

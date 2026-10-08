@@ -2,7 +2,7 @@ import type { Bridge, FieldMap } from '@inixiative/json-rules';
 import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';
-import { type BuilderField, describeModelFields, resolve } from '../schema/surface';
+import { type BuilderField, describeScopeFields, rawView, viewRoot } from '../schema/surface';
 import {
   addPath as addPathOp,
   emptyAction,
@@ -74,8 +74,8 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
   const surface = (resource: string) => {
     const [mapName, model] = splitResource(resource);
     if (!maps[mapName]?.models[model]) return null;
-    const lens = resolve({ maps, bridges, mapName, model });
-    return { lens, fields: describeModelFields(lens, mapName, model), mapName, model };
+    const view = rawView({ maps, bridges, mapName, model });
+    return { view, fields: describeScopeFields(viewRoot(view)), mapName, model };
   };
   const resourceFields = (res: string): BuilderField[] => {
     const s = surface(res);
@@ -106,7 +106,7 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     const sideObj = sideOf(resource, action, i, side);
     const s = surface(resource);
     if (!sideObj || !s) return null;
-    return buildRoot(sideObj.predicate, s.lens, s.fields, maxDepth ?? 4, (next) =>
+    return buildRoot(sideObj.predicate, s.view, s.fields, maxDepth ?? 4, (next) =>
       setSchema(
         updateSide(schema, resource, action, i, side, (sd) => ({ ...sd, predicate: next })),
       ),
@@ -123,7 +123,7 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     const s = surface(resource);
     if (!sideObj || sideObj.permission === undefined || !s) return null;
     return buildActionRoot(sideObj.permission, {
-      lens: s.lens,
+      view: s.view,
       fields: s.fields,
       siblingActions: permissionActions[resource] ?? [],
       actionsByResource: permissionActions,

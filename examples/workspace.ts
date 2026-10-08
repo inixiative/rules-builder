@@ -6,7 +6,14 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type { Decoration, ResourcePermission, SavedRule, TransitionMap } from '../src';
+import type {
+  Decoration,
+  NarrowingLayer,
+  ResourcePermission,
+  RuleBuilderSource,
+  SavedRule,
+  TransitionMap,
+} from '../src';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -108,6 +115,33 @@ export const resolveRef = (
   const parent = resolveRef(ws, n.parent, next);
   if (!parent) return null;
   return { parent, ...n.narrowing };
+};
+
+/** A ref as the builder's serializable source: its base lens's maps and anchor, and its
+ *  narrowing chain as parent-less layers, outermost first. */
+export const sourceFor = (
+  ws: Workspace,
+  ref: ParentRef,
+  seen: Set<string> = new Set(),
+): RuleBuilderSource | null => {
+  const key = `${ref.kind}:${ref.name}`;
+  if (seen.has(key)) return null; // cycle guard
+  const next = new Set(seen).add(key);
+  if (ref.kind === 'lens') {
+    const l = ws.lenses[ref.name];
+    return l ? lensInput(ws, l) : null;
+  }
+  const n = ws.narrowings[ref.name];
+  if (!n) return null;
+  const parent = sourceFor(ws, n.parent, next);
+  if (!parent) return null;
+  const layers: NarrowingLayer[] =
+    parent.narrowing === undefined
+      ? []
+      : Array.isArray(parent.narrowing)
+        ? [...parent.narrowing]
+        : [parent.narrowing as NarrowingLayer];
+  return { ...parent, narrowing: [...layers, n.narrowing] };
 };
 
 export const exportWorkspace = (ws: Workspace): string => JSON.stringify(ws, null, 2);

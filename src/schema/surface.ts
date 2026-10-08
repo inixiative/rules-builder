@@ -8,10 +8,13 @@ import {
   type FieldMap,
   type FieldMapEntry,
   getArrayOperators,
+  getLensRoot,
   getOperatorsForKind,
   getValueShape,
   type Lens,
   type LensNarrowing,
+  type ModelNarrowing,
+  type NarrowingDefaults,
   NUMERIC_KINDS,
   type Operator,
   type OperatorFamily,
@@ -28,33 +31,236 @@ export type RuleBuilderSource = {
   mapName: string;
   model: string;
   // Parent-less: the builder attaches the composed lens as the parent, so callers
-  // pass only serializable narrowing data (no in-memory object graph). `sources` on
-  // the narrowing's models declare table-backed option sets; their fetched values
-  // arrive separately via `resolve(..., { sourceValues })`.
-  narrowing?: Omit<LensNarrowing, 'parent'>;
+  // pass only serializable narrowing data (no in-memory object graph). A list is a
+  // chain, outermost first, each layer narrowing the one before. `sources` on the
+  // narrowing's models declare table-backed option sets; their fetched values arrive
+  // separately via `resolve(..., { sourceValues })`. The first layer is the first
+  // narrowing over the base lens, so it is what turns relations on (`root.relations`,
+  // `mapDefaults…models.M.relations`) — without it a rule reads the anchor's columns only.
+  narrowing?: NarrowingLayer | readonly NarrowingLayer[];
 };
+
+/** One parent-less layer of a {@link RuleBuilderSource}'s narrowing. */
+export type NarrowingLayer = Omit<LensNarrowing, 'parent'>;
+
+const layersOf = (narrowing: RuleBuilderSource['narrowing']): readonly NarrowingLayer[] =>
+  narrowing === undefined
+    ? []
+    : Array.isArray(narrowing)
+      ? narrowing
+      : [narrowing as NarrowingLayer];
 
 export type ResolveOptions = { sourceValues?: readonly SourceValues[] };
 
-/** Compose a serializable source into its narrowed lens (pre-projection). */
-export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing => {
+/** Fetched option sets folded onto the maps' own field entries (a copy), unioned per model.
+ *  The lens gate reads a field's `options` as its allowed set, so a value outside a sourced
+ *  field's fetched set is refused by the gate as it is by the picker. */
+const hydrate = (
+  maps: Record<string, FieldMap>,
+  sourceValues: readonly SourceValues[] | undefined,
+): Record<string, FieldMap> => {
+  if (!sourceValues?.length) return maps;
+  const out: Record<string, FieldMap> = { ...maps };
+  for (const sv of sourceValues) {
+    const map = Object.hasOwn(out, sv.mapName) ? out[sv.mapName] : undefined;
+    const model = map && Object.hasOwn(map.models, sv.model) ? map.models[sv.model] : undefined;
+    const entry =
+      model && Object.hasOwn(model.fields, sv.field) ? model.fields[sv.field] : undefined;
+    if (!map || !model || !entry) continue;
+    const byKey = new Map<string, SourceOption>();
+    for (const o of [...(entry.options ?? []), ...sv.options])
+      byKey.set(JSON.stringify([o.groups ?? null, o.value]), o);
+    out[sv.mapName] = {
+      ...map,
+      models: {
+        ...map.models,
+        [sv.model]: {
+          ...model,
+          fields: { ...model.fields, [sv.field]: { ...entry, options: [...byKey.values()] } },
+        },
+      },
+    };
+  }
+  return out;
+};
+
+/** Compose a serializable source into its narrowed lens — the gate. With `sourceValues`, the
+ *  fetched option sets are folded onto the maps first, so the gate admits only fetched values. */
+export const composeNarrowed = (
+  source: RuleBuilderSource,
+  sourceValues?: readonly SourceValues[],
+): Lens | LensNarrowing => {
   const lens = createLens({
+    maps: hydrate(source.maps, sourceValues),
+    bridges: source.bridges,
+    mapName: source.mapName,
+    model: source.model,
+  });
+  return layersOf(source.narrowing).reduce<Lens | LensNarrowing>(
+    (parent, layer) => ({ parent, ...layer }),
+    lens,
+  );
+};
+
+/**
+ * The source with every relation of every model turned on at the model defaults of its first
+ * layer (each edge crossed once per path), merged over what that layer already says. The
+ * posture of a raw record, and of a first-layer grant, which may read any relation on the
+ * schema; later layers still narrow it.
+ */
+export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource => {
+  const base = createLens({
     maps: source.maps,
     bridges: source.bridges,
     mapName: source.mapName,
     model: source.model,
   });
-  return source.narrowing ? { parent: lens, ...source.narrowing } : lens;
+  const [first = {}, ...rest] = layersOf(source.narrowing);
+  const mapDefaults: Record<string, NarrowingDefaults> = { ...first.mapDefaults };
+  for (const [mapName, map] of Object.entries(base.maps))
+    for (const [modelName, model] of Object.entries(map.models)) {
+      const relations: Record<string, ModelNarrowing> = {};
+      for (const [name, entry] of Object.entries(model.fields))
+        if (relationTarget(entry, mapName)) relations[name] = {};
+      if (Object.keys(relations).length === 0) continue;
+      const defaults = mapDefaults[mapName] ?? {};
+      const own = defaults.models?.[modelName] ?? {};
+      mapDefaults[mapName] = {
+        ...defaults,
+        models: {
+          ...defaults.models,
+          [modelName]: { ...own, relations: { ...relations, ...own.relations } },
+        },
+      };
+    }
+  const layer = { ...first, mapDefaults };
+  return { ...source, narrowing: rest.length ? [layer, ...rest] : layer };
+};
+
+/** One visit a view shows: the model it sits on and its fields as the lens exposes them
+ *  there — a relation only where it is turned on. */
+export type ViewVisit = { mapName: string; model: string; fields: Record<string, FieldMapEntry> };
+
+/**
+ * A narrowed lens as the builder reads it. `lens` is the gate: every rule is validated,
+ * coerced and described against it, never against a projected surface (a surface is a bare
+ * lens, which turns no relation on). `visit(at)` is the visit at a dotted path from the
+ * anchor model (`User`, `User.orders`), `undefined` where the lens shows none — so a field
+ * list read off a visit is exactly what the lens shows on that path.
+ */
+export type LensView = {
+  lens: Lens | LensNarrowing;
+  mapName: string;
+  model: string;
+  visit: (at: string) => ViewVisit | undefined;
+};
+
+/** A scope of a view: the visit at `at`, a key of `view.visit`. */
+export type ViewAt = { view: LensView; at: string };
+
+/** A view over a lens or narrowing, read through its path projection (`projectLens`).
+ *  `sourceValues` attach each sourced field's fetched options at its path. A field whose
+ *  map entry declares `options` keeps them (labels and partition `groups`), cut to the
+ *  values the lens allows there — the path projection rebuilds unfetched options from the
+ *  allowed values alone, which drops both. */
+export const createView = (lens: Lens | LensNarrowing, opts: ResolveOptions = {}): LensView => {
+  const paths = projectLens(lens, { sourceValues: opts.sourceValues });
+  const base = getLensRoot(lens);
+  const fetched = new Set((opts.sourceValues ?? []).map((sv) => `${sv.path}|${sv.field}`));
+  const visits = new Map<string, ViewVisit>();
+  const visit = (at: string): ViewVisit | undefined => {
+    if (!Object.hasOwn(paths, at)) return undefined;
+    const cached = visits.get(at);
+    if (cached) return cached;
+    const projected = paths[at];
+    const declared = base.maps[projected.mapName]?.models[projected.model]?.fields ?? {};
+    const fields: Record<string, FieldMapEntry> = {};
+    for (const [name, entry] of Object.entries(projected.fields)) {
+      const own = Object.hasOwn(declared, name) ? declared[name].options : undefined;
+      if (!own || fetched.has(`${at}|${name}`)) {
+        fields[name] = entry;
+        continue;
+      }
+      const allowed = entry.values && new Set(entry.values);
+      fields[name] = { ...entry, options: allowed ? own.filter((o) => allowed.has(o.value)) : own };
+    }
+    const out = { mapName: projected.mapName, model: projected.model, fields };
+    visits.set(at, out);
+    return out;
+  };
+  return { lens, mapName: base.mapName, model: base.model, visit };
 };
 
 /**
- * Resolve a serializable source (+ optional fetched `sourceValues`) to the public
- * surface the builder reads. Folds createLens + narrowing + value-decoration +
- * projection in one call — fetched options land on `field.options` inside the
- * projection, never by mutating the maps.
+ * Resolve a serializable source (+ optional fetched `sourceValues`) to the view the builder
+ * reads: the narrowed lens (the gate, fetched values folded in) and its path projection.
  */
-export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): Lens =>
-  projectLens(composeNarrowed(source), { sourceValues: opts.sourceValues, by: 'model' });
+export const resolve = (source: RuleBuilderSource, opts: ResolveOptions = {}): LensView =>
+  createView(composeNarrowed(source, opts.sourceValues), opts);
+
+/**
+ * The view of a raw record: every column, and every relation turned on wherever its model is
+ * visited, each edge (`Model.relation`) crossed once per path — the cap json-rules applies to a
+ * model-default relation. What a permission or transition gates is the record itself, not a
+ * narrowed lens. Its visits are walked on demand, so a wide schema is never projected whole.
+ */
+export const rawView = (source: Omit<RuleBuilderSource, 'narrowing'>): LensView => {
+  const raw = {
+    maps: source.maps,
+    bridges: source.bridges,
+    mapName: source.mapName,
+    model: source.model,
+  };
+  const base = createLens(raw);
+  const lens = composeNarrowed(withAllRelations(raw));
+
+  const modelAt = (mapName: string, modelName: string) => {
+    const map = Object.hasOwn(base.maps, mapName) ? base.maps[mapName] : undefined;
+    return map && Object.hasOwn(map.models, modelName)
+      ? { map, model: map.models[modelName] }
+      : undefined;
+  };
+  const visit = (at: string): ViewVisit | undefined => {
+    const [anchor, ...hops] = at.split('.');
+    if (anchor !== source.model) return undefined;
+    let mapName = source.mapName;
+    let modelName = source.model;
+    const crossed = new Set<string>();
+    for (const hop of hops) {
+      const entry = modelAt(mapName, modelName)?.model.fields[hop];
+      const target = entry && relationTarget(entry, mapName);
+      const edge = `${mapName}:${modelName}.${hop}`;
+      if (!target || crossed.has(edge)) return undefined;
+      crossed.add(edge);
+      mapName = target.mapName;
+      modelName = target.modelName;
+    }
+    const found = modelAt(mapName, modelName);
+    if (!found) return undefined;
+    const fields: Record<string, FieldMapEntry> = {};
+    for (const [name, entry] of Object.entries(found.model.fields)) {
+      if (relationTarget(entry, mapName)) {
+        if (!crossed.has(`${mapName}:${modelName}.${name}`)) fields[name] = entry;
+        continue;
+      }
+      const values =
+        entry.kind === 'enum' ? (entry.values ?? found.map.enums?.[entry.type]) : entry.values;
+      fields[name] = values ? { ...entry, values } : entry;
+    }
+    return { mapName, model: modelName, fields };
+  };
+  return { lens, mapName: source.mapName, model: source.model, visit };
+};
+
+/** The anchor's scope. */
+export const viewRoot = (view: LensView): ViewAt => ({ view, at: view.model });
+
+/** The scope `path` (dotted relation names) below `scope`. */
+export const viewAt = (scope: ViewAt, path: string): ViewAt =>
+  path ? { view: scope.view, at: `${scope.at}.${path}` } : scope;
+
+/** The visit a scope sits on, `undefined` where the lens shows none. */
+export const visitOf = (scope: ViewAt): ViewVisit | undefined => scope.view.visit(scope.at);
 
 export type BuilderField = {
   name: string;
@@ -195,17 +401,14 @@ export const genericOperators = (targets?: RuleTarget[]): BuilderField['operator
   return { field: [...field], date: [...date], array: [] as ArrayOperator[] };
 };
 
-export const describeModelFields = (
-  lens: Lens,
+const describeFieldEntries = (
+  entries: Record<string, FieldMapEntry>,
   mapName: string,
   modelName: string,
-  opts: SurfaceOptions = {},
+  opts: SurfaceOptions,
 ): BuilderField[] => {
-  const model = lens.maps[mapName]?.models[modelName];
-  if (!model) return [];
-
   const out: BuilderField[] = [];
-  for (const [name, entry] of Object.entries(model.fields)) {
+  for (const [name, entry] of Object.entries(entries)) {
     const isRelation = RELATION_KINDS.has(entry.kind);
     const isList = entry.isList === true;
     const kind: FieldKind = entry.kind === 'enum' ? 'Enum' : toFieldKind(entry.type);
@@ -245,6 +448,25 @@ export const describeModelFields = (
     });
   }
   return out;
+};
+
+/** The selectable fields of a model in a model-keyed Lens (a `projectLens(…, { by: 'model' })`
+ *  surface, or raw maps): every field it carries, unioned over its visits. Prefer
+ *  {@link describeScopeFields}, which reads one visit exactly. */
+export const describeModelFields = (
+  lens: Lens,
+  mapName: string,
+  modelName: string,
+  opts: SurfaceOptions = {},
+): BuilderField[] => {
+  const model = lens.maps[mapName]?.models[modelName];
+  return model ? describeFieldEntries(model.fields, mapName, modelName, opts) : [];
+};
+
+/** The selectable fields at one scope of a view — exactly what the lens shows on that path. */
+export const describeScopeFields = (scope: ViewAt, opts: SurfaceOptions = {}): BuilderField[] => {
+  const visit = visitOf(scope);
+  return visit ? describeFieldEntries(visit.fields, visit.mapName, visit.model, opts) : [];
 };
 
 export const valueShapeForOperator = (

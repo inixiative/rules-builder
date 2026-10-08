@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createLens, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/json-rules';
 import { cleanup, renderHook } from '@testing-library/react';
 import { type LensScopeSurfaceOptions, useLensScopeSurface } from '../src/schema/lensScopeSurface';
+import { composeNarrowed, withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -18,7 +19,9 @@ const map: FieldMap = {
     FanMission: { fields: { status: { kind: 'scalar', type: 'String' } } },
   },
 };
-const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'Recipient' });
+const lens = composeNarrowed(
+  withAllRelations({ maps: { app: map }, mapName: 'app', model: 'Recipient' }),
+);
 
 describe('useLensScopeSurface', () => {
   test('splits the anchor scope into to-one values and to-many loop portals', () => {
@@ -36,8 +39,8 @@ describe('useLensScopeSurface', () => {
     // a brand-new opts object with the SAME field values must not recompute (deps key on fields)
     rerender({});
     expect(result.current).toBe(first);
-    // re-anchoring at the loop's element model invalidates and yields that scope
-    rerender({ model: 'FanMission' });
+    // re-anchoring at the loop invalidates and yields that scope
+    rerender({ at: 'fanMissions' });
     expect(result.current).not.toBe(first);
     expect(result.current.values.map((v) => v.path)).toEqual(['status']);
   });

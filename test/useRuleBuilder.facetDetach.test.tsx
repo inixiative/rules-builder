@@ -5,7 +5,7 @@ import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import type { Decoration } from '../src/schema/decoration';
 import { facetId, matchFacet, stampFacetIds } from '../src/schema/decoration';
-import { resolve } from '../src/schema/surface';
+import { resolve, viewRoot, withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -31,7 +31,7 @@ const eavMap: FieldMap = {
     },
   },
 };
-const eavSource = { maps: { app: eavMap }, mapName: 'app', model: 'User' };
+const eavSource = withAllRelations({ maps: { app: eavMap }, mapName: 'app', model: 'User' });
 const npsView: Decoration = {
   facets: [
     {
@@ -134,11 +134,11 @@ describe('facetMode — detach to raw, session-only', () => {
 });
 
 describe('__facetId — ingest stamping and node-controlled matching', () => {
-  const lens = resolve(eavSource);
+  const lens = resolve(withAllRelations(eavSource));
   const nps = npsView.facets[0];
 
   test('stampFacetIds stamps a recognizable node with its scope-qualified facet id', () => {
-    const stamped = stampFacetIds(savedFacet([row('9')]), lens, npsView) as {
+    const stamped = stampFacetIds(savedFacet([row('9')]), viewRoot(lens), npsView) as {
       all: ({ __facetId?: string } & Condition)[];
     };
     expect(stamped.all[0].__facetId).toBe(`app:User/${facetId(nps)}`);
@@ -146,13 +146,20 @@ describe('__facetId — ingest stamping and node-controlled matching', () => {
 
   test('null suspends matching; a stamped id pins it without a search', () => {
     const node = savedFacet([row('9')]).all?.[0] as Condition;
-    expect(matchFacet(lens, npsView, { ...node, __facetId: null } as Condition)).toBeUndefined();
+    expect(
+      matchFacet(viewRoot(lens), npsView, { ...node, __facetId: null } as Condition),
+    ).toBeUndefined();
     // Pinned by scoped id: resolves even when the shape alone would be ambiguous.
     expect(
-      matchFacet(lens, npsView, { ...node, __facetId: `app:User/${facetId(nps)}` } as Condition),
+      matchFacet(viewRoot(lens), npsView, {
+        ...node,
+        __facetId: `app:User/${facetId(nps)}`,
+      } as Condition),
     ).toBe(nps);
     // An id that no longer resolves falls through to the ordinary search.
-    expect(matchFacet(lens, npsView, { ...node, __facetId: '#gone' } as Condition)).toBe(nps);
+    expect(matchFacet(viewRoot(lens), npsView, { ...node, __facetId: '#gone' } as Condition)).toBe(
+      nps,
+    );
   });
 });
 
@@ -226,7 +233,11 @@ describe('branch facet — detach unlocks the identity clause', () => {
       },
     },
   };
-  const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+  const branchSource = withAllRelations({
+    maps: { app: branchMap },
+    mapName: 'app',
+    model: 'User',
+  });
   const branchWhere = { field: 'account.industry', operator: 'equals', value: 'saas' };
   const decoration: Decoration = {
     facets: [{ path: 'account', label: 'SaaS Company', where: branchWhere as Condition }],

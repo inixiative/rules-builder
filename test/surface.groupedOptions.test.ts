@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap, SourceValues } from '@inixiative/json-rules';
 import { Operator } from '@inixiative/json-rules';
 import { buildRoot, type LeafNode } from '../src/builder/buildNodes';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeScopeFields, resolve, viewRoot, withAllRelations } from '../src/schema/surface';
 
 // Grouped sources (json-rules 2.17): one physical column, N vocabularies — each
 // option carries its partition in `group`. The builder must not flatten that
@@ -45,8 +45,8 @@ const sourceValues: SourceValues[] = [
   },
 ];
 
-const lens = resolve(source, { sourceValues });
-const fields = describeModelFields(lens, 'app', 'User');
+const lens = resolve(withAllRelations(source), { sourceValues });
+const fields = describeScopeFields(viewRoot(lens));
 const tier = fields.find((f) => f.name === 'tier');
 
 describe('describeModelFields — grouped source options keep their provenance', () => {

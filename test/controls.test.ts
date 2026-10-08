@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { buildRoot, type LeafNode } from '../src/builder/buildNodes';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import {
+  type describeModelFields,
+  describeScopeFields,
+  resolve,
+  viewRoot,
+  withAllRelations,
+} from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -15,8 +21,8 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member'] },
 };
 
-const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-const build = (c: Condition, fields = describeModelFields(lens, 'app', 'User')) =>
+const lens = resolve(withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const build = (c: Condition, fields = describeScopeFields(viewRoot(lens))) =>
   buildRoot(c, lens, fields, 4, () => {});
 
 const leafOf = (c: Condition, fields?: ReturnType<typeof describeModelFields>) =>
@@ -24,7 +30,7 @@ const leafOf = (c: Condition, fields?: ReturnType<typeof describeModelFields>) =
 
 describe('enum-option labels', () => {
   test('describeModelFields carries value labels onto the field', () => {
-    const fields = describeModelFields(lens, 'app', 'User', {
+    const fields = describeScopeFields(viewRoot(lens), {
       valueLabels: { role: { admin: 'Administrator', member: 'Member' } },
     });
     expect(fields.find((f) => f.name === 'role')?.enumLabels).toEqual({
@@ -34,7 +40,7 @@ describe('enum-option labels', () => {
   });
 
   test('the leaf value control renders labelled options (falling back to the raw value)', () => {
-    const fields = describeModelFields(lens, 'app', 'User', {
+    const fields = describeScopeFields(viewRoot(lens), {
       valueLabels: { 'User.role': { admin: 'Administrator' } },
     });
     const leaf = leafOf({ all: [{ field: 'role', operator: 'equals', value: 'admin' }] }, fields);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { createLens, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/json-rules';
 import { lensScopeSurface } from '../src/schema/lensScopeSurface';
+import { composeNarrowed, withAllRelations } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -47,7 +48,8 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member'] },
 };
 
-const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'Recipient' });
+const source = { maps: { app: map }, mapName: 'app', model: 'Recipient' };
+const lens = composeNarrowed(withAllRelations(source));
 
 const surface = (opts = {}) => {
   const { values, loops } = lensScopeSurface(lens, opts);
@@ -81,6 +83,7 @@ describe('lensScopeSurface', () => {
     const { values, loops } = surface();
     expect(loops.fanMissions).toEqual({
       path: 'fanMissions',
+      at: 'fanMissions',
       field: 'fanMissions',
       label: 'fanMissions',
       relation: { mapName: 'app', modelName: 'FanMission' },
@@ -106,9 +109,9 @@ describe('lensScopeSurface', () => {
     expect(Object.keys(values).some((p) => p.includes('.manager'))).toBe(false);
   });
 
-  test('re-anchoring at a loop element model yields that scope, portals included', () => {
-    const { relation } = surface().loops.fanMissions;
-    const { values, loops } = surface({ mapName: relation.mapName, model: relation.modelName });
+  test('re-anchoring at a loop yields the visit the lens shows there, portals included', () => {
+    const { at } = surface().loops.fanMissions;
+    const { values, loops } = surface({ at });
     // paths are relative to the loop binding, not the outer anchor
     expect(Object.keys(values).sort()).toEqual([
       'recipient.account.industry',
@@ -120,10 +123,28 @@ describe('lensScopeSurface', () => {
       'recipient.tags',
       'status',
     ]);
-    expect(Object.keys(loops).sort()).toEqual([
-      'recipient.account.opportunities',
-      'recipient.fanMissions',
+    // Recipient.fanMissions was crossed to get here: a model-default edge is crossed once per
+    // path, so the loop does not reopen itself.
+    expect(Object.keys(loops).sort()).toEqual(['recipient.account.opportunities']);
+    expect(loops['recipient.account.opportunities'].at).toBe(
+      'fanMissions.recipient.account.opportunities',
+    );
+  });
+
+  test('a relation the lens does not turn on is neither a value nor a loop', () => {
+    const { values, loops } = lensScopeSurface(composeNarrowed(source));
+    expect(values.map((o) => o.path).sort()).toEqual(['email', 'role', 'tags']);
+    expect(loops).toEqual([]);
+    const onlyAccount = lensScopeSurface(
+      composeNarrowed({ ...source, narrowing: { root: { relations: { account: {} } } } }),
+    );
+    expect(onlyAccount.values.map((o) => o.path).sort()).toEqual([
+      'account.industry',
+      'email',
+      'role',
+      'tags',
     ]);
+    expect(onlyAccount.loops).toEqual([]);
   });
 
   test('a scalar list column stays a value, flagged isList', () => {

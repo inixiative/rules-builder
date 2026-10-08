@@ -1,6 +1,5 @@
-import { projectLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
-import { type Decoration, type Facet, validateDecoration } from '../../src';
+import { createView, type Decoration, type Facet, validateDecoration } from '../../src';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
@@ -218,7 +217,7 @@ export const DecorationsTab = ({ ws, patch, selected }: TabProps & { selected?: 
     try {
       const resolved = resolveRef(ws, against.ref);
       if (!resolved) return ['surface not resolvable'];
-      return validateDecoration(projectLens(resolved, { by: 'model' }), draft);
+      return validateDecoration(createView(resolved), draft);
     } catch (err) {
       return [String(err)];
     }

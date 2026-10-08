@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { createLens, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/json-rules';
 import { lensValuePicker } from '../src/schema/lensValuePicker';
+import { composeNarrowed, withAllRelations } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -23,7 +24,8 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member'] },
 };
 
-const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'User' });
+const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const lens = composeNarrowed(withAllRelations(source));
 
 const byPath = (lensArg = lens, opts = {}) =>
   Object.fromEntries(lensValuePicker(lensArg, opts).map((o) => [o.path, o]));
@@ -49,9 +51,14 @@ describe('lensValuePicker', () => {
     expect(opts.account).toBeUndefined();
   });
 
-  test('respects an explicit start model', () => {
-    const opts = byPath(lens, { model: 'Account' });
+  test('respects an explicit start path', () => {
+    const opts = byPath(lens, { at: 'account' });
     expect(Object.keys(opts).sort()).toEqual(['id', 'industry']);
+  });
+
+  test('never crosses a relation the lens does not turn on', () => {
+    const opts = byPath(composeNarrowed(source), { maxDepth: 1 });
+    expect(Object.keys(opts).sort()).toEqual(['id', 'metadata', 'role', 'tier']);
   });
 
   test('flags a JSON field as sub-path-extendable (freeform descent); scalars are not', () => {

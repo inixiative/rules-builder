@@ -11,21 +11,22 @@ Composes a json-rules `Condition` against a **lens**, without writing JSON.
 
 The builder is driven by a **lens**, not a hand-written schema:
 
-1. The server narrows a lens and produces an **exposed surface** with
-   `projectLens(lensOrNarrowing, { by: 'model' })` (json-rules ≥ 3.0) — a `Lens` (maps intact,
-   the navigable graph) containing only what the narrowing exposes. Never ship
-   the raw lens.
-2. The builder reads that surface for field metadata and the json-rules **operator
-   catalog** for valid operators (target-aware), so it always matches what the
-   engine can actually run.
-3. A finished rule is classified with `describeRule(rule, lens)` (sources touched,
-   bridges crossed ⇒ check-only, valid targets) and gated with
-   `validateRuleInLens` before execution.
+1. The server narrows a lens and hands the builder a serializable **source** — maps,
+   anchor and parent-less narrowing layers. Relations are off until the first layer turns
+   them on (json-rules ≥ 3.4).
+2. The builder reads it as a **view** (`resolve`): the narrowed lens, and its path
+   projection (`projectLens`) for field metadata — each scope reads the fields the lens
+   shows on that path — plus the json-rules **operator catalog** for valid operators
+   (target-aware), so it always matches what the engine can actually run.
+3. Every rule is gated (`validateRuleInLens`), coerced (`coerceRule`) and classified
+   (`describeRule`: sources touched, bridges crossed ⇒ check-only, valid targets) against
+   the narrowed lens itself. A `projectLens(…, { by: 'model' })` surface is a bare lens —
+   it turns no relation on — so it is never the gate.
 
 ### Layers
 
-- **`schema/surface.ts`** — `describeModelFields(lens, mapName, modelName, opts)`
-  → `BuilderField[]`: per-field kind, valid operators (intersected across the
+- **`schema/surface.ts`** — `resolve(source)` → `LensView` (the narrowed lens + its
+  visits by path); `describeScopeFields(scope, opts)` → `BuilderField[]`: per-field kind, valid operators (intersected across the
   configured `targets`), enum values, and relation targets for drill-down.
   `valueShapeForOperator` drives which input slot to render. ✅ Done + tested.
 - **`core/tree.ts`** — pure, immutable, path-addressed `Condition` mutations:

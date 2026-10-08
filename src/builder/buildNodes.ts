@@ -1,10 +1,7 @@
 import {
   type Condition,
-  createLens,
   type FieldKind,
   getAggregateOperators,
-  type Lens,
-  projectLens,
   readScopeRef,
   type ValueShape,
   validateRuleInLens,
@@ -32,12 +29,15 @@ import {
   variableSlots,
   writeSelectorClause,
 } from '../schema/decoration';
-import type { BuilderField, SurfaceOptions } from '../schema/surface';
+import type { BuilderField, LensView, SurfaceOptions, ViewAt } from '../schema/surface';
 import {
-  describeModelFields,
+  describeScopeFields,
   genericOperators,
   knownValueShape,
   operandClass,
+  viewAt,
+  viewRoot,
+  visitOf,
 } from '../schema/surface';
 import {
   defaultRule,
@@ -98,8 +98,8 @@ export type ValueControl = {
   setMode: (mode: 'value' | 'path' | 'bind') => void;
   /** Present in 'path' mode — the RHS field-reference path (e.g. `user.email`). `scopes`
    *  lists the value locations a scope ref may name: the current row as `$.`, then each
-   *  enclosing array element outward (`$$.`, `$$$.`, …). A bare path is a context ref
-   *  the builder cannot enumerate. */
+   *  enclosing array element outward (`$$.`, `$$$.`, …). A bare path is a root-row column
+   *  (json-rules 3.4) — the outermost scope, offered here under its prefix. */
   path?: { value?: string; set: (p: string) => void; scopes: ScopeOption[] };
   /** Present in 'bind' mode — the binding name resolved at execution time. */
   bind?: { value?: string; set: (name: string) => void };
@@ -315,18 +315,18 @@ type Ctx = {
   root: Condition;
   maxDepth: number;
   commit: (c: Condition) => void;
-  /** The anchor lens + decoration, constant across the tree — used to recognize a
-   *  node as a hoisted {@link Decoration} facet and collapse it. */
-  anchorLens: Lens;
+  /** The view, constant across the tree: every node is gated in situ against its
+   *  narrowed lens (`view.lens`), never against a projected surface. */
+  view: LensView;
   decoration?: Decoration;
   surfaceOpts: SurfaceOptions;
 };
-/** What a node sees: the surface to validate against + its selectable fields. On
- *  descent into an array node's elements, this swaps to the related model; the
- *  scopes it descended through stay reachable as `ancestors` (root first), and `via`
- *  names the array field that opened this scope. */
+/** What a node sees: the visit it sits on + its selectable fields. On descent into an
+ *  array node's elements, this swaps to the relation's own visit (the fields the lens
+ *  shows on that path); the scopes it descended through stay reachable as `ancestors`
+ *  (root first), and `via` names the array field that opened this scope. */
 type Scope = {
-  lens: Lens;
+  at: ViewAt;
   fields: BuilderField[];
   decoration?: Decoration;
   ancestors: Scope[];
@@ -357,8 +357,17 @@ const enclose = (scope: Scope, node: Condition): Condition => {
   return out;
 };
 
-const scopeLabel = (scope: Scope, ctx: Ctx): string =>
-  modelDecor(ctx.decoration, scope.lens.mapName, scope.lens.model).label ?? scope.lens.model;
+const scopeLabel = (scope: Scope, ctx: Ctx): string => {
+  const visit = visitOf(scope.at);
+  if (!visit) return scope.at.at;
+  return modelDecor(ctx.decoration, visit.mapName, visit.model).label ?? visit.model;
+};
+
+/** The root/anchor group's retag (`labels.models`), if any. */
+const rootLabel = (scope: Scope, ctx: Ctx): string | undefined => {
+  const visit = visitOf(scope.at);
+  return visit ? modelDecor(ctx.decoration, visit.mapName, visit.model).label : undefined;
+};
 
 const prefixedOptions = (fields: BuilderField[], prefix: string): PickOption[] =>
   fields.map((f) => ({ value: `${prefix}${f.name}`, label: f.label, icon: f.icon }));
@@ -631,7 +640,7 @@ const buildLeaf = (
   })();
   const valueMode: 'value' | 'path' | 'bind' =
     rec.bind !== undefined ? 'bind' : rec.path !== undefined ? 'path' : 'value';
-  const leafMatch = scope.decoration ? matchFacet(scope.lens, scope.decoration, node) : undefined;
+  const leafMatch = scope.decoration ? matchFacet(scope.at, scope.decoration, node) : undefined;
   const leafHoist: HoistBadge | undefined = leafMatch
     ? { id: facetId(leafMatch), label: leafMatch.label ?? baseName ?? '', icon: leafMatch.icon }
     : undefined;
@@ -752,7 +761,7 @@ const buildLeaf = (
     hoist: leafHoist,
     atomic: leafMatch && isPreset(leafMatch) ? true : undefined,
     scopes: enclosingScopes(scope, ctx),
-    valid: validateRuleInLens(enclose(scope, node), ctx.anchorLens).ok,
+    valid: validateRuleInLens(enclose(scope, node), ctx.view.lens).ok,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -786,47 +795,43 @@ const buildArray = (
     : isAggregate
       ? { ...scope.decoration, facets: scope.decoration.facets.filter(isPreset) }
       : scope.decoration;
-  const matchedFacet = recognizable ? matchFacet(scope.lens, recognizable, node) : undefined;
+  const matchedFacet = recognizable ? matchFacet(scope.at, recognizable, node) : undefined;
   const overrideLeaf = matchedFacet
-    ? facetElementLeaf(scope.lens, matchedFacet, ctx.surfaceOpts)
+    ? facetElementLeaf(scope.at, matchedFacet, ctx.surfaceOpts)
     : undefined;
 
-  // Elements belong to the related model → author condition/filter against its surface.
-  const relScope: Scope = rel
-    ? (() => {
-        const relLens = projectLens(
-          createLens({
-            maps: scope.lens.maps,
-            mapName: rel.mapName,
-            model: rel.modelName,
-          }),
-          { by: 'model' },
-        );
-        const relFields = relabelRelations(
-          describeModelFields(relLens, rel.mapName, rel.modelName, ctx.surfaceOpts),
-          ctx.decoration,
-        );
-        const fields = overrideLeaf
-          ? relFields.map((f) => (f.name === overrideLeaf.name ? { ...f, ...overrideLeaf } : f))
-          : relFields;
-        const relDecoration = scopedDecoration(ctx.decoration, rel.mapName, rel.modelName);
-        const ancestors = [...scope.ancestors, scope];
-        if (!relDecoration) return { lens: relLens, fields, ancestors, via: fieldName };
-        // The scope's own facets lead its picker, exactly like the anchor root.
-        const hoisted = describeFacets(relLens, relDecoration, ctx.surfaceOpts);
-        const consumed = consumedTopFields(relDecoration);
-        return {
-          lens: relLens,
-          fields: [
-            ...hoisted,
-            ...(consumed.size ? fields.filter((f) => !consumed.has(f.name)) : fields),
-          ],
-          decoration: relDecoration,
-          ancestors,
-          via: fieldName,
-        };
-      })()
-    : scope;
+  // Elements belong to the related model → author condition/filter against the visit the
+  // lens shows at the relation's path: its own columns, and only the relations turned on
+  // there (a relation's target is never re-anchored as a bare lens, which turns none on).
+  const relAt = located && rel ? viewAt(located.frame.at, located.name) : undefined;
+  const relScope: Scope =
+    relAt && rel
+      ? (() => {
+          const relFields = relabelRelations(
+            describeScopeFields(relAt, ctx.surfaceOpts),
+            ctx.decoration,
+          );
+          const fields = overrideLeaf
+            ? relFields.map((f) => (f.name === overrideLeaf.name ? { ...f, ...overrideLeaf } : f))
+            : relFields;
+          const relDecoration = scopedDecoration(ctx.decoration, rel.mapName, rel.modelName);
+          const ancestors = [...scope.ancestors, scope];
+          if (!relDecoration) return { at: relAt, fields, ancestors, via: fieldName };
+          // The scope's own facets lead its picker, exactly like the anchor root.
+          const hoisted = describeFacets(relAt, relDecoration, ctx.surfaceOpts);
+          const consumed = consumedTopFields(relDecoration);
+          return {
+            at: relAt,
+            fields: [
+              ...hoisted,
+              ...(consumed.size ? fields.filter((f) => !consumed.has(f.name)) : fields),
+            ],
+            decoration: relDecoration,
+            ancestors,
+            via: fieldName,
+          };
+        })()
+      : scope;
 
   // A nested condition/filter is a sub-tree: build it over its own root, and on
   // every commit splice the whole sub-condition back under the array rule's key.
@@ -851,7 +856,7 @@ const buildArray = (
       // The identity block is the fixed `where` prefix plus the selector clauses
       // right after it — a selector-backed facet (survey question, badge name)
       // has user-picked identity the `where` machinery can't know about.
-      const lead = leadingIdentityCount(scope.lens, matchedFacet, node);
+      const lead = leadingIdentityCount(scope.at, matchedFacet, node);
       const kids = (subRoot as { all?: Condition[] }).all ?? [];
       const tail = kids[lead];
       if (lead > 0 && kids.length === lead + 1 && tail && isGroupNode(tail)) {
@@ -925,7 +930,7 @@ const buildArray = (
     rel &&
     !isAggregate &&
     conditionNode !== undefined &&
-    selectorsApply(scope.lens, matchedFacet)
+    selectorsApply(scope.at, matchedFacet)
       ? matchedFacet
       : undefined;
 
@@ -1091,7 +1096,7 @@ const buildArray = (
         : undefined,
     scopes: enclosingScopes(scope, ctx),
     valid:
-      validateRuleInLens(enclose(scope, node), ctx.anchorLens).ok &&
+      validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
       (aggregateValidation?.ok ?? true),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.
@@ -1109,17 +1114,17 @@ const buildGroup = (
   ctx: Ctx,
   scope: Scope,
 ): GroupNode => {
-  const matched = scope.decoration ? matchFacet(scope.lens, scope.decoration, node) : undefined;
+  const matched = scope.decoration ? matchFacet(scope.at, scope.decoration, node) : undefined;
   const preset = matched !== undefined && isPreset(matched);
   // A branch is a to-one relation surfaced as a scoped group, and always a *nested*
   // group — gating on `path.length` stops the whereless prefix heuristic from
   // capturing the root (and swapping its picker to the branch scope). A preset,
   // by contrast, is recognized anywhere including the root.
   const branchFacet = matched && !preset && path.length > 0 ? matched : undefined;
-  const branch = branchFacet && facetBranchScope(ctx.anchorLens, branchFacet, ctx.surfaceOpts);
+  const branch = branchFacet && facetBranchScope(scope.at, branchFacet, ctx.surfaceOpts);
   const groupScope: Scope = branch
     ? {
-        lens: scope.lens,
+        at: scope.at,
         fields: relabelRelations(branch.fields, ctx.decoration),
         ancestors: scope.ancestors,
         via: scope.via,
@@ -1136,11 +1141,7 @@ const buildGroup = (
     : undefined;
 
   // The root/anchor group can be retagged via `labels.models`; a facet shows its name.
-  const groupLabel =
-    groupHoist?.label ??
-    (path.length === 0
-      ? modelDecor(ctx.decoration, scope.lens.mapName, scope.lens.model).label
-      : undefined);
+  const groupLabel = groupHoist?.label ?? (path.length === 0 ? rootLabel(scope, ctx) : undefined);
 
   // Canonical branch shape (identity leading + one trailing user-rows group): the
   // rows group IS the facet's surface — built at its real path with the facet's
@@ -1149,13 +1150,13 @@ const buildGroup = (
   // hidden, so a toggle honestly changes what the user sees — and breaks the
   // bind — instead of silently absorbing a hidden clause.
   const identityLead =
-    branchFacet && branch ? leadingIdentityCount(scope.lens, branchFacet, node) : 0;
+    branchFacet && branch ? leadingIdentityCount(scope.at, branchFacet, node) : 0;
   const kids = groupChildrenOf(node);
   const rowsTail = kids[identityLead];
   // Branch identity is conjoined at the top of the group itself, so the selector
   // write seam targets the group directly.
   const selectorGroupFacet =
-    branchFacet?.selectors?.length && branch && selectorsApply(scope.lens, branchFacet)
+    branchFacet?.selectors?.length && branch && selectorsApply(scope.at, branchFacet)
       ? branchFacet
       : undefined;
   const setGroupSelectorClause = selectorGroupFacet
@@ -1280,13 +1281,13 @@ export const asRoot = (cond: Condition | undefined, empty: Condition = { all: []
   cond === undefined ? empty : cond;
 
 /**
- * Build the headless descriptor tree from a condition + composed lens. The root is whatever the
- * condition is — a group, a field leaf, an array rule, or a `true`/`false` literal leaf — never
- * force-wrapped. Pure: every action computes the next condition and calls `commit`.
+ * Build the headless descriptor tree from a condition + the view it is authored in. The root is
+ * whatever the condition is — a group, a field leaf, an array rule, or a `true`/`false` literal
+ * leaf — never force-wrapped. Pure: every action computes the next condition and calls `commit`.
  */
 export const buildRoot = (
   root: Condition,
-  lens: Lens,
+  view: LensView,
   fields: BuilderField[],
   maxDepth: number,
   commit: (next: Condition) => void,
@@ -1297,12 +1298,12 @@ export const buildRoot = (
     root: normalized,
     maxDepth,
     commit,
-    anchorLens: lens,
+    view,
     decoration: opts.decoration,
     surfaceOpts: opts.surfaceOpts ?? {},
   };
   return buildNode(normalized, [], 0, ctx, {
-    lens,
+    at: viewRoot(view),
     fields,
     decoration: opts.decoration,
     ancestors: [],

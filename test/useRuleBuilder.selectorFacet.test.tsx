@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import { type Decoration, validateDecoration } from '../src/schema/decoration';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -37,7 +38,7 @@ const surveyMap: FieldMap = {
     },
   },
 };
-const surveySource = { maps: { app: surveyMap }, mapName: 'app', model: 'User' };
+const surveySource = withAllRelations({ maps: { app: surveyMap }, mapName: 'app', model: 'User' });
 
 const surveyView: Decoration = {
   facets: [
@@ -318,7 +319,11 @@ describe('branch facet with selectors — identity hoists and the graft still la
       },
     },
   };
-  const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+  const branchSource = withAllRelations({
+    maps: { app: branchMap },
+    mapName: 'app',
+    model: 'User',
+  });
   const branchWhere = { field: 'account.industry', operator: 'equals', value: 'saas' };
   const decoration: Decoration = {
     facets: [
@@ -422,7 +427,7 @@ describe('multi-hop collection — selector machinery is fenced off entirely', (
       Question: { fields: { title: { kind: 'scalar', type: 'String' } } },
     },
   };
-  const deepSource = { maps: { app: deepMap }, mapName: 'app', model: 'User' };
+  const deepSource = withAllRelations({ maps: { app: deepMap }, mapName: 'app', model: 'User' });
   const deepView: Decoration = {
     facets: [
       {
@@ -501,7 +506,11 @@ describe('the write seam never crosses a structural boundary (adversarial round 
         Attachment: { fields: { name: { kind: 'scalar', type: 'String' } } },
       },
     };
-    const nestedSource = { maps: { app: nestedMap }, mapName: 'app', model: 'User' };
+    const nestedSource = withAllRelations({
+      maps: { app: nestedMap },
+      mapName: 'app',
+      model: 'User',
+    });
     const attachRow: Condition = {
       field: 'attachments',
       arrayOperator: 'any',
@@ -609,7 +618,7 @@ describe('the write seam never crosses a structural boundary (adversarial round 
     expect(node.selectors).toBeUndefined();
     expect(node.setSelectorClause).toBeUndefined();
     // and the decoration itself is flagged: a preset's editable slots are variables.
-    expect(validateDecoration(result.current.lens, presetView)).toEqual([
+    expect(validateDecoration(result.current.view, presetView)).toEqual([
       expect.stringContaining('selectors'),
     ]);
   });
@@ -717,7 +726,7 @@ describe('Json-path selectors — a sub-path into a Json column is a selector li
       },
     },
   };
-  const jsonSource = { maps: { app: jsonMap }, mapName: 'app', model: 'User' };
+  const jsonSource = withAllRelations({ maps: { app: jsonMap }, mapName: 'app', model: 'User' });
   const jsonView: Decoration = {
     facets: [
       {

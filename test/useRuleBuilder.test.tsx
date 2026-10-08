@@ -3,6 +3,7 @@ import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { type UseRuleBuilderOptions, useRuleBuilder } from '../src/builder/useRuleBuilder';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -18,7 +19,7 @@ const map: FieldMap = {
     Order: { fields: { total: { kind: 'scalar', type: 'Float' } } },
   },
 };
-const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 const leafRule = (value = 'gold'): Condition => ({
   all: [{ field: 'tier', operator: 'equals', value }],

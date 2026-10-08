@@ -72,6 +72,27 @@ function Leaf({ node }: { node: LeafNode }) {
 }
 ```
 
+### Relations are off until the narrowing turns them on
+
+Since json-rules 3.4 a relation is a field, off by default: a bare `source` offers its
+anchor's columns and nothing else. The source's `narrowing` (its first layer) turns
+relations on — along a path (`root.relations`) or wherever a model is visited
+(`mapDefaults[map].models[Model].relations`, each edge crossed once per path):
+
+```ts
+const source = {
+  maps, mapName: 'app', model: 'User',
+  narrowing: { root: { relations: { orders: { relations: { items: {} } } } } },
+};
+```
+
+The builder offers exactly what the narrowed lens shows on each path — an element scope
+reads the visit the lens shows at that relation — and gates, coerces and describes every
+rule against the narrowed lens itself (`useRuleBuilder().lens`), never against a projected
+surface. `narrowing` may also be a list of parent-less layers, outermost first, each
+narrowing the one before. `withAllRelations(source)` turns every relation on in the first
+layer — the posture of a raw record, or of a first-layer grant.
+
 ### Rendering values
 
 `useRuleBuilder` is headless — it does **not** render value inputs, because the
@@ -164,7 +185,8 @@ descriptor exposes what is reachable so a renderer never spells a prefix:
   `field.set`. Absent at the root.
 - `value.path.scopes` (path mode) — the value locations a `path` may name: the
   current row as `$.`, then each enclosing scope. Relations and lists are not
-  offered; a bare context path is not enumerable.
+  offered. A bare path is a root-row column (json-rules 3.4) — the outermost scope,
+  offered under its prefix.
 
 Validity is judged in situ: a leaf's `valid` gates the node wrapped in the array rules
 it sits under, so `$$.creditLimit` is valid one array deep and `$$$.creditLimit` is not.
@@ -406,14 +428,16 @@ with a registry stores its own by-name reference.
 
 ## API
 
-- `useRuleBuilder(opts)` → `{ value, root, lens, setCondition, validate, describe }`
+- `useRuleBuilder(opts)` → `{ value, root, lens, view, setCondition, validate, describe }` — `lens` is the narrowed lens (the gate), `view` what the builder reads
 - `useFilteredCollection({ ...opts, rows, checkOptions? })` → the same surface plus `data` (rows passing the current rule)
-- `buildRoot(condition, lens, fields, maxDepth, commit)` — the pure tree builder behind the hook
-- `resolve(source, { sourceValues })` — compose a `RuleBuilderSource` (+ fetched values) into the exposed surface
-- `describeModelFields(lens, map, model, { labels, valueLabels, targets })` — the selectable fields + operator sets
+- `buildRoot(condition, view, fields, maxDepth, commit)` — the pure tree builder behind the hook
+- `resolve(source, { sourceValues })` → `LensView`: the narrowed lens (`view.lens`, fetched values folded in so the gate admits only them) and `view.visit(at)`, the fields the lens shows at a dotted path from the anchor (`'User'`, `'User.orders'`)
+- `createView(lensOrNarrowing, { sourceValues })` — the same over a lens in hand; `rawView(source)` — a raw record, every relation on (permissions, transitions)
+- `composeNarrowed(source)` — the source's narrowed lens; `withAllRelations(source)` — every relation turned on in its first layer
+- `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })` — the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
 - `runSources(lensOrNarrowing, rows)` — DISTINCT option sets for sourced fields
-- `lensValuePicker` / `useLensValuePicker` — the field/path picker atom
-- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through to-one relations (unbounded, cycle-cut), to-many relations emitted as loop portals instead of being walked
+- `lensValuePicker` / `useLensValuePicker` — the field/path picker atom (`{ at, maxDepth }`)
+- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (cycle-cut), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule` — validated rule serialization
 
 See [PLAN.md](./PLAN.md) for the architecture.

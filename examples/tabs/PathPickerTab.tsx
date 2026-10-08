@@ -1,5 +1,6 @@
-import { createLens, projectLens } from '@inixiative/json-rules';
+import { getLensRoot } from '@inixiative/json-rules';
 import { useMemo, useState } from 'react';
+import { composeNarrowed, withAllRelations } from '../../src';
 import { lensValuePicker } from '../../src/schema/lensValuePicker';
 import { Badge, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, resolveRef } from '../workspace';
@@ -19,8 +20,9 @@ const parseRef = (v: string): ParentRef => {
 
 /**
  * The lens value picker (`lensValuePicker`) — the shared atom behind a rule's `field`
- * (LHS) and `path` (RHS reference). Pick a lens/narrowing → fieldMap → model; the chosen
- * narrowing scopes (reduces) what's offered. A `Json` column is flagged `acceptsSubPath`,
+ * (LHS) and `path` (RHS reference). A lens/narrowing starts at its anchor and offers only
+ * what it shows — the relations it turns on included; raw maps start at the picked
+ * fieldMap → model with every relation on. A `Json` column is flagged `acceptsSubPath`,
  * so a freeform sub-path input appears.
  */
 export const PathPickerTab = ({ ws }: TabProps) => {
@@ -43,7 +45,7 @@ export const PathPickerTab = ({ ws }: TabProps) => {
       try {
         const resolved = resolveRef(ws, parseRef(key));
         if (resolved) {
-          const s = projectLens(resolved, { by: 'model' });
+          const s = getLensRoot(resolved);
           setMapName(s.mapName);
           setModel(s.model);
           return;
@@ -67,9 +69,9 @@ export const PathPickerTab = ({ ws }: TabProps) => {
     try {
       const surface = ref
         ? resolveRef(ws, ref)
-        : createLens({ maps: ws.maps, bridges: ws.bridges, mapName, model });
+        : composeNarrowed(withAllRelations({ maps: ws.maps, bridges: ws.bridges, mapName, model }));
       if (!surface) return [];
-      return lensValuePicker(surface, { mapName, model, maxDepth: 1 });
+      return lensValuePicker(surface, { maxDepth: 1 });
     } catch {
       return [];
     }

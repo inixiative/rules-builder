@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { createLens, type FieldMap, projectLens } from '@inixiative/json-rules';
-import { describeModelFields, valueShapeForOperator } from '../src/schema/surface';
+import type { FieldMap } from '@inixiative/json-rules';
+import { describeScopeFields, valueShapeForOperator, viewRoot } from '../src/schema/surface';
+import { openView } from './setup/open';
 
 const map: FieldMap = {
   models: {
@@ -23,11 +24,9 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member', 'guest'] },
 };
 
-const lens = projectLens(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }), {
-  by: 'model',
-});
-const fields = (model = 'User', opts = {}) =>
-  Object.fromEntries(describeModelFields(lens, 'app', model, opts).map((f) => [f.name, f]));
+const lens = openView({ maps: { app: map }, mapName: 'app', model: 'User' });
+const fields = (opts = {}) =>
+  Object.fromEntries(describeScopeFields(viewRoot(lens), opts).map((f) => [f.name, f]));
 
 describe('describeModelFields — operators by kind', () => {
   test('string field offers string operators (contains/startsWith), not array ops', () => {
@@ -70,14 +69,14 @@ describe('describeModelFields — operators by kind', () => {
 
 describe('describeModelFields — target intersection', () => {
   test('matches is dropped when toPrisma is a required target', () => {
-    const withPrisma = fields('User', { targets: ['check', 'toPrisma'] }).email;
-    const checkOnly = fields('User', { targets: ['check'] }).email;
+    const withPrisma = fields({ targets: ['check', 'toPrisma'] }).email;
+    const checkOnly = fields({ targets: ['check'] }).email;
     expect(checkOnly.operators.field).toContain('matches');
     expect(withPrisma.operators.field).not.toContain('matches');
   });
 
   test('labels decorate field names', () => {
-    const f = fields('User', { labels: { 'User.email': 'Email Address' } }).email;
+    const f = fields({ labels: { 'User.email': 'Email Address' } }).email;
     expect(f.label).toBe('Email Address');
   });
 });
@@ -91,10 +90,8 @@ describe('describeModelFields — pseudo-enums and unknown types', () => {
         },
       },
     };
-    const l = projectLens(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }), {
-      by: 'model',
-    });
-    const f = describeModelFields(l, 'app', 'User')[0];
+    const l = openView({ maps: { app: m }, mapName: 'app', model: 'User' });
+    const f = describeScopeFields(viewRoot(l))[0];
     expect(f.enumValues).toEqual(['gold', 'silver']); // → select in the UI
     expect(f.kind).toBe('String'); // operators still string-based
     expect(f.operators.field).toContain('contains');
@@ -104,10 +101,8 @@ describe('describeModelFields — pseudo-enums and unknown types', () => {
     const m: FieldMap = {
       models: { User: { fields: { handle: { kind: 'scalar', type: 'Citext' } } } },
     };
-    const l = projectLens(createLens({ maps: { app: m }, mapName: 'app', model: 'User' }), {
-      by: 'model',
-    });
-    const f = describeModelFields(l, 'app', 'User')[0];
+    const l = openView({ maps: { app: m }, mapName: 'app', model: 'User' });
+    const f = describeScopeFields(viewRoot(l))[0];
     expect(f.kind).toBe('String');
     expect(f.operators.field.length).toBeGreaterThan(0);
   });

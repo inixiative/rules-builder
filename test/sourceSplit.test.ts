@@ -1,17 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  type Condition,
-  check,
-  createLens,
-  type FieldMap,
-  projectLens,
-} from '@inixiative/json-rules';
+import { type Condition, check, type FieldMap } from '@inixiative/json-rules';
 import {
   type Decoration,
   describeFacets,
   matchFacet,
   validateDecoration,
 } from '../src/schema/decoration';
+import { viewRoot } from '../src/schema/surface';
+import { openView } from './setup/open';
 
 // One physical enrichment table split into two logical sources by a system slug —
 // "Salesforce custom fields" vs "Gong custom fields" — authored by hand, no new
@@ -28,9 +24,7 @@ const map: FieldMap = {
     },
   },
 };
-const lens = projectLens(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }), {
-  by: 'model',
-});
+const lens = openView({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 const npsFacet = (slug: string, label: string): Decoration['facets'][number] => ({
   path: 'customFields.value',
@@ -51,13 +45,13 @@ const decoration: Decoration = {
 describe('splitting one enrichment table into logical sources by a system slug (manual)', () => {
   test('the two sources are collision-free and both offered', () => {
     expect(validateDecoration(lens, decoration)).toEqual([]);
-    const labels = describeFacets(lens, decoration).map((f) => f.label);
+    const labels = describeFacets(viewRoot(lens), decoration).map((f) => f.label);
     expect(labels).toContain('Salesforce NPS');
     expect(labels).toContain('Gong NPS');
   });
 
   test('a source facet seeds the slug + key as leading conditions and evaluates on its own rows', () => {
-    const [sf] = describeFacets(lens, decoration);
+    const [sf] = describeFacets(viewRoot(lens), decoration);
     const seed = sf.seed as { field: string; condition: { all: Condition[] } };
     expect(seed.condition.all[0]).toMatchObject({ field: 'slug', value: 'salesforce' });
     expect(seed.condition.all[1]).toMatchObject({ field: 'key', value: 'nps' });
@@ -102,7 +96,7 @@ describe('splitting one enrichment table into logical sources by a system slug (
         ],
       },
     } as Condition;
-    expect(matchFacet(lens, decoration, sfNode)?.label).toBe('Salesforce NPS');
-    expect(matchFacet(lens, decoration, gongNode)?.label).toBe('Gong NPS');
+    expect(matchFacet(viewRoot(lens), decoration, sfNode)?.label).toBe('Salesforce NPS');
+    expect(matchFacet(viewRoot(lens), decoration, gongNode)?.label).toBe('Gong NPS');
   });
 });
