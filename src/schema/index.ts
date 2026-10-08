@@ -1,3 +1,4 @@
+export type { SourceValues } from '@inixiative/json-rules';
 export type {
   Decor,
   Decoration,
@@ -36,8 +37,6 @@ export type { LensLoopOption, LensScope, LensScopeSurfaceOptions } from './lensS
 export { lensScopeSurface, useLensScopeSurface } from './lensScopeSurface';
 export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker';
 export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
-export type { SourceRows, SourceValues } from './sources';
-export { runSources } from './sources';
 export type {
   BuilderField,
   LensView,

@@ -1,9 +1,9 @@
 import { check, describeRule, validateRuleInLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
-import { composeNarrowed, resolve, runSources } from '../../src';
+import { composeNarrowed, resolve } from '../../src';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
-import { sampleRows } from '../samples';
+import { sampleRows, sampleSourceValues } from '../samples';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, sourceFor } from '../workspace';
 import type { TabProps } from './types';
@@ -58,9 +58,9 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
     try {
       const source = sourceFor(ws, choice.ref);
       if (!source) throw new Error('surface not resolvable');
-      // engine compiles the source queries; app runs them over sample rows → fetched values
+      // json-rules materializes each source over the sample rows → fetched values
       // fold into the view so option sets reflect the lens/narrowing, not the raw column.
-      const sourceValues = runSources(composeNarrowed(source), sampleRows);
+      const sourceValues = sampleSourceValues(composeNarrowed(source));
       // The gate is the narrowed lens itself, never its projected surface.
       const { lens } = resolve(source, { sourceValues });
       return { error: null as string | null, source, sourceValues, lens };

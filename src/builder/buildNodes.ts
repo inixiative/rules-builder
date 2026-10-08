@@ -2,8 +2,11 @@ import {
   type Condition,
   type FieldKind,
   getAggregateOperators,
+  type RuleTarget,
   readScopeRef,
+  type ValidationIssue,
   type ValueShape,
+  validateRule,
   validateRuleInLens,
 } from '@inixiative/json-rules';
 import { switchGroupOperator } from '../core/decorate';
@@ -36,6 +39,7 @@ import {
   knownValueShape,
   operandClass,
   relationTarget,
+  schemaOf,
   viewAt,
   viewRoot,
   visitOf,
@@ -133,7 +137,8 @@ export type LeafNode = {
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first
    *  (`$$.` is the element this leaf's array sits in). Absent at the root. */
   scopes?: ScopeOption[];
-  /** Gated against the allowed value set (sourced/enum) via validateRuleInLens. */
+  /** Gated against the allowed value set (sourced/enum) via validateRuleInLens, and runnable
+   *  on every target (json-rules `validateRule` with the lens's schema). */
   valid: boolean;
   remove: () => void;
 };
@@ -217,10 +222,8 @@ export type FacetModeControl = {
 /**
  * The numeric-aggregate facet of an {@link ArrayNode} — present instead of
  * `arrayOperator` when the node is an `AggregateRule` (`sum`/`avg` over the list
- * elements compared to a threshold). The element window (e.g. a date range) is
- * authored via the shared `condition` sub-builder, NOT a separate window control:
- * the engine expresses the window as the element `condition`, and `toPrisma()`
- * rejects authored windowing (orderBy/take/skip/filter).
+ * elements compared to a threshold). The elements it reduces are narrowed by the
+ * shared `condition` sub-builder, and by `filter` where every target takes a window.
  */
 export type AggregateControl = {
   /** `sum` or `avg`. Only these two — {@link AGGREGATE_MODES}. */
@@ -297,14 +300,17 @@ export type ArrayNode = {
   count?: { value?: number; set: (n: number | undefined) => void };
   /** Predicate (all/any/none, required) + count (optional) → a sub-condition over the elements. */
   condition?: GroupNode;
-  /** Window filter: restrict the elements before the operator applies. */
+  /** Window filter: restrict the elements before the operator applies. On an aggregate,
+   *  offered where every target takes a window (json-rules `validateRule`) or one is
+   *  already authored. */
   filter?: GroupNode;
   /** Drop the filter sub-condition entirely. */
   removeFilter?: () => void;
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first —
    *  a prefixed list field iterates an ancestor's collection. Absent at the root. */
   scopes?: ScopeOption[];
-  /** Gated via validateRuleInLens (validates field + nested condition). */
+  /** Gated via validateRuleInLens (validates field + nested condition) and json-rules
+   *  `validateRule` on every target. */
   valid: boolean;
   remove: () => void;
 };
@@ -321,6 +327,8 @@ type Ctx = {
   view: LensView;
   decoration?: Decoration;
   surfaceOpts: SurfaceOptions;
+  /** The schema `validateRule` compiles each target against — the lens root. */
+  schema: ReturnType<typeof schemaOf>;
 };
 /** What a node sees: the visit it sits on + its selectable fields. On descent into an
  *  array node's elements, this swaps to the relation's own visit (the fields the lens
@@ -358,6 +366,15 @@ const enclose = (scope: Scope, node: Condition): Condition => {
   return out;
 };
 
+const targetsOf = (ctx: Ctx): RuleTarget[] =>
+  ctx.surfaceOpts.targets?.length ? ctx.surfaceOpts.targets : ['check'];
+
+/** json-rules' own refusals of a node, as the engine meets it, on each of the builder's targets. */
+const targetIssues = (scope: Scope, node: Condition, ctx: Ctx): ValidationIssue[] =>
+  targetsOf(ctx).flatMap(
+    (target) => validateRule(enclose(scope, node), { target, ...ctx.schema }).errors,
+  );
+
 const scopeLabel = (scope: Scope, ctx: Ctx): string => {
   const visit = visitOf(scope.at);
   if (!visit) return scope.at.at;
@@ -384,16 +401,49 @@ const enclosingScopes = (scope: Scope, ctx: Ctx): ScopeOption[] | undefined => {
   });
 };
 
+/** The declared type a field carries in its frame's visit (an enum's type name). */
+const entryType = (frame: Scope, name: string): string | undefined => {
+  const visit = visitOf(frame.at);
+  return visit && Object.hasOwn(visit.fields, name) ? visit.fields[name].type : undefined;
+};
+
 /** Value locations a `path` may name — the current row as `$.`, then each enclosing
- *  scope. A path names a value, so relations and lists are not offered. */
-const pathScopes = (scope: Scope, ctx: Ctx): ScopeOption[] =>
-  [scope, ...[...scope.ancestors].reverse()].map((frame, i) => {
-    const prefix = `${'$'.repeat(i + 1)}.`;
-    const fields = frame.fields.filter(
-      (f) => f.selectable !== false && !f.relation && !f.isList && !f.seed,
+ *  scope. A path names a value, so relations and lists are not offered; a ref is offered
+ *  only where it is the field's own type (an enum: its own enum) and every target takes the
+ *  comparison (json-rules `validateRule` — toPrisma reaches only the current row's
+ *  columns). A scope with nothing to offer is left out. */
+const pathScopes = (
+  scope: Scope,
+  ctx: Ctx,
+  rec: Rec,
+  field: { frame: Scope; name: string; kind: FieldKind } | undefined,
+): ScopeOption[] => {
+  const { value: _v, bind: _b, ...rule } = rec;
+  const fits = (frame: Scope, f: BuilderField, ref: string): boolean => {
+    if (field) {
+      if (f.kind !== field.kind) return false;
+      if (f.kind === 'Enum' && entryType(frame, f.name) !== entryType(field.frame, field.name))
+        return false;
+    }
+    return !targetIssues(scope, { ...rule, path: ref } as Condition, ctx).some((issue) =>
+      issue.path.endsWith('.path'),
     );
-    return { prefix, label: scopeLabel(frame, ctx), options: prefixedOptions(fields, prefix) };
-  });
+  };
+  return [scope, ...[...scope.ancestors].reverse()]
+    .map((frame, i) => {
+      const prefix = `${'$'.repeat(i + 1)}.`;
+      const fields = frame.fields.filter(
+        (f) =>
+          f.selectable !== false &&
+          !f.relation &&
+          !f.isList &&
+          !f.seed &&
+          fits(frame, f, `${prefix}${f.name}`),
+      );
+      return { prefix, label: scopeLabel(frame, ctx), options: prefixedOptions(fields, prefix) };
+    })
+    .filter((s) => s.options.length > 0);
+};
 
 /**
  * Author-time partition pin. A grouped field (surface `groupBy` axes) narrows its
@@ -458,40 +508,6 @@ const arrayCat = (op: string | undefined): ArrayCat => {
  *  added here if the engine adds them; element *count* is intentionally not a mode —
  *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
 const AGGREGATE_MODES = ['sum', 'avg'] as const;
-
-/** Author-time windowing keys the engine's `toPrisma()` rejects on an aggregate rule
- *  (`hasWindow`). The element `condition` is NOT windowing — it compiles fine. */
-const AGGREGATE_WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'] as const;
-
-/**
- * Validate an aggregate rule the way the engine's `toPrisma/aggregate.ts` guards do,
- * plus the check()-only Json carve-out. Returns whether it is authorable at all and
- * whether its numeric target compiles to a Prisma plan.
- *
- * - `field` must terminate at a list (`many`) relation.
- * - `aggregate.field` must exist on the related model and be a numeric scalar
- *   (`compilesToPrisma`) OR a `Json` column (valid-but-flagged, check()-only).
- * - `operator` must be an aggregate comparison (`getAggregateOperators()`; every
- *   target compiles them all).
- * - no authored windowing ({@link AGGREGATE_WINDOW_KEYS}).
- */
-const validateAggregate = (
-  rec: Rec,
-  relationField: BuilderField | undefined,
-  targetField: BuilderField | undefined,
-  operators: readonly string[],
-): { ok: boolean; compilesToPrisma: boolean } => {
-  const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
-  const fieldTerminatesAtList =
-    relationField?.isList === true && relationField.relation !== undefined;
-  const targetExists = targetField !== undefined && targetField.aggregatable === true;
-  const targetCompiles = targetField?.compilesToPrisma === true;
-  const operatorOk = typeof rec.operator === 'string' && operators.includes(rec.operator);
-  const modeOk = agg.mode === 'sum' || agg.mode === 'avg';
-  const noWindow = AGGREGATE_WINDOW_KEYS.every((k) => rec[k] === undefined);
-  const ok = fieldTerminatesAtList && targetExists && operatorOk && modeOk && noWindow;
-  return { ok, compilesToPrisma: ok && targetCompiles };
-};
 
 /** The built descriptor at a slot `path` (paths address the builder's own shape —
  *  {@link normalizeGroups}). `if`/`then`/`else` carry no nodes. */
@@ -745,7 +761,14 @@ const buildLeaf = (
                 const { value: _v, bind: _b, ...rest } = rec;
                 ctx.commit(setNode(ctx.root, path, { ...rest, path: p } as Condition));
               },
-              scopes: pathScopes(scope, ctx),
+              scopes: pathScopes(
+                scope,
+                ctx,
+                rec,
+                declared && located
+                  ? { frame: located.frame, name: declared.name, kind: declared.kind }
+                  : undefined,
+              ),
             }
           : undefined,
       bind:
@@ -764,7 +787,10 @@ const buildLeaf = (
     scopes: enclosingScopes(scope, ctx),
     // The gate, and the value set the visit offers (a sourced field's fetched options, cut
     // to its partition) — the gate knows no fetched set.
-    valid: valueValid && validateRuleInLens(enclose(scope, node), ctx.view.lens).ok,
+    valid:
+      valueValid &&
+      validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
+      targetIssues(scope, node, ctx).length === 0,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -932,9 +958,13 @@ const buildArray = (
   const aggTargetFields = rel ? relScope.fields.filter((f) => f.aggregatable) : [];
   const aggTargetField = rel ? relScope.fields.find((f) => f.name === agg.field) : undefined;
   const aggOperators = getAggregateOperators();
-  const aggregateValidation = isAggregate
-    ? validateAggregate(rec, field, aggTargetField, aggOperators)
-    : undefined;
+  // A window (`filter`) on an aggregate, where every target takes one — json-rules decides.
+  const aggregateFilter =
+    isAggregate &&
+    (rec.filter !== undefined ||
+      !targetIssues(scope, { ...rec, filter: { all: [] } } as Rec as Condition, ctx).some((issue) =>
+        issue.code.endsWith('_window'),
+      ));
 
   // Built ahead of the node literal: `buildSub('condition')` is what fills
   // `selectorClauseNodes`, and the literal reads that capture further up.
@@ -942,7 +972,7 @@ const buildArray = (
     rel && (isAggregate || cat === 'predicate' || cat === 'count')
       ? buildSub('condition')
       : undefined;
-  const filterNode = rel && !isAggregate ? buildSub('filter') : undefined;
+  const filterNode = rel && (!isAggregate || aggregateFilter) ? buildSub('filter') : undefined;
 
   // The selector seam exists only where every part of it is real: the facet's
   // selectors must apply here ({@link selectorsApply} — single-hop, non-preset),
@@ -1108,20 +1138,22 @@ const buildArray = (
     // Element predicate (element mode) OR aggregate window (aggregate mode) — both
     // ride the same `condition` sub-builder scoped to the related model.
     condition: conditionNode,
-    // `filter` is authored windowing — offered on element rules, never on an
-    // aggregate (toPrisma() rejects windowing on aggregates).
+    // `filter` is authored windowing — on an aggregate, only where the targets take it.
     filter: filterNode,
     removeFilter:
-      rel && !isAggregate
+      filterNode !== undefined
         ? () => {
             const { filter: _f, ...restRec } = rec;
             ctx.commit(setNode(ctx.root, path, restRec as Condition));
           }
         : undefined,
     scopes: enclosingScopes(scope, ctx),
+    // The engine's gates, plus the aggregate target picker's own validity (sum/avg reads a
+    // number, or a check()-only Json column).
     valid:
       validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
-      (aggregateValidation?.ok ?? true),
+      targetIssues(scope, node, ctx).length === 0 &&
+      (!isAggregate || aggTargetField?.aggregatable === true),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
@@ -1325,6 +1357,7 @@ export const buildRoot = (
     view,
     decoration: opts.decoration,
     surfaceOpts: opts.surfaceOpts ?? {},
+    schema: schemaOf(view.lens),
   };
   return buildNode(normalized, [], 0, ctx, {
     at: viewRoot(view),

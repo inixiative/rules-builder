@@ -6,9 +6,9 @@ import {
   projectLens,
 } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
-import { createView, runSources } from '../../src';
+import { createView } from '../../src';
 import { describeScopeFields, viewRoot } from '../../src/schema/surface';
-import { sampleRows } from '../samples';
+import { sampleSourceValues } from '../samples';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
 import { narrowingAncestors, type ParentRef, resolveRef, type SavedNarrowing } from '../workspace';
 import { NarrowingNode, type NodeCtx } from './NarrowingNode';
@@ -65,11 +65,7 @@ export const NarrowingEditor = ({ ws, patch, selected }: TabProps & { selected?:
 
   const sourceValues = useMemo(() => {
     if (!resolvedChain) return [];
-    try {
-      return runSources(resolvedChain, sampleRows);
-    } catch {
-      return [];
-    }
+    return sampleSourceValues(resolvedChain);
   }, [resolvedChain]);
 
   const analysis = useMemo(() => {

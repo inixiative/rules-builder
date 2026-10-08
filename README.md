@@ -129,21 +129,35 @@ Each `LeafNode` exposes `valid` (the whole row), and `field.valid` / `value.vali
 pinpoint which control is wrong (field doesn't resolve in the surface; value
 falls outside an enum/sourced set) so you can mark the exact input.
 
+`valid` is the engine's own answer: the lens gate (`validateRuleInLens`) and
+json-rules `validateRule` on each of the builder's `targets` (default `check`), with
+the lens's schema — so a column compare, a window or an aggregate is valid exactly
+where the compiler takes it. In path mode, `value.path.scopes` offers only refs of
+the field's own type that every target compiles (toPrisma reaches the current
+row's columns only), and an aggregate offers `filter` where every target takes a
+window. `validate(target)` and `describe()` read the same schema.
+
 ## Sourced fields (data-backed options)
 
 A narrowing can declare `sources` — a field whose option set is the DISTINCT
-values of its own column (after an eligibility `where`). The engine compiles the
-queries; your app runs them and hands the results back:
+values of its own column (after an eligibility `where`). json-rules compiles and
+materializes them; your app runs the queries and hands the results back:
 
 ```ts
-import { runSources, useRuleBuilder } from '@inixiative/rules-builder';
+import { materializeSourceQuery, toSourceQueries } from '@inixiative/json-rules';
+import { composeNarrowed, useRuleBuilder } from '@inixiative/rules-builder';
 
-const sourceValues = runSources(narrowing, rows); // rows: { [model]: Record<string, unknown>[] }
+const lens = composeNarrowed(source);
+const sourceValues = await Promise.all(
+  toSourceQueries(lens, { now }).map(async (q) =>
+    materializeSourceQuery(q, await runPrisma(q.prisma), { lens, now }),
+  ),
+);
 useRuleBuilder({ source, sourceValues }); // sourced fields now render as selects
 ```
 
-In production you run the compiled query (`toSql` / `toPrisma`) against your DB;
-`runSources` is the same shape over in-memory rows.
+Over a collection already in hand (the lens's anchor rows), json-rules
+`materializeSources(lens, rows, { now })` is the in-memory executor.
 
 ## Filtering a collection in hand
 
@@ -443,7 +457,6 @@ with a registry stores its own by-name reference.
 - `createView(lensOrNarrowing, { sourceValues })` — the same over a lens in hand; `rawView(source)` — a raw record, every relation on (permissions, transitions)
 - `composeNarrowed(source)` — the source's narrowed lens; `withAllRelations(source)` — every relation turned on in its first layer
 - `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })` — the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
-- `runSources(lensOrNarrowing, rows)` — DISTINCT option sets for sourced fields
 - `lensValuePicker` / `useLensValuePicker` — the field/path picker atom (`{ at, maxDepth }`)
 - `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule` — validated rule serialization
