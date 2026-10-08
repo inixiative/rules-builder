@@ -5,6 +5,23 @@
 Breaking, with no compatibility path (no users).
 
 - **Peer `@inixiative/json-rules` ^3.5.0.**
+- **`builderSource(lens, { sourceValues })`** (and `LensBuilderSource`): the serializable source a
+  builder authors against, read off a lens path by path — the lens's model-keyed surface
+  (`projectLens(…, { by: 'model' })`) and one layer whose `root` spells, at each path the lens
+  shows, exactly its columns (`picks`), enum values (`enumPicks`) and relations. Composed, it
+  gates each path as the lens does (a column one visit of a model shows is not offered at
+  another), and it ships no clamp and no bridge. Replaces Zealot's `builderSource`
+  (`@zealot/db`: segment, signup-rule, mission-folder, platform-alert and email-template
+  condition schemas, and the AI conditions vocabulary) and the `surfaceNode` walk inside
+  template's `emailSurface` (and its Kingdom and Tribe ports).
+- **`withAllRelations` spells every path a later layer spells in the first layer.** A later layer
+  could only restate a hop the model-default tree reached (`org.parent` past it threw
+  `not_visible`); each later layer's `root.relations` is now turned on, hop by hop, in the first
+  layer's `root.relations`, over what it already says — turn-ons only, the later layer's picks,
+  omits and clamps stay its own. Replaces Zealot's `relationTree` and Omni's `everyRelation`
+  (one hop at the anchor plus the config's spelled tree): Omni's lens becomes
+  `withAllRelations` over its redaction and config layers, the posture Zealot's platform-alert
+  `recordLens` already uses.
 - **`validate(target)` passes the schema.** `useRuleBuilder().validate` called `validateRule`
   without `map`/`mapName`/`model`, so it refused every column compare toPrisma compiles and
   contradicted `describe()`. It now passes the narrowed lens's root, as json-rules

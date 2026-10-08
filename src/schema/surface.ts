@@ -19,6 +19,9 @@ import {
   NUMERIC_KINDS,
   type Operator,
   type OperatorFamily,
+  type PathProjection,
+  type ProjectLensOptions,
+  projectLens,
   type RuleTarget,
   type SourceOption,
   type SourceValues,
@@ -66,14 +69,75 @@ export const composeNarrowed = (source: RuleBuilderSource): Lens | LensNarrowing
   );
 };
 
+/** A {@link RuleBuilderSource} read off a lens by {@link builderSource}: one parent-less
+ *  layer, its `root` spelling each path the lens shows. */
+export type LensBuilderSource = Omit<RuleBuilderSource, 'narrowing' | 'bridges'> & {
+  narrowing: { root: ModelNarrowing };
+};
+
+// What the projection shows at `path`, spelled as a narrowing node: its columns as picks, an
+// enum's values as enumPicks, and each relation shown there as a child node. Bridges are left off.
+const shownNode = (projection: PathProjection, path: string): ModelNarrowing => {
+  const picks: string[] = [];
+  const enumPicks: Record<string, readonly string[]> = {};
+  const relations: Record<string, ModelNarrowing> = {};
+  for (const [name, entry] of Object.entries(projection[path]?.fields ?? {})) {
+    if (entry.kind === 'object') {
+      const child = `${path}.${name}`;
+      if (projection[child]) relations[name] = shownNode(projection, child);
+      continue;
+    }
+    if (entry.kind === 'bridge') continue;
+    picks.push(name);
+    if (entry.kind === 'enum' && entry.values) enumPicks[name] = entry.values;
+  }
+  return {
+    picks,
+    ...(Object.keys(enumPicks).length ? { enumPicks } : {}),
+    ...(Object.keys(relations).length ? { relations } : {}),
+  };
+};
+
+/**
+ * The serializable source a builder authors against, read off a lens path by path: the lens's
+ * model-keyed surface (`projectLens(…, { by: 'model' })`, `sourceValues` folded onto it) and one
+ * layer whose `root` spells, at each path the lens shows, exactly the columns, enum values and
+ * relations it shows there. Composed ({@link composeNarrowed}), it gates each path as the lens
+ * does: a column one path shows is not offered at another visit of the same model. It ships no
+ * clamp — no `where` reaches the client — and no bridge.
+ */
+export const builderSource = (
+  lens: Lens | LensNarrowing,
+  options: ProjectLensOptions = {},
+): LensBuilderSource => {
+  const { maps, mapName, model } = projectLens(lens, { ...options, by: 'model' });
+  return {
+    maps,
+    mapName,
+    model,
+    narrowing: { root: shownNode(projectLens(lens, options), getLensRoot(lens).model) },
+  };
+};
+
+// `node` with every relation `spelled` names turned on beneath it, hop by hop, and nothing else
+// of `spelled` (its picks, omits and clamps stay in its own layer).
+const turnOn = (node: ModelNarrowing, spelled: ModelNarrowing['relations']): ModelNarrowing => {
+  if (!spelled || Object.keys(spelled).length === 0) return node;
+  const relations: Record<string, ModelNarrowing> = { ...node.relations };
+  for (const [name, child] of Object.entries(spelled))
+    relations[name] = turnOn(relations[name] ?? {}, child.relations);
+  return { ...node, relations };
+};
+
 /**
  * The source with every relation turned on in its first layer, merged over what that layer
  * already says: every model's relations at the model defaults — json-rules grows them as a
  * tree from the anchor and each spelled path, each model at its nearest reach — and the
  * anchor's own relations spelled at the root, so the record's every relation is on there (a
- * self-relation included, which the tree would not reach again). The posture of a raw record,
- * and of a first-layer grant; later layers still narrow it. Deeper paths the tree leaves off
- * are spelled under `root.relations`.
+ * self-relation included, which the tree would not reach again). Every path a later layer
+ * spells under `root.relations` is spelled under the first layer's too, so a later layer can
+ * restate a hop past the tree's reach. The posture of a raw record, and of a first-layer grant;
+ * later layers still narrow it.
  */
 export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource => {
   const base = createLens({
@@ -105,7 +169,10 @@ export const withAllRelations = (source: RuleBuilderSource): RuleBuilderSource =
         },
       };
     }
-  const root = { ...first.root, relations: { ...anchor, ...first.root?.relations } };
+  const root = rest.reduce((node, later) => turnOn(node, later.root?.relations), {
+    ...first.root,
+    relations: { ...anchor, ...first.root?.relations },
+  } as ModelNarrowing);
   const layer = { ...first, root, mapDefaults };
   return { ...source, narrowing: rest.length ? [layer, ...rest] : layer };
 };
