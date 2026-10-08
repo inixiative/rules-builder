@@ -39,6 +39,7 @@ export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker'
 export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
 export type {
   BuilderField,
+  LensBuilderSource,
   LensView,
   NarrowingLayer,
   ResolveOptions,
@@ -48,6 +49,7 @@ export type {
   ViewVisit,
 } from './surface';
 export {
+  builderSource,
   composeNarrowed,
   createView,
   describeModelFields,

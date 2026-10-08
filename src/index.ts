@@ -69,6 +69,7 @@ export type {
   Decoration,
   Facet,
   FacetCondition,
+  LensBuilderSource,
   LensLoopOption,
   LensScope,
   LensScopeSurfaceOptions,
@@ -87,6 +88,7 @@ export type {
 } from './schema';
 export {
   branchFields,
+  builderSource,
   composeNarrowed,
   consumedTopFields,
   createView,

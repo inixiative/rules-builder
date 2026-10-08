@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { type Condition, type FieldMap, validateRuleInLens } from '@inixiative/json-rules';
 import {
+  type Condition,
+  type FieldMap,
+  validateNarrowing,
+  validateRuleInLens,
+} from '@inixiative/json-rules';
+import {
+  composeNarrowed,
   describeScopeFields,
+  type NarrowingLayer,
   rawView,
   resolve,
   viewAt,
@@ -24,6 +31,11 @@ const map: FieldMap = {
 };
 
 const names = (fields: { name: string }[]) => fields.map((f) => f.name).sort();
+
+const validateNarrowingChain = (
+  source: Parameters<typeof composeNarrowed>[0],
+  layer: NarrowingLayer,
+): boolean => validateNarrowing({ parent: composeNarrowed(source), ...layer }).ok;
 
 describe('resolve — serializable source → view', () => {
   test('a bare source shows the anchor columns', () => {
@@ -165,6 +177,42 @@ describe('a layered narrowing — a chain, outermost first', () => {
     expect(names(describeScopeFields(viewRoot(view)))).toEqual(['name', 'org']);
     // Org's parent and users lead to models already on the path.
     expect(names(describeScopeFields(viewAt(viewRoot(view), 'org')))).toEqual(['name']);
+  });
+});
+
+describe('withAllRelations — a later layer may spell past the tree', () => {
+  test('a path a later layer spells is turned on in the first layer, and only there', () => {
+    const later = {
+      root: { picks: ['name'], relations: { org: { picks: ['name'], relations: { parent: {} } } } },
+    };
+    // Org at org.parent is past the model-default tree: the bare tree leaves it off.
+    expect(validateNarrowingChain(withAllRelations({ ...orgSource, narrowing: [{}] }), later)).toBe(
+      false,
+    );
+    const source = withAllRelations({ ...orgSource, narrowing: [{}, later] });
+    const [first, second] = source.narrowing as NarrowingLayer[];
+    expect(second).toBe(later);
+    expect(first?.root?.relations?.org).toEqual({ relations: { parent: {} } });
+    const view = resolve(source);
+    expect(names(describeScopeFields(viewAt(viewRoot(view), 'org')))).toEqual(['name', 'parent']);
+    expect(
+      validateRuleInLens({ field: 'org.parent.name', operator: 'equals', value: 'x' }, view.lens)
+        .ok,
+    ).toBe(true);
+    // The later layer's picks stay its own: the first layer turns on, it doesn't pick.
+    expect(first?.root?.picks).toBeUndefined();
+  });
+
+  test('a first-layer node the later layer passes through keeps what it says', () => {
+    const source = withAllRelations({
+      ...orgSource,
+      narrowing: [
+        { root: { relations: { org: { omits: ['name'] } } } },
+        { root: { relations: { org: { relations: { parent: {} } } } } },
+      ],
+    });
+    const [first] = source.narrowing as NarrowingLayer[];
+    expect(first?.root?.relations?.org).toEqual({ omits: ['name'], relations: { parent: {} } });
   });
 });
 
