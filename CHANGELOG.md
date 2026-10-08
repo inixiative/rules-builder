@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.30.0 — json-rules 3.4: relations are fields, off until the narrowing turns them on
+
+Breaking, with no compatibility path (no users).
+
+- **Peer `@inixiative/json-rules` ^3.4.0.** A relation is off until the source's first
+  narrowing turns it on (`root.relations`, `mapDefaults…models.M.relations`); a bare
+  source offers its anchor's columns only.
+- **Gated against the narrowed lens, never the surface.** 0.29 validated, coerced and
+  described every rule against `projectLens(…, { by: 'model' })`, which is a bare lens —
+  under 3.4 every relation rule was invalid, coercion skipped relation paths and
+  `describe()` errored. The leaf/array `valid` flags, `coerceRule`, `describeRule` and
+  preset validation now read the narrowed lens.
+- **Fetched values are held per path.** The surface used to carry `sourceValues` per model,
+  so the gate refused a value outside a fetched set on every path to that model. The gate
+  now knows no fetched set (json-rules takes no per-path `sourceValues`); a leaf's `valid`
+  folds in its `value.valid` — the set the visit offers, fetched options at their own path
+  cut to the values the schema allows — and preset variable options are checked against the
+  slot's visit the same way.
+- **Each scope reads the visit the lens shows on its path.** `resolve(source)` returns a
+  `LensView` — `{ lens, mapName, model, visit(at) }` — each visit resolved on demand by
+  json-rules `lensVisit` (the gate's own rules; nothing is enumerated, so any schema is
+  cheap). An element scope reads the visit at its relation's dotted path, so its own
+  relations stay (0.29 re-anchored a bare lens there, which drops them), and a relation the
+  lens doesn't show on that path — off, or outside the model-default tree — is not offered. Decoration facets resolve,
+  seed, match and stamp through the same visits; branch fields follow only relations the
+  lens turns on.
+- **API.** `buildRoot(condition, view, …)`; `describeScopeFields(scope, opts)` beside
+  `describeModelFields` (which reads a model-keyed Lens); `createView`, `viewRoot`, `viewAt`,
+  `visitOf`; decoration functions take a scope (`ViewAt`) where they took a Lens, and
+  `validateDecoration` / `useFacetFields` take the view. `useRuleBuilder` returns `lens`
+  (the narrowed lens) and `view`.
+- **`validateDecoration`** gates presets in situ against the narrowed lens, wrapped in the
+  array rules that reach their scope; a `models[…]` list validates at every element scope
+  the lens reaches through a list relation, and one that is never an element scope (the
+  anchor, a to-one-only model) is reported.
+- **Layered sources.** `RuleBuilderSource.narrowing` may be a list of parent-less layers,
+  outermost first; `composeNarrowed` chains them. `withAllRelations(source)` turns every
+  relation on in the first layer: every model's at the model defaults (json-rules grows them
+  as a tree, each model once at its nearest reach) and the anchor's own spelled at the root,
+  so a raw record's self-relations are on.
+- **Permissions and transitions gate the raw record:** `rawView(source)` — the view of
+  `withAllRelations` over the record; its rel walks read every relation of each resource.
+  `buildActionRoot` takes `view`.
+- **`lensValuePicker` / `lensScopeSurface`** walk the visits the lens shows; their start is
+  `{ at }` (a dotted path from the anchor) instead of `{ mapName, model }`, and a loop portal
+  carries its own `at` to re-anchor with. The model-repeat cut is gone: the lens decides how
+  deep a path goes (a spelled `owner.manager.name` is reached).
+- A dotted list field no picker offers (`account.contracts` outside a branch) resolves its
+  relation through the visits, so its condition subtree is built rather than hidden.
+- `validateDecoration` reports a `models[…]` violation once, naming every visit it holds at,
+  and walks only visits that can reach a `models` key's model.
+- `useFilteredCollection`: json-rules 3.4's `materializeSources` throws on rows missing a key a
+  source or the grants on its path read — the collection in hand must carry them.
+- A bare value `path` is a root-row column in 3.4 (`context` is gone); docs no longer call it
+  a context ref.
+- Example: the Builder tab authors against the ref's source (layers included) and gates
+  against its narrowed lens; `vip-active` turns `orders`, `enrichments` and `crm:Account` on;
+  narrowing where-editors read their menu with every relation on; the decoration validator
+  and path picker read views.
+
 ## 0.29.0 — json-rules 3.0
 
 - **Peer `@inixiative/json-rules` ^3.0.0.** Every call reads 3.0's one name per verb:

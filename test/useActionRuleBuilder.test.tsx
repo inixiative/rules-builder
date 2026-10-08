@@ -7,6 +7,7 @@ import {
   type UseActionRuleBuilderOptions,
   useActionRuleBuilder,
 } from '../src/permissions/useActionRuleBuilder';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -22,7 +23,7 @@ const map: FieldMap = {
     Account: { fields: { industry: { kind: 'scalar', type: 'String' } } },
   },
 };
-const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
   test('with no defaultValue, seeds the default ABAC leaf { rule: { all: [] } }', () => {

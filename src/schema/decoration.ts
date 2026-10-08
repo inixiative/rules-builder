@@ -1,11 +1,10 @@
 import {
   type ArrayOperator,
   type Condition,
-  createLens,
   type DateExpr,
   type FieldKind,
-  type Lens,
-  projectLens,
+  type FieldMapEntry,
+  getLensRoot,
   type RuleValue,
   validateRuleInLens,
 } from '@inixiative/json-rules';
@@ -14,10 +13,16 @@ import { ruleForField } from '../builder/nodes';
 import { asGroupRoot, getNode, normalizeGroups, type RulePath, setNode } from '../core/tree';
 import {
   type BuilderField,
-  describeModelFields,
+  describeScopeFields,
+  type LensView,
   operatorsForKind,
   relationTarget,
   type SurfaceOptions,
+  type ViewAt,
+  type ViewVisit,
+  viewAt,
+  viewRoot,
+  visitOf,
 } from './surface';
 
 export type Decor = { label?: string; icon?: string };
@@ -221,62 +226,81 @@ export type Decoration = {
   };
 };
 
-type LeafResolved = { kind: 'leaf'; mapName: string; modelName: string; field: string };
+type Model = { mapName: string; modelName: string };
+type LeafResolved = Model & { kind: 'leaf'; field: string; owner: ViewAt };
 type CollectionResolved = {
   kind: 'collection';
-  listOwner: { mapName: string; modelName: string };
+  /** The visit the list relation sits on. */
+  listOwner: ViewAt;
   listField: string;
   listPath: string;
-  target: { mapName: string; modelName: string };
+  target: Model;
+  /** The visit the list relation leads to — its elements. */
+  targetAt: ViewAt;
   elementLeaf?: string;
 };
-type BranchResolved = {
-  kind: 'branch';
-  prefix: string;
-  target: { mapName: string; modelName: string };
-};
+type BranchResolved = { kind: 'branch'; prefix: string; target: Model; targetAt: ViewAt };
 type Resolved = LeafResolved | CollectionResolved | BranchResolved;
 
-const RELATION_KINDS = new Set(['object', 'bridge']);
+/** One field of a scope's visit, and — for a relation the lens shows there — the visit it
+ *  leads to. `undefined` for a field the lens doesn't show on this path. */
+type Hop = Model & { entry: FieldMapEntry; target?: Model; next?: ViewAt };
+const hopAt = (scope: ViewAt, name: string): Hop | undefined => {
+  const visit = visitOf(scope);
+  if (!visit || !Object.hasOwn(visit.fields, name)) return undefined;
+  const entry = visit.fields[name];
+  const target = relationTarget(entry, visit.mapName);
+  return {
+    mapName: visit.mapName,
+    modelName: visit.model,
+    entry,
+    target,
+    next: target ? viewAt(scope, name) : undefined,
+  };
+};
 
 /**
- * Classify a facet path against the lens graph. To-one hops are traversed freely;
- * the first *list* relation makes it a collection anchored there, with the
- * remainder as the element leaf. Returns `undefined` — the facet is dropped — for
- * an unresolvable path or a bare relation leaf (not a value).
+ * Classify a facet path against the visits the lens shows from `scope`. To-one hops are
+ * traversed freely; the first *list* relation makes it a collection anchored there, with
+ * the remainder as the element leaf. Returns `undefined` — the facet is dropped — for a
+ * path the lens doesn't show (a relation it doesn't turn on there included) or a bare
+ * relation leaf (not a value).
  */
-const resolvePath = (lens: Lens, path: string | undefined): Resolved | undefined => {
+const resolvePath = (scope: ViewAt, path: string | undefined): Resolved | undefined => {
   if (!path) return undefined;
   const segments = path.split('.');
-  let mapName = lens.mapName;
-  let modelName = lens.model;
+  let at = scope;
   for (let i = 0; i < segments.length; i++) {
-    const entry = lens.maps[mapName]?.models[modelName]?.fields[segments[i]];
-    if (!entry) return undefined;
-    if (entry.isList) {
-      const target = relationTarget(entry, mapName);
-      if (!target) return undefined;
+    const hop = hopAt(at, segments[i]);
+    if (!hop) return undefined;
+    if (hop.entry.isList) {
+      if (!hop.target || !hop.next) return undefined;
       return {
         kind: 'collection',
-        listOwner: { mapName, modelName },
+        listOwner: at,
         listField: segments[i],
         listPath: segments.slice(0, i + 1).join('.'),
-        target,
+        target: hop.target,
+        targetAt: hop.next,
         elementLeaf: segments.slice(i + 1).join('.') || undefined,
       };
     }
     if (i === segments.length - 1) {
-      if (RELATION_KINDS.has(entry.kind)) {
-        // a bare to-one relation → a branch (a scoped group of its `prefix.field` conditions).
-        const target = relationTarget(entry, mapName);
-        return target ? { kind: 'branch', prefix: path, target } : undefined;
-      }
-      return { kind: 'leaf', mapName, modelName, field: segments[i] };
+      // a bare to-one relation → a branch (a scoped group of its `prefix.field` conditions).
+      if (hop.target)
+        return hop.next
+          ? { kind: 'branch', prefix: path, target: hop.target, targetAt: hop.next }
+          : undefined;
+      return {
+        kind: 'leaf',
+        mapName: hop.mapName,
+        modelName: hop.modelName,
+        field: segments[i],
+        owner: at,
+      };
     }
-    const target = relationTarget(entry, mapName);
-    if (!target) return undefined;
-    mapName = target.mapName;
-    modelName = target.modelName;
+    if (!hop.next) return undefined;
+    at = hop.next;
   }
   return undefined;
 };
@@ -339,8 +363,10 @@ export const scopedDecoration = (
 /** Scope-qualified stamp: the resolved `map:Model` of the matching lens (bridges
  *  make bare model names ambiguous). A foreign stamp resolves to no facet and
  *  falls through to an ordinary search. */
-export const scopedFacetId = (lens: Lens, facet: Facet): string =>
-  `${lens.mapName}:${lens.model}/${facetId(facet)}`;
+export const scopedFacetId = (scope: ViewAt, facet: Facet): string => {
+  const visit = visitOf(scope);
+  return `${visit ? `${visit.mapName}:${visit.model}` : scope.at}/${facetId(facet)}`;
+};
 
 /** A stable id — the selector option value and React key. Only the *fixed* `where`
  *  folds in (it is identity); `defaultWhere` is editable, so it never does. The
@@ -408,16 +434,13 @@ const isSubset = (lead: Condition[], conds: Condition[]): boolean => {
 };
 
 const buildLeafField = (
-  lens: Lens,
   facet: Facet,
   resolved: LeafResolved,
   fieldDecor: Record<string, Decor> | undefined,
   opts: SurfaceOptions,
 ): BuilderField | undefined => {
   if (facet.path === undefined) return undefined;
-  const base = describeModelFields(lens, resolved.mapName, resolved.modelName, opts).find(
-    (f) => f.name === resolved.field,
-  );
+  const base = describeScopeFields(resolved.owner, opts).find((f) => f.name === resolved.field);
   if (!base) return undefined;
   const decor = pickDecor(
     fieldDecor,
@@ -436,18 +459,15 @@ const buildLeafField = (
 /** The element leaf's descriptor with any `kind` override applied — used to seed
  *  the value rule and (on rehydration) to retype the element surface. */
 export const facetElementLeaf = (
-  lens: Lens,
+  scope: ViewAt,
   facet: Facet,
   opts: SurfaceOptions = {},
 ): BuilderField | undefined => {
-  const resolved = resolvePath(lens, facet.path);
+  const resolved = resolvePath(scope, facet.path);
   if (resolved?.kind !== 'collection' || !resolved.elementLeaf) return undefined;
-  const leaf = describeModelFields(
-    lens,
-    resolved.target.mapName,
-    resolved.target.modelName,
-    opts,
-  ).find((f) => f.name === resolved.elementLeaf);
+  const leaf = describeScopeFields(resolved.targetAt, opts).find(
+    (f) => f.name === resolved.elementLeaf,
+  );
   if (!leaf) return undefined;
   return facet.kind
     ? { ...leaf, kind: facet.kind, operators: operatorsForKind(facet.kind, opts.targets) }
@@ -529,26 +549,24 @@ const selectorClauseAt = (facet: Facet, conds: Condition[], index: number): stri
  */
 /** Zero inner hops (the element leaf crosses no further list). Multi-hop
  *  facets are picker seeds only — the inner block belongs to the model scope. */
-const collectionSingleHop = (lens: Lens, resolved: CollectionResolved): boolean => {
-  let { mapName, modelName } = resolved.target;
+const collectionSingleHop = (resolved: CollectionResolved): boolean => {
+  let at = resolved.targetAt;
   for (const seg of resolved.elementLeaf?.split('.') ?? []) {
-    const entry = lens.maps[mapName]?.models[modelName]?.fields[seg];
-    if (!entry) return true; // a Json sub-path tail — no list left to cross
-    if (entry.isList) return false;
-    const target = relationTarget(entry, mapName);
-    if (!target) return true;
-    mapName = target.mapName;
-    modelName = target.modelName;
+    const hop = hopAt(at, seg);
+    if (!hop) return true; // a Json sub-path tail — no list left to cross
+    if (hop.entry.isList) return false;
+    if (!hop.next) return true;
+    at = hop.next;
   }
   return true;
 };
 
-export const selectorsApply = (lens: Lens, facet: Facet): boolean => {
+export const selectorsApply = (scope: ViewAt, facet: Facet): boolean => {
   if (!facet.selectors?.length || isPreset(facet)) return false;
-  const resolved = resolvePath(lens, facet.path);
+  const resolved = resolvePath(scope, facet.path);
   if (!resolved) return false;
   if (resolved.kind === 'branch') return true;
-  return resolved.kind === 'collection' && collectionSingleHop(lens, resolved);
+  return resolved.kind === 'collection' && collectionSingleHop(resolved);
 };
 
 /** {@link leadingWhereCount} generalized to the full identity block: the fixed
@@ -560,8 +578,8 @@ export const selectorsApply = (lens: Lens, facet: Facet): boolean => {
  *  ordinary rows (only the first is the selector's own knob). Where selectors
  *  don't apply ({@link selectorsApply} — multi-hop collections, presets), this
  *  is exactly {@link leadingWhereCount}. */
-export const leadingIdentityCount = (lens: Lens, facet: Facet, node: Condition): number => {
-  if (!selectorsApply(lens, facet)) return leadingWhereCount(facet, node);
+export const leadingIdentityCount = (scope: ViewAt, facet: Facet, node: Condition): number => {
+  if (!selectorsApply(scope, facet)) return leadingWhereCount(facet, node);
   const whereLead = whereConditions(facet.where);
   const rec = node as { condition?: Condition; all?: Condition[] };
   // Identity counts only inside an `all` compound — in an `any`, the clauses are
@@ -583,63 +601,54 @@ export const leadingIdentityCount = (lens: Lens, facet: Facet, node: Condition):
 
 /**
  * The field surface a branch facet's group is authored against, each re-`name`d to
- * its `prefix.…` dotted path so a leaf emits the real path. It walks the branch
- * model's exposed surface — the lens already fixes the depth (a narrowing decides
- * what's reachable), so there is no cap here; a per-chain `seen` guard terminates
- * on recursive schemas, exactly as `projectLens` does. It reaches:
+ * its `prefix.…` dotted path so a leaf emits the real path. It walks the visits the
+ * lens shows below the branch — the lens fixes the depth (only relations turned on
+ * are followed, and model defaults grow a tree), so there is no cap here. It
+ * reaches:
  *  - scalar/enum values of the branch model and its nested to-one relations
  *    (`account.owner.email`) — the nested-branch case as flattened deep paths;
  *  - **list relations** at each level, kept selectable so they build a nested array
  *    node (`account.contracts …`) rather than a broken flat leaf.
  */
 export const branchFields = (
-  lens: Lens,
+  target: ViewAt,
   prefix: string,
-  target: { mapName: string; modelName: string },
   opts: SurfaceOptions = {},
 ): BuilderField[] => {
   const out: BuilderField[] = [];
-  const walk = (mapName: string, modelName: string, at: string, seen: Set<string>) => {
-    const key = `${mapName}:${modelName}`;
-    if (seen.has(key)) return;
-    const nextSeen = new Set([...seen, key]);
-    for (const f of describeModelFields(lens, mapName, modelName, opts)) {
-      const name = `${at}.${f.name}`;
+  const walk = (at: ViewAt, path: string) => {
+    for (const f of describeScopeFields(at, opts)) {
+      const name = `${path}.${f.name}`;
       if (f.isList) {
         out.push({ ...f, name }); // a list → an array node, never descended flat
       } else if (f.relation) {
-        walk(f.relation.mapName, f.relation.modelName, name, nextSeen);
+        walk(viewAt(at, f.name), name);
       } else {
         out.push({ ...f, name });
       }
     }
   };
-  walk(target.mapName, target.modelName, prefix, new Set());
+  walk(target, prefix);
   return out;
 };
 
 /** The scope a branch facet's group is authored against — its `prefix` and the
  *  prefixed field surface. `undefined` when the facet isn't a branch. */
 export const facetBranchScope = (
-  lens: Lens,
+  scope: ViewAt,
   facet: Facet,
   opts: SurfaceOptions = {},
 ): { prefix: string; fields: BuilderField[] } | undefined => {
-  const resolved = resolvePath(lens, facet.path);
+  const resolved = resolvePath(scope, facet.path);
   if (resolved?.kind !== 'branch') return undefined;
   return {
     prefix: resolved.prefix,
-    fields: branchFields(lens, resolved.prefix, resolved.target, opts),
+    fields: branchFields(resolved.targetAt, resolved.prefix, opts),
   };
 };
 
-const branchSeed = (
-  lens: Lens,
-  facet: Facet,
-  resolved: BranchResolved,
-  opts: SurfaceOptions,
-): Condition => {
-  const [first] = branchFields(lens, resolved.prefix, resolved.target, opts);
+const branchSeed = (facet: Facet, resolved: BranchResolved, opts: SurfaceOptions): Condition => {
+  const [first] = branchFields(resolved.targetAt, resolved.prefix, opts);
   // `defaultWhere` is array-only (see its doc) — a branch takes only its fixed
   // identity `where` plus a first blank leaf, the leaf in its own rows group
   // (the canonical facet shape: identity outside every user control).
@@ -648,48 +657,33 @@ const branchSeed = (
   return { all: identity.length ? [...identity, { all: rows }] : rows } as Condition;
 };
 
-/** Whether a path from `(mapName, modelName)` crosses a list relation. */
-const pathHasList = (
-  lens: Lens,
-  mapName: string,
-  modelName: string,
-  segments: string[],
-): boolean => {
-  let m = mapName;
-  let mod = modelName;
+/** Whether a path from `scope` crosses a list relation. */
+const pathHasList = (scope: ViewAt, segments: string[]): boolean => {
+  let at = scope;
   for (const seg of segments) {
-    const entry = lens.maps[m]?.models[mod]?.fields[seg];
-    if (!entry) return false;
-    if (entry.isList) return true;
-    const target = relationTarget(entry, m);
-    if (!target) return false;
-    m = target.mapName;
-    mod = target.modelName;
+    const hop = hopAt(at, seg);
+    if (!hop) return false;
+    if (hop.entry.isList) return true;
+    if (!hop.next) return false;
+    at = hop.next;
   }
   return false;
 };
 
 /** The value rule at the end of a to-one-only path within an element model. */
 const leafRuleAt = (
-  lens: Lens,
-  mapName: string,
-  modelName: string,
+  scope: ViewAt,
   segments: string[],
   kind: FieldKind | undefined,
   opts: SurfaceOptions,
 ): Condition | null => {
-  let m = mapName;
-  let mod = modelName;
+  let at = scope;
   for (let i = 0; i < segments.length - 1; i++) {
-    const entry = lens.maps[m]?.models[mod]?.fields[segments[i]];
-    const target = entry && relationTarget(entry, m);
-    if (!target) return null;
-    m = target.mapName;
-    mod = target.modelName;
+    const next = hopAt(at, segments[i])?.next;
+    if (!next) return null;
+    at = next;
   }
-  const found = describeModelFields(lens, m, mod, opts).find(
-    (f) => f.name === segments[segments.length - 1],
-  );
+  const found = describeScopeFields(at, opts).find((f) => f.name === segments[segments.length - 1]);
   if (!found) return null;
   const leaf: BuilderField = {
     ...found,
@@ -701,20 +695,16 @@ const leafRuleAt = (
 
 /** How many array boundaries a path crosses — the number of traversal operators
  *  it needs (see {@link validateDecoration}). */
-export const arrayTraversalCount = (lens: Lens, path: string | undefined): number => {
+export const arrayTraversalCount = (scope: ViewAt, path: string | undefined): number => {
   if (!path) return 0;
-  const segments = path.split('.');
-  let m = lens.mapName;
-  let mod = lens.model;
+  let at = scope;
   let count = 0;
-  for (const seg of segments) {
-    const entry = lens.maps[m]?.models[mod]?.fields[seg];
-    if (!entry) break;
-    const target = relationTarget(entry, m);
-    if (entry.isList) count++;
-    if (!target) break;
-    m = target.mapName;
-    mod = target.modelName;
+  for (const seg of path.split('.')) {
+    const hop = hopAt(at, seg);
+    if (!hop) break;
+    if (hop.entry.isList) count++;
+    if (!hop.next) break;
+    at = hop.next;
   }
   return count;
 };
@@ -728,9 +718,7 @@ export const arrayTraversalCount = (lens: Lens, path: string | undefined): numbe
  * `orders any ( customFields any ( key=nps AND value ) )`.
  */
 const buildCollection = (
-  lens: Lens,
-  mapName: string,
-  modelName: string,
+  scope: ViewAt,
   segments: string[],
   ops: ArrayOperator[],
   opIndex: { i: number },
@@ -738,38 +726,25 @@ const buildCollection = (
   kind: FieldKind | undefined,
   opts: SurfaceOptions,
 ): Condition | null => {
-  let m = mapName;
-  let mod = modelName;
+  let at = scope;
   for (let i = 0; i < segments.length; i++) {
-    const entry = lens.maps[m]?.models[mod]?.fields[segments[i]];
-    if (!entry) return null;
-    if (entry.isList) {
-      const target = relationTarget(entry, m);
+    const hop = hopAt(at, segments[i]);
+    if (!hop) return null;
+    if (hop.entry.isList) {
+      const target = hop.next;
       if (!target) return null;
       const listField = segments.slice(0, i + 1).join('.');
       const rest = segments.slice(i + 1);
       const op = ops[opIndex.i++] ?? 'any';
-      if (pathHasList(lens, target.mapName, target.modelName, rest)) {
-        const inner = buildCollection(
-          lens,
-          target.mapName,
-          target.modelName,
-          rest,
-          ops,
-          opIndex,
-          where,
-          kind,
-          opts,
-        );
+      if (pathHasList(target, rest)) {
+        const inner = buildCollection(target, rest, ops, opIndex, where, kind, opts);
         return {
           field: listField,
           arrayOperator: op,
           condition: { all: inner ? [inner] : [] },
         } as Condition;
       }
-      const leaf = rest.length
-        ? leafRuleAt(lens, target.mapName, target.modelName, rest, kind, opts)
-        : null;
+      const leaf = rest.length ? leafRuleAt(target, rest, kind, opts) : null;
       const identity = whereConditions(where);
       // Canonical facet shape: the user's rows live in their own group from birth —
       // the identity is a sibling, structurally outside every user control, so no
@@ -782,19 +757,15 @@ const buildCollection = (
         },
       } as Condition;
     }
-    const target = relationTarget(entry, m);
-    if (!target) return null;
-    m = target.mapName;
-    mod = target.modelName;
+    if (!hop.next) return null;
+    at = hop.next;
   }
   return null;
 };
 
-const collectionSeed = (lens: Lens, facet: Facet, opts: SurfaceOptions): Condition =>
+const collectionSeed = (scope: ViewAt, facet: Facet, opts: SurfaceOptions): Condition =>
   buildCollection(
-    lens,
-    lens.mapName,
-    lens.model,
+    scope,
     (facet.path ?? '').split('.'),
     facet.defaultWhere ?? [],
     { i: 0 },
@@ -816,7 +787,7 @@ const collectionSeed = (lens: Lens, facet: Facet, opts: SurfaceOptions): Conditi
  * **resolver** field so the seeded node's dotted `field` resolves its relation.
  */
 export const describeFacets = (
-  lens: Lens,
+  scope: ViewAt,
   decoration: Decoration,
   opts: SurfaceOptions = {},
 ): BuilderField[] => {
@@ -838,10 +809,10 @@ export const describeFacets = (
       });
       continue;
     }
-    const resolved = resolvePath(lens, facet.path);
+    const resolved = resolvePath(scope, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
-      const field = buildLeafField(lens, facet, resolved, fieldDecor, opts);
+      const field = buildLeafField(facet, resolved, fieldDecor, opts);
       if (field) out.push(field);
       continue;
     }
@@ -854,7 +825,7 @@ export const describeFacets = (
         isList: false,
         isBridge: false,
         operators: { field: [], date: [], array: [] },
-        seed: branchSeed(lens, facet, resolved, opts),
+        seed: branchSeed(facet, resolved, opts),
       });
       continue;
     }
@@ -869,16 +840,13 @@ export const describeFacets = (
       isBridge: false,
       relation: isWhole ? resolved.target : undefined,
       operators: { field: [], date: [], array: [] },
-      seed: collectionSeed(lens, facet, opts),
+      seed: collectionSeed(scope, facet, opts),
     });
     if (!isWhole && !resolverFor.has(resolved.listPath)) {
       resolverFor.add(resolved.listPath);
-      const list = describeModelFields(
-        lens,
-        resolved.listOwner.mapName,
-        resolved.listOwner.modelName,
-        opts,
-      ).find((f) => f.name === resolved.listField);
+      const list = describeScopeFields(resolved.listOwner, opts).find(
+        (f) => f.name === resolved.listField,
+      );
       if (list) out.push({ ...list, name: resolved.listPath, selectable: false, seed: undefined });
     }
   }
@@ -899,8 +867,8 @@ export const consumedTopFields = (decoration: Decoration | undefined): Set<strin
 /** The target a facet's fixed `where` is matched under — the array field for a
  *  collection, the field path for a leaf. Facets sharing a target must have
  *  prefix-free fixed `where`s (see {@link validateDecoration}). */
-const facetTarget = (lens: Lens, facet: Facet): string | undefined => {
-  const resolved = resolvePath(lens, facet.path);
+const facetTarget = (scope: ViewAt, facet: Facet): string | undefined => {
+  const resolved = resolvePath(scope, facet.path);
   if (!resolved) return undefined;
   return resolved.kind === 'collection' ? resolved.listPath : facet.path;
 };
@@ -918,7 +886,7 @@ const groupChildren = (node: Condition): Condition[] | undefined => {
 };
 
 export const matchFacet = (
-  lens: Lens,
+  scope: ViewAt,
   decoration: Decoration,
   node: Condition,
 ): Facet | undefined => {
@@ -936,10 +904,10 @@ export const matchFacet = (
   if (typeof stamped === 'string') {
     // Stamps are scope-qualified; one minted under another scope resolves to no
     // facet here and falls through to the ordinary search.
-    const byId = decoration.facets.find((f) => scopedFacetId(lens, f) === stamped);
+    const byId = decoration.facets.find((f) => scopedFacetId(scope, f) === stamped);
     if (byId) {
       const { __facetId: _f, ...bare } = node as Record<string, unknown>;
-      if (matchFacet(lens, { ...decoration, facets: [byId] }, bare as Condition)) return byId;
+      if (matchFacet(scope, { ...decoration, facets: [byId] }, bare as Condition)) return byId;
     }
   }
   const rec = node as { field?: string; arrayOperator?: string; condition?: Condition };
@@ -975,7 +943,7 @@ export const matchFacet = (
   if (bestPreset) return bestPreset;
   for (const facet of decoration.facets) {
     if (facet.condition !== undefined) continue;
-    const resolved = resolvePath(lens, facet.path);
+    const resolved = resolvePath(scope, facet.path);
     if (!resolved) continue;
     if (resolved.kind === 'leaf') {
       if (rec.field === facet.path && rec.arrayOperator === undefined) return facet;
@@ -1007,7 +975,7 @@ export const matchFacet = (
     // Recognition never crosses a model boundary: a multi-hop collection is a
     // picker seed only — the inner block is recognized natively at its own
     // scope by the model's facets, never by reaching down the chain from here.
-    if (!collectionSingleHop(lens, resolved)) continue;
+    if (!collectionSingleHop(resolved)) continue;
     // Operators are editable defaults, not identity — only path + `where` count.
     const lead = whereConditions(facet.where);
     const destRec = rec.condition as { all?: Condition[]; any?: Condition[] } | undefined;
@@ -1037,7 +1005,7 @@ export const matchFacet = (
         !resolved.elementLeaf ||
         conds.some(isLeafOn) ||
         tailRows.some(isLeafOn) ||
-        (selectorsApply(lens, facet) && conds.some((c) => isSelectorClause(facet, c)));
+        (selectorsApply(scope, facet) && conds.some((c) => isSelectorClause(facet, c)));
       if (applies && bestLead < 0) {
         best = facet;
         bestLead = 0;
@@ -1065,53 +1033,44 @@ export const matchFacet = (
  */
 export const stampFacetIds = (
   condition: Condition,
-  lens: Lens,
+  scope: ViewAt,
   decoration: Decoration,
 ): Condition => {
   if (!condition || typeof condition !== 'object') return condition;
   let next = { ...(condition as Record<string, unknown>) };
   const key = Array.isArray(next.all) ? 'all' : Array.isArray(next.any) ? 'any' : undefined;
-  if (key) next[key] = (next[key] as Condition[]).map((c) => stampFacetIds(c, lens, decoration));
+  if (key) next[key] = (next[key] as Condition[]).map((c) => stampFacetIds(c, scope, decoration));
   if ((key !== undefined || 'arrayOperator' in next) && next.__facetId === undefined) {
-    const facet = matchFacet(lens, decoration, next as Condition);
+    const facet = matchFacet(scope, decoration, next as Condition);
     if (facet) {
       if (!isPreset(facet))
-        next = normalizeFacetShape(lens, facet, next as Condition) as Record<string, unknown>;
-      next.__facetId = scopedFacetId(lens, facet);
+        next = normalizeFacetShape(scope, facet, next as Condition) as Record<string, unknown>;
+      next.__facetId = scopedFacetId(scope, facet);
     }
   }
   // Re-anchor after normalization so inner nodes stamp at final positions.
   if ('arrayOperator' in next && next.condition !== undefined) {
-    const rel = relationScopeOf(lens, next.field as string | undefined);
+    const rel = relationScopeOf(scope, next.field as string | undefined);
     const scoped = rel ? scopedDecoration(decoration, rel.mapName, rel.modelName) : undefined;
-    if (rel && scoped) {
-      const relLens = projectLens(
-        createLens({ maps: lens.maps, mapName: rel.mapName, model: rel.modelName }),
-        { by: 'model' },
-      );
-      next.condition = stampFacetIds(next.condition as Condition, relLens, scoped);
-    }
+    if (rel && scoped) next.condition = stampFacetIds(next.condition as Condition, rel.at, scoped);
   }
   return next as Condition;
 };
 
-/** The list-relation target of an array rule's (possibly dotted) field. */
+/** The list-relation target of an array rule's (possibly dotted) field, and its visit. */
 const relationScopeOf = (
-  lens: Lens,
+  scope: ViewAt,
   field: string | undefined,
-): { mapName: string; modelName: string } | undefined => {
+): (Model & { at: ViewAt }) | undefined => {
   if (!field) return undefined;
   const segments = field.split('.');
-  let mapName = lens.mapName;
-  let modelName = lens.model;
+  let at = scope;
   for (let i = 0; i < segments.length; i++) {
-    const entry = lens.maps[mapName]?.models[modelName]?.fields[segments[i]];
-    if (!entry) return undefined;
-    const target = relationTarget(entry, mapName);
-    if (!target) return undefined;
-    if (i === segments.length - 1) return entry.isList ? target : undefined;
-    mapName = target.mapName;
-    modelName = target.modelName;
+    const hop = hopAt(at, segments[i]);
+    if (!hop?.target || !hop.next) return undefined;
+    if (i === segments.length - 1)
+      return hop.entry.isList ? { ...hop.target, at: hop.next } : undefined;
+    at = hop.next;
   }
   return undefined;
 };
@@ -1130,9 +1089,9 @@ const relationScopeOf = (
  * never change (`all` is order-independent and the wrap is a conjunction of one
  * group).
  */
-const normalizeFacetShape = (lens: Lens, facet: Facet, node: Condition): Condition => {
+const normalizeFacetShape = (scope: ViewAt, facet: Facet, node: Condition): Condition => {
   const lead = whereConditions(facet.where);
-  const selectorFields = selectorsApply(lens, facet)
+  const selectorFields = selectorsApply(scope, facet)
     ? (facet.selectors ?? []).map((s) => s.field)
     : [];
   if (lead.length === 0 && selectorFields.length === 0) return node;
@@ -1298,42 +1257,158 @@ export const writeSelectorClause = (
  * (empty = valid): unresolvable paths, duplicate ids, a `defaultWhere` whose
  * length isn't the path's array-traversal count, and — the important one — two
  * facets on the same target whose fixed `where`s are not prefix-free (a rule
- * authored under the specific one would also match the general one).
+ * authored under the specific one would also match the general one). Facets
+ * resolve against the visits the lens shows, and presets are gated in situ
+ * against the narrowed lens (`view.lens`).
  */
-export const validateDecoration = (lens: Lens, decoration: Decoration): string[] => {
-  const violations = validateFacetList(lens, decoration.facets, '');
-  // models[...] lists validate against the same lens construction the runtime
-  // scopes with, once per map binding for bare-'Model' keys.
+export const validateDecoration = (view: LensView, decoration: Decoration): string[] => {
+  const violations = validateFacetList(viewRoot(view), decoration.facets, '');
+  // models[...] lists validate at every element scope the runtime builds them in: each
+  // visit of the model the lens reaches through a list relation.
+  const models = Object.keys(decoration.models ?? {});
+  const visits = models.length ? shownVisits(view, models) : [];
   for (const [scopeKey, facets] of Object.entries(decoration.models ?? {})) {
     const [mapPart, modelPart] = scopeKey.includes(':')
       ? scopeKey.split(':', 2)
       : [undefined, scopeKey];
-    const bindings = mapPart
-      ? lens.maps[mapPart]?.models[modelPart]
-        ? [mapPart]
-        : []
-      : Object.keys(lens.maps).filter((m) => lens.maps[m]?.models[modelPart]);
-    if (!bindings.length) {
+    const matching = visits.filter(
+      ({ visit }) =>
+        visit.model === modelPart && (mapPart === undefined || visit.mapName === mapPart),
+    );
+    const bound = matching.filter((v) => v.throughList);
+    if (!matching.length) {
       violations.push(`models['${scopeKey}'] does not bind to any model in the lens`);
       continue;
     }
-    for (const mapName of bindings) {
-      const scopeLens = projectLens(createLens({ maps: lens.maps, mapName, model: modelPart }), {
-        by: 'model',
-      });
+    if (!bound.length) {
       violations.push(
-        ...validateFacetList(
-          scopeLens,
-          facets,
-          `models['${scopeKey}'] @ ${mapName}:${modelPart}: `,
-        ),
+        `models['${scopeKey}'] is never an element scope — no list relation the lens turns on reaches it`,
       );
+      continue;
     }
+    // One violation per message, naming every visit it holds at.
+    const byMessage = new Map<string, { model: string; paths: string[] }>();
+    for (const { scope, visit } of bound)
+      for (const message of validateFacetList(scope, facets, '')) {
+        const entry = byMessage.get(message) ?? {
+          model: `${visit.mapName}:${visit.model}`,
+          paths: [],
+        };
+        entry.paths.push(scope.at);
+        byMessage.set(message, entry);
+      }
+    for (const [message, { model, paths }] of byMessage)
+      violations.push(`models['${scopeKey}'] @ ${model} (${paths.join(', ')}): ${message}`);
   }
   return violations;
 };
 
-const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] => {
+/** The visits the lens shows that can lead to a `models[...]` key's model; `throughList`
+ *  marks one an array `condition` surface is built on — reached through a list relation.
+ *  A branch whose model can't reach a wanted model on the schema at all is never walked
+ *  (the lens shows a subset of the schema's relations). */
+const shownVisits = (
+  view: LensView,
+  keys: string[],
+): { scope: ViewAt; visit: ViewVisit; throughList: boolean }[] => {
+  const wanted = (mapName: string, model: string) =>
+    keys.some((k) => k === model || k === `${mapName}:${model}`);
+  // Reverse reachability over the schema: models some relation path leads from to a wanted one.
+  const { maps } = getLensRoot(view.lens);
+  const edges: [string, string][] = [];
+  const reaches = new Set<string>();
+  for (const [mapName, map] of Object.entries(maps))
+    for (const [model, entry] of Object.entries(map.models)) {
+      if (wanted(mapName, model)) reaches.add(`${mapName}:${model}`);
+      for (const field of Object.values(entry.fields)) {
+        const target = relationTarget(field, mapName);
+        if (target) edges.push([`${mapName}:${model}`, `${target.mapName}:${target.modelName}`]);
+      }
+    }
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [from, to] of edges)
+      if (reaches.has(to) && !reaches.has(from)) {
+        reaches.add(from);
+        grew = true;
+      }
+  }
+  const out: { scope: ViewAt; visit: ViewVisit; throughList: boolean }[] = [];
+  const walk = (scope: ViewAt, throughList: boolean) => {
+    const visit = visitOf(scope);
+    if (!visit || !reaches.has(`${visit.mapName}:${visit.model}`)) return;
+    out.push({ scope, visit, throughList });
+    for (const [name, entry] of Object.entries(visit.fields))
+      if (relationTarget(entry, visit.mapName)) walk(viewAt(scope, name), entry.isList === true);
+  };
+  walk(viewRoot(view), false);
+  return out;
+};
+
+/** `node` as the engine meets it at `scope`: wrapped in the array rules that reach the
+ *  scope's visit from the anchor (to-one hops fold into the array rule's dotted field).
+ *  `undefined` for a scope not reached through a list (no array rule opens it). */
+const encloseAt = (scope: ViewAt, node: Condition): Condition | undefined => {
+  const hops = scope.at.split('.').slice(1);
+  let at = viewRoot(scope.view);
+  let pending: string[] = [];
+  const arrays: string[] = [];
+  for (const name of hops) {
+    const hop = hopAt(at, name);
+    if (!hop?.next) return undefined;
+    pending.push(name);
+    if (hop.entry.isList) {
+      arrays.push(pending.join('.'));
+      pending = [];
+    }
+    at = hop.next;
+  }
+  if (pending.length) return undefined;
+  return arrays.reduceRight<Condition>(
+    (inner, field) => ({ field, arrayOperator: 'any', condition: inner }) as Condition,
+    node,
+  );
+};
+
+/** Whether the field at a slot offers `option` at the visit the slot sits on — a sourced
+ *  field's fetched set there, which the gate does not know. A field with no value set, an
+ *  aggregate threshold or a slot the walk can't place offers anything. */
+const slotOffers = (
+  scope: ViewAt,
+  template: Condition,
+  path: RulePath,
+  option: unknown,
+): boolean => {
+  if (typeof option !== 'string') return true;
+  let at: ViewAt | undefined = scope;
+  for (let i = 0; i < path.length && at; i++) {
+    const seg = path[i];
+    if (seg !== 'condition' && seg !== 'filter') continue;
+    const owner = getNode(template, path.slice(0, i)) as { field?: string } | undefined;
+    at = relationScopeOf(at, owner?.field)?.at;
+  }
+  const field = (getNode(template, path) as { field?: string; aggregate?: unknown } | undefined)
+    ?.field;
+  const leaf = getNode(template, path) as { aggregate?: unknown } | undefined;
+  if (!at || !field || leaf?.aggregate !== undefined) return true;
+  const segments = field.split('.');
+  for (const seg of segments.slice(0, -1)) {
+    at = hopAt(at, seg)?.next;
+    if (!at) return true;
+  }
+  const allowed = describeScopeFields(at).find(
+    (f) => f.name === segments[segments.length - 1],
+  )?.enumValues;
+  return !allowed || allowed.includes(option);
+};
+
+/** Whether the narrowed lens admits `rule` authored at `scope`. */
+const admittedAt = (scope: ViewAt, rule: Condition): boolean => {
+  const enclosed = encloseAt(scope, rule);
+  return enclosed !== undefined && validateRuleInLens(enclosed, scope.view.lens).ok;
+};
+
+const validateFacetList = (scope: ViewAt, list: Facet[], prefix: string): string[] => {
   const violations: string[] = [];
   const ids = new Set<string>();
   const byTarget = new Map<string, { facet: Facet; lead: Condition[] }[]>();
@@ -1352,7 +1427,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
         violations.push(
           `preset '${name}' cannot carry 'selectors' — its editable slots are variables`,
         );
-      if (!validateRuleInLens(presetSeed(facet), lens).ok)
+      if (!admittedAt(scope, presetSeed(facet)))
         violations.push(`preset '${name}' is not a valid rule against the lens`);
       const template = templateOf(facet);
       const slots = variableSlots(template);
@@ -1361,7 +1436,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
           const withOption = mapSlots(template, slots, (s) =>
             s === slot ? { value: option } : {},
           );
-          if (!validateRuleInLens(withOption, lens).ok)
+          if (!admittedAt(scope, withOption) || !slotOffers(scope, template, slot.path, option))
             violations.push(
               `preset '${name}' option ${JSON.stringify(option)} at '${(getNode(template, slot.path) as { field?: string }).field}' is not allowed by the lens`,
             );
@@ -1384,7 +1459,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
       presets.push({ name, template, slots });
       continue;
     }
-    const resolved = resolvePath(lens, facet.path);
+    const resolved = resolvePath(scope, facet.path);
     if (!resolved) {
       violations.push(`facet '${facet.path}' does not resolve against the lens`);
       continue;
@@ -1398,7 +1473,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
         `leaf facet '${facet.path}' cannot carry 'where'/'defaultWhere' — those are collection concepts`,
       );
     if (facet.defaultWhere) {
-      const need = arrayTraversalCount(lens, facet.path);
+      const need = arrayTraversalCount(scope, facet.path);
       if (facet.defaultWhere.length !== need)
         violations.push(
           `facet '${facet.path}' has ${facet.defaultWhere.length} traversal operator(s) but the path crosses ${need} array boundary(ies)`,
@@ -1407,7 +1482,7 @@ const validateFacetList = (lens: Lens, list: Facet[], prefix: string): string[] 
     const id = facetId(facet);
     if (ids.has(id)) violations.push(`duplicate facet id '${id}'`);
     ids.add(id);
-    const target = facetTarget(lens, facet);
+    const target = facetTarget(scope, facet);
     if (target === undefined) continue;
     const group = byTarget.get(target) ?? [];
     group.push({ facet, lead: whereConditions(facet.where) });
@@ -1451,24 +1526,24 @@ export const decorationSurfaceOptions = (decoration: Decoration | undefined): Su
   return { labels, valueLabels };
 };
 
-/** Memoized hook form of {@link describeFacets}. In dev, surfaces
+/** Memoized hook form of {@link describeFacets} at the view's anchor. In dev, surfaces
  *  {@link validateDecoration} violations as a `console.warn` so the collision-free
  *  invariant is enforced by the API, not just the docs. */
 export const useFacetFields = (
-  lens: Lens,
+  view: LensView,
   decoration: Decoration | undefined,
   opts: SurfaceOptions = {},
 ): BuilderField[] => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: depend on option fields, not opts identity, so inline literals don't re-run the walk
   const fields = useMemo(
-    () => (decoration ? describeFacets(lens, decoration, opts) : []),
-    [lens, decoration, opts.targets, opts.labels, opts.valueLabels],
+    () => (decoration ? describeFacets(viewRoot(view), decoration, opts) : []),
+    [view, decoration, opts.targets, opts.labels, opts.valueLabels],
   );
   useEffect(() => {
     if (!decoration || process.env.NODE_ENV === 'production') return;
-    const violations = validateDecoration(lens, decoration);
+    const violations = validateDecoration(view, decoration);
     if (violations.length)
       console.warn(`[rules-builder] invalid Decoration:\n- ${violations.join('\n- ')}`);
-  }, [lens, decoration]);
+  }, [view, decoration]);
   return fields;
 };

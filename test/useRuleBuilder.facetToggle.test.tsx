@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import type { Decoration } from '../src/schema/decoration';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -30,7 +31,7 @@ const eavMap: FieldMap = {
     },
   },
 };
-const eavSource = { maps: { app: eavMap }, mapName: 'app', model: 'User' };
+const eavSource = withAllRelations({ maps: { app: eavMap }, mapName: 'app', model: 'User' });
 const npsView: Decoration = {
   facets: [
     {
@@ -199,7 +200,11 @@ describe('collection facet — value options stay pinned inside the nested any g
       },
     },
   };
-  const pinnedSource = { maps: { app: pinnedMap }, mapName: 'app', model: 'User' };
+  const pinnedSource = withAllRelations({
+    maps: { app: pinnedMap },
+    mapName: 'app',
+    model: 'User',
+  });
   const healthView: Decoration = {
     facets: [
       {
@@ -325,7 +330,11 @@ describe('branch facet — ALL/ANY toggle keeps the fixed where AND-ed', () => {
       },
     },
   };
-  const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+  const branchSource = withAllRelations({
+    maps: { app: branchMap },
+    mapName: 'app',
+    model: 'User',
+  });
   const branchWhere = { field: 'account.industry', operator: 'equals', value: 'saas' };
   const decoration: Decoration = {
     facets: [{ path: 'account', label: 'SaaS Company', where: branchWhere as Condition }],

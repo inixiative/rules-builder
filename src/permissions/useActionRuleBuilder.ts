@@ -2,9 +2,11 @@ import type { SourceValues } from '@inixiative/json-rules';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BuilderField,
-  describeModelFields,
+  describeScopeFields,
   type RuleBuilderSource,
+  rawView,
   resolve,
+  viewRoot,
 } from '../schema/surface';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
@@ -36,11 +38,11 @@ export type UseActionRuleBuilder = {
 };
 
 export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActionRuleBuilder => {
-  const lens = useMemo(
+  const view = useMemo(
     () => resolve(opts.source, { sourceValues: opts.sourceValues }),
     [opts.source, opts.sourceValues],
   );
-  const fields = useMemo(() => describeModelFields(lens, lens.mapName, lens.model), [lens]);
+  const fields = useMemo(() => describeScopeFields(viewRoot(view)), [view]);
 
   const [tree, setTree] = useState<ActionRule>(() => opts.defaultValue ?? defaultActionRule());
 
@@ -64,14 +66,14 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
       const mapName = i === -1 ? '' : res.slice(0, i);
       const model = i === -1 ? res : res.slice(i + 1);
       if (!maps[mapName]?.models[model]) return [];
-      return describeModelFields(resolve({ maps, bridges, mapName, model }), mapName, model);
+      return describeScopeFields(viewRoot(rawView({ maps, bridges, mapName, model })));
     },
     [maps, bridges],
   );
   const root = useMemo(
     () =>
       buildActionRoot(tree, {
-        lens,
+        view,
         fields,
         siblingActions: opts.siblingActions ?? [],
         actionsByResource: opts.actionsByResource ?? {},
@@ -81,7 +83,7 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
       }),
     [
       tree,
-      lens,
+      view,
       fields,
       opts.siblingActions,
       opts.actionsByResource,

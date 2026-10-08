@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import type { Decoration } from '../src/schema/decoration';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -36,7 +37,12 @@ const bridges: Bridge[] = [
     cardinality: 'oneToMany',
   },
 ];
-const source = { maps: { prisma, salesforce }, bridges, mapName: 'prisma', model: 'User' };
+const source = withAllRelations({
+  maps: { prisma, salesforce },
+  bridges,
+  mapName: 'prisma',
+  model: 'User',
+});
 
 const view: Decoration = {
   facets: [{ path: 'salesforce:Contact.arr', label: 'Annual Revenue', icon: '💰' }],
@@ -111,7 +117,7 @@ const eavMap: FieldMap = {
     },
   },
 };
-const eavSource = { maps: { app: eavMap }, mapName: 'app', model: 'User' };
+const eavSource = withAllRelations({ maps: { app: eavMap }, mapName: 'app', model: 'User' });
 const npsView: Decoration = {
   facets: [
     {
@@ -237,7 +243,7 @@ const branchMap: FieldMap = {
     Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
   },
 };
-const branchSource = { maps: { app: branchMap }, mapName: 'app', model: 'User' };
+const branchSource = withAllRelations({ maps: { app: branchMap }, mapName: 'app', model: 'User' });
 const asGroupNode = (n: unknown) => n as GroupNode;
 
 describe('useRuleBuilder — branch facets (a to-one relation as a scoped group)', () => {

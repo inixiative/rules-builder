@@ -1,17 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  type Condition,
-  check,
-  createLens,
-  type FieldMap,
-  projectLens,
-} from '@inixiative/json-rules';
+import { type Condition, check, type FieldMap } from '@inixiative/json-rules';
 import {
   type Decoration,
   describeFacets,
   matchFacet,
   validateDecoration,
 } from '../src/schema/decoration';
+import { viewRoot } from '../src/schema/surface';
+import { openView } from './setup/open';
 
 // One relation (`customFields`) carrying rows from several integrations, split by
 // a `system` slug into three tagged logical sources — System A / B / C. Same
@@ -30,9 +26,7 @@ const map: FieldMap = {
     },
   },
 };
-const lens = projectLens(createLens({ maps: { app: map }, mapName: 'app', model: 'User' }), {
-  by: 'model',
-});
+const lens = openView({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 const source = (system: string, label: string, icon: string): Decoration['facets'][number] => ({
   path: 'customFields.value',
@@ -75,7 +69,7 @@ const rows = (xs: [string, number][]) => ({
 describe('the same relation adjoined N times, split into tagged sources by a system slug', () => {
   test('three tagged sources over one relation are collision-free and each carries its own tag', () => {
     expect(validateDecoration(lens, decoration)).toEqual([]);
-    const fields = describeFacets(lens, decoration);
+    const fields = describeFacets(viewRoot(lens), decoration);
     expect(fields.map((f) => [f.label, f.icon])).toEqual(
       expect.arrayContaining([
         ['System A', '🔵'],
@@ -91,7 +85,7 @@ describe('the same relation adjoined N times, split into tagged sources by a sys
       ['b', 'System B'],
       ['c', 'System C'],
     ] as const) {
-      const field = describeFacets(lens, decoration).find((f) => f.label === label);
+      const field = describeFacets(viewRoot(lens), decoration).find((f) => f.label === label);
       const seed = field?.seed as { condition: { all: Condition[] } };
       expect(seed.condition.all[0]).toMatchObject({ field: 'system', value: system });
       expect(seed.condition.all[1]).toMatchObject({ field: 'key', value: 'nps' });
@@ -141,8 +135,8 @@ describe('the same relation adjoined N times, split into tagged sources by a sys
   });
 
   test('rehydration recovers each system tag from its own slice', () => {
-    expect(matchFacet(lens, decoration, sliceFor('a', 5))?.label).toBe('System A');
-    expect(matchFacet(lens, decoration, sliceFor('b', 5))?.label).toBe('System B');
-    expect(matchFacet(lens, decoration, sliceFor('c', 5))?.label).toBe('System C');
+    expect(matchFacet(viewRoot(lens), decoration, sliceFor('a', 5))?.label).toBe('System A');
+    expect(matchFacet(viewRoot(lens), decoration, sliceFor('b', 5))?.label).toBe('System B');
+    expect(matchFacet(viewRoot(lens), decoration, sliceFor('c', 5))?.label).toBe('System C');
   });
 });

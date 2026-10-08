@@ -1,6 +1,6 @@
-import type { Condition, Lens } from '@inixiative/json-rules';
+import type { Condition } from '@inixiative/json-rules';
 import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
-import type { BuilderField } from '../schema/surface';
+import type { BuilderField, LensView } from '../schema/surface';
 import {
   type ActionPath,
   actionKind,
@@ -78,7 +78,8 @@ export type ActionGroupNode = BaseNode & { children: ActionRuleNode[]; addChild?
 export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
 
 export type BuildActionOptions = {
-  lens: Lens;
+  /** The view the `rule` leaves are authored in; its anchor is this resource. */
+  view: LensView;
   fields: BuilderField[];
   /** Other action names on this resource — delegate targets. */
   siblingActions: string[];
@@ -144,7 +145,7 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
 
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
-    const currentResource = `${ctx.lens.mapName}:${ctx.lens.model}`;
+    const currentResource = `${ctx.view.mapName}:${ctx.view.model}`;
     const fieldsAt = (resource: string): BuilderField[] =>
       resource === currentResource ? ctx.fields : (ctx.resourceFields?.(resource) ?? []);
     const relTargetOf = (f: BuilderField | undefined): string | undefined =>
@@ -200,7 +201,7 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
   const cond = (node as { rule: Condition }).rule;
   return {
     ...base,
-    rule: buildRoot(cond, ctx.lens, ctx.fields, ctx.maxDepth, (next) =>
+    rule: buildRoot(cond, ctx.view, ctx.fields, ctx.maxDepth, (next) =>
       ctx.commit(setActionNode(ctx.root, path, { rule: next })),
     ),
   };

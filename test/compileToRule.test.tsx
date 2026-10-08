@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ArrayNode, GroupNode, LeafNode } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
 import type { Decoration } from '../src/schema/decoration';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -28,7 +29,7 @@ const map: FieldMap = {
     },
   },
 };
-const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 describe('a decoration facet compiles to a rule that passes the lens gate and evaluates', () => {
   test('leaf facet — a relation-crossing dotted path', () => {

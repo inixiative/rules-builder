@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { RuleEditor } from '../examples/RuleTree';
+import { withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -15,7 +16,7 @@ const map: FieldMap = {
     },
   },
 };
-const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
 
 describe('RuleEditor (reference renderer over the headless hook)', () => {
   test('renders field/operator controls and a gated value select for a leaf', () => {

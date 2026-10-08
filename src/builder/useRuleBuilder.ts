@@ -3,6 +3,7 @@ import {
   coerceRule,
   describeRule,
   type Lens,
+  type LensNarrowing,
   type RuleDescription,
   type RuleTarget,
   validateRule,
@@ -17,7 +18,13 @@ import {
   stampFacetIds,
   useFacetFields,
 } from '../schema/decoration';
-import { describeModelFields, type RuleBuilderSource, resolve } from '../schema/surface';
+import {
+  describeScopeFields,
+  type LensView,
+  type RuleBuilderSource,
+  resolve,
+  viewRoot,
+} from '../schema/surface';
 import { asRoot, type BuilderNode, buildRoot } from './buildNodes';
 
 const EMPTY: Condition = { all: [] };
@@ -53,7 +60,10 @@ export type UseRuleBuilderOptions = {
 export type UseRuleBuilder = {
   value: Condition;
   root: BuilderNode;
-  lens: Lens;
+  /** The narrowed lens the rule is gated, coerced and described against. */
+  lens: Lens | LensNarrowing;
+  /** What the builder reads: the narrowed lens and the visits it shows. */
+  view: LensView;
   /** Reseed the tree. `undefined` reseeds to `empty` — the "clear" gesture. */
   setCondition: (clean: Condition | undefined) => void;
   validate: (target: RuleTarget) => ReturnType<typeof validateRule>;
@@ -61,10 +71,11 @@ export type UseRuleBuilder = {
 };
 
 export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
-  const lens = useMemo(
+  const view = useMemo(
     () => resolve(opts.source, { sourceValues: opts.sourceValues }),
     [opts.source, opts.sourceValues],
   );
+  const lens = view.lens;
   const surfaceOpts = useMemo(() => {
     const fromDecoration = decorationSurfaceOptions(opts.decoration);
     return {
@@ -74,14 +85,11 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     };
   }, [opts.decoration, opts.targets, opts.labels, opts.valueLabels]);
   const anchorFields = useMemo(() => {
-    const all = relabelRelations(
-      describeModelFields(lens, lens.mapName, lens.model, surfaceOpts),
-      opts.decoration,
-    );
+    const all = relabelRelations(describeScopeFields(viewRoot(view), surfaceOpts), opts.decoration);
     const consumed = consumedTopFields(opts.decoration);
     return consumed.size ? all.filter((f) => !consumed.has(f.name)) : all;
-  }, [lens, surfaceOpts, opts.decoration]);
-  const hoisted = useFacetFields(lens, opts.decoration, surfaceOpts);
+  }, [view, surfaceOpts, opts.decoration]);
+  const hoisted = useFacetFields(view, opts.decoration, surfaceOpts);
   // Facets lead the picker: they are the named, curated entries a decoration exists
   // to surface, so they sort ahead of the anchor model's raw fields.
   const fields = useMemo(
@@ -94,7 +102,9 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   // node stamped with its id (`__facetId`) — then id-tracked for the session.
   const ingest = (c: Condition | undefined): Condition => {
     const rooted = asRoot(c, opts.empty);
-    return withIds(opts.decoration ? stampFacetIds(rooted, lens, opts.decoration) : rooted);
+    return withIds(
+      opts.decoration ? stampFacetIds(rooted, viewRoot(view), opts.decoration) : rooted,
+    );
   };
   const [tree, setTree] = useState<Condition>(() => ingest(opts.defaultValue));
 
@@ -102,8 +112,8 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   onChangeRef.current = opts.onChange;
   const first = useRef(true);
 
-  // Emitted rules carry their coercion: coerceType is stamped from the lens's field
-  // kinds so check() compares widget-authored values (date strings, stringified
+  // Emitted rules carry their coercion: coerceType is stamped from the narrowed lens's
+  // field kinds (relation paths included — a surface would skip them) so check() compares widget-authored values (date strings, stringified
   // numbers) against wire-format rows without inferring types.
   const clean = useCallback(
     (t: Condition): Condition => coerceRule(stripMeta(trimEmptyGroups(t) ?? EMPTY), lens),
@@ -121,8 +131,8 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
   const commit = useCallback((next: Condition) => setTree(withIds(next)), []);
   const root = useMemo(
     () =>
-      buildRoot(tree, lens, fields, maxDepth, commit, { decoration: opts.decoration, surfaceOpts }),
-    [tree, lens, fields, maxDepth, commit, opts.decoration, surfaceOpts],
+      buildRoot(tree, view, fields, maxDepth, commit, { decoration: opts.decoration, surfaceOpts }),
+    [tree, view, fields, maxDepth, commit, opts.decoration, surfaceOpts],
   );
   const value = useMemo(() => clean(tree), [tree, clean]);
 
@@ -130,6 +140,7 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     value,
     root,
     lens,
+    view,
     setCondition: (c) => setTree(ingest(c)),
     validate: (target) => validateRule(value, { target }),
     describe: () => describeRule(value, lens),

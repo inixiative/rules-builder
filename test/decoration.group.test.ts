@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap, SourceValues } from '@inixiative/json-rules';
-import { describeModelFields, resolve } from '../src';
+import { resolve } from '../src';
 import {
   type ArrayNode,
   buildRoot,
@@ -8,6 +8,7 @@ import {
   type LeafNode,
 } from '../src/builder/buildNodes';
 import { type Decoration, matchFacet } from '../src/schema/decoration';
+import { describeScopeFields, viewAt, viewRoot, withAllRelations } from '../src/schema/surface';
 
 // Author-time partition pinning: a grouped field's options narrow to the
 // partition selected by sibling clauses on its axes (the source's groupBy paths,
@@ -63,8 +64,8 @@ const source = {
     },
   },
 };
-const lens = resolve(source, { sourceValues });
-const fields = describeModelFields(lens, 'app', 'User');
+const lens = resolve(withAllRelations(source), { sourceValues });
+const fields = describeScopeFields(viewRoot(lens));
 
 // Facet = SOURCE container: identity is the source clause; the key clause is the
 // editable level-2 field selector, declared as a selector so renderers draw it
@@ -85,8 +86,8 @@ const valueLeafOf = (root: ReturnType<typeof buildRoot>, index: number): LeafNod
   ((root as GroupNode).children[0] as ArrayNode).condition?.children[index] as LeafNode;
 
 describe('sibling-derived pin — surface axes narrow the value picker', () => {
-  test('describeModelFields carries the partition axes onto the field', () => {
-    const relFields = describeModelFields(lens, 'app', 'Enrichment');
+  test('describeScopeFields carries the partition axes onto the field', () => {
+    const relFields = describeScopeFields(viewAt(viewRoot(lens), 'enrichments'));
     expect(relFields.find((f) => f.name === 'value')?.groupBy).toEqual(['source', 'key']);
   });
 
@@ -239,11 +240,11 @@ describe('matchFacet — subset identity (order-tolerant)', () => {
   } as Condition;
 
   test('identity leading: matches', () => {
-    expect(matchFacet(lens, decoration, savedInOrder)).toBe(salesforceFacet);
+    expect(matchFacet(viewRoot(lens), decoration, savedInOrder)).toBe(salesforceFacet);
   });
 
   test('identity anywhere in the block: still matches (AI-authored ordering)', () => {
-    expect(matchFacet(lens, decoration, savedReordered)).toBe(salesforceFacet);
+    expect(matchFacet(viewRoot(lens), decoration, savedReordered)).toBe(salesforceFacet);
   });
 
   test('a block without the identity clause does not match', () => {
@@ -257,7 +258,7 @@ describe('matchFacet — subset identity (order-tolerant)', () => {
         ],
       },
     } as Condition;
-    expect(matchFacet(lens, decoration, other)).toBeUndefined();
+    expect(matchFacet(viewRoot(lens), decoration, other)).toBeUndefined();
   });
 
   test('the most specific matching facet wins', () => {
@@ -277,7 +278,7 @@ describe('matchFacet — subset identity (order-tolerant)', () => {
       label: 'Salesforce Industry',
     };
     const both: Decoration = { facets: [general, specific] };
-    expect(matchFacet(lens, both, savedReordered)).toBe(specific);
+    expect(matchFacet(viewRoot(lens), both, savedReordered)).toBe(specific);
   });
 });
 

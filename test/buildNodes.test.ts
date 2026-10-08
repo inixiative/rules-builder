@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { buildRoot, type GroupNode, type LeafNode } from '../src/builder/buildNodes';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeScopeFields, resolve, viewRoot, withAllRelations } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -16,8 +16,8 @@ const map: FieldMap = {
   },
 };
 
-const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeModelFields(lens, 'app', 'User');
+const lens = resolve(withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const fields = describeScopeFields(viewRoot(lens));
 
 const cond = (): Condition => ({
   all: [{ field: 'tier', operator: 'equals', value: 'gold', __id: 'a' }],
@@ -183,8 +183,10 @@ describe('buildRoot — descriptor tree', () => {
     const dateMap: FieldMap = {
       models: { User: { fields: { createdAt: { kind: 'scalar', type: 'DateTime' } } } },
     };
-    const dateLens = resolve({ maps: { app: dateMap }, mapName: 'app', model: 'User' });
-    const dateFields = describeModelFields(dateLens, 'app', 'User');
+    const dateLens = resolve(
+      withAllRelations({ maps: { app: dateMap }, mapName: 'app', model: 'User' }),
+    );
+    const dateFields = describeScopeFields(viewRoot(dateLens));
     let out: Condition | undefined;
     const root = buildRoot({ all: [] }, dateLens, dateFields, 4, (next) => {
       out = next;
@@ -263,8 +265,10 @@ describe('buildRoot — Json sub-path leaves are open-ended', () => {
       },
     },
   };
-  const jsonLens = resolve({ maps: { app: jsonMap }, mapName: 'app', model: 'User' });
-  const jsonFields = describeModelFields(jsonLens, 'app', 'User');
+  const jsonLens = resolve(
+    withAllRelations({ maps: { app: jsonMap }, mapName: 'app', model: 'User' }),
+  );
+  const jsonFields = describeScopeFields(viewRoot(jsonLens));
   const jsonLeaf = (c: Condition): LeafNode =>
     buildRoot(c, jsonLens, jsonFields, 4, () => {}) as unknown as LeafNode;
 

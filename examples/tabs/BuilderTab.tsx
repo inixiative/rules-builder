@@ -1,11 +1,11 @@
-import { check, describeRule, projectLens, validateRuleInLens } from '@inixiative/json-rules';
+import { check, describeRule, validateRuleInLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
-import { type RuleBuilderSource, runSources } from '../../src';
+import { composeNarrowed, resolve, runSources } from '../../src';
 import { RuleEditor } from '../RuleTree';
 import { RuleEditorShadcn } from '../RuleTreeShadcn';
 import { sampleRows } from '../samples';
 import { Badge, Button, Code, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';
-import { type ParentRef, resolveRef } from '../workspace';
+import { type ParentRef, sourceFor } from '../workspace';
 import type { TabProps } from './types';
 
 type SourceChoice = { key: string; label: string; ref: ParentRef };
@@ -13,16 +13,17 @@ const refKey = (r: ParentRef) => `${r.kind}:${r.name}`;
 
 export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
   const choices = useMemo<SourceChoice[]>(
+    // Narrowings lead: a bare lens turns no relation on, so it offers the anchor's columns only.
     () => [
-      ...Object.keys(ws.lenses).map((n) => ({
-        key: `lens:${n}`,
-        label: `lens · ${n}`,
-        ref: { kind: 'lens' as const, name: n },
-      })),
       ...Object.keys(ws.narrowings).map((n) => ({
         key: `narrowing:${n}`,
         label: `narrowing · ${n}`,
         ref: { kind: 'narrowing' as const, name: n },
+      })),
+      ...Object.keys(ws.lenses).map((n) => ({
+        key: `lens:${n}`,
+        label: `lens · ${n}`,
+        ref: { kind: 'lens' as const, name: n },
       })),
     ],
     [ws.lenses, ws.narrowings],
@@ -55,17 +56,13 @@ export const BuilderTab = ({ ws, patch, selected }: TabProps & { selected?: stri
   const surface = useMemo(() => {
     if (!choice) return null;
     try {
-      const resolved = resolveRef(ws, choice.ref);
-      if (!resolved) throw new Error('surface not resolvable');
+      const source = sourceFor(ws, choice.ref);
+      if (!source) throw new Error('surface not resolvable');
       // engine compiles the source queries; app runs them over sample rows → fetched values
-      // fold into the projection so option sets reflect the lens/narrowing, not the raw column.
-      const sourceValues = runSources(resolved, sampleRows);
-      const lens = projectLens(resolved, { sourceValues, by: 'model' });
-      const source: RuleBuilderSource = {
-        maps: lens.maps,
-        mapName: lens.mapName,
-        model: lens.model,
-      };
+      // fold into the view so option sets reflect the lens/narrowing, not the raw column.
+      const sourceValues = runSources(composeNarrowed(source), sampleRows);
+      // The gate is the narrowed lens itself, never its projected surface.
+      const { lens } = resolve(source, { sourceValues });
       return { error: null as string | null, source, sourceValues, lens };
     } catch (err) {
       return { error: String(err), source: null, sourceValues: [], lens: null };

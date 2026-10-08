@@ -21,7 +21,7 @@ import {
   validateDecoration,
   variableSlots,
 } from '../src/schema/decoration';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeScopeFields, resolve, viewRoot, withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -45,9 +45,9 @@ const map: FieldMap = {
   },
   enums: { RewardStatus: ['pending', 'paid', 'rejected'] },
 };
-const source = { maps: { app: map }, mapName: 'app', model: 'User' };
+const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
 const lens = resolve(source);
-const fields = describeModelFields(lens, 'app', 'User');
+const fields = describeScopeFields(viewRoot(lens));
 
 // The first consumer's shape: an aggregate threshold left OPEN, a window variable
 // with a default, and a locked identity clause.
@@ -119,7 +119,7 @@ describe('variables — the template', () => {
   });
 
   test('describeFacets seeds the picker with the instantiated condition', () => {
-    const [entry] = describeFacets(lens, { facets: [inactive] });
+    const [entry] = describeFacets(viewRoot(lens), { facets: [inactive] });
     expect(entry.seed).toEqual(presetSeed(inactive));
   });
 
@@ -145,17 +145,21 @@ describe('variables — recognition', () => {
 
   test('a saved node with any value at the slot wears the card', () => {
     expect(
-      matchFacet(lens, decoration, { field: 'tier', operator: 'equals', value: 'silver' }),
+      matchFacet(viewRoot(lens), decoration, {
+        field: 'tier',
+        operator: 'equals',
+        value: 'silver',
+      }),
     ).toBe(anyTier);
     expect(
-      matchFacet(lens, decoration, {
+      matchFacet(viewRoot(lens), decoration, {
         field: 'lastLoginAt',
         dateOperator: 'notWithin',
         value: { ago: { days: 90 } },
       }),
     ).toBe(inactive);
     expect(
-      matchFacet(lens, decoration, {
+      matchFacet(viewRoot(lens), decoration, {
         field: 'rewards',
         aggregate: { mode: 'sum', field: 'amount' },
         operator: 'greaterThanEquals',
@@ -171,29 +175,33 @@ describe('variables — recognition', () => {
   });
 
   test('an open slot (no value source yet) is still the card — a fresh insert renders faceted', () => {
-    expect(matchFacet(lens, decoration, { field: 'tier', operator: 'equals' } as Condition)).toBe(
-      anyTier,
-    );
+    expect(
+      matchFacet(viewRoot(lens), decoration, { field: 'tier', operator: 'equals' } as Condition),
+    ).toBe(anyTier);
   });
 
   test('a path or bind at the slot is a filled slot too', () => {
-    expect(matchFacet(lens, decoration, { field: 'tier', operator: 'equals', bind: 'tier' })).toBe(
-      anyTier,
-    );
+    expect(
+      matchFacet(viewRoot(lens), decoration, { field: 'tier', operator: 'equals', bind: 'tier' }),
+    ).toBe(anyTier);
   });
 
   test('fewest wildcard slots wins, regardless of facet order', () => {
     const gold = { field: 'tier', operator: 'equals', value: 'gold' } as Condition;
-    expect(matchFacet(lens, { facets: [anyTier, goldFixed] }, gold)).toBe(goldFixed);
-    expect(matchFacet(lens, { facets: [goldFixed, anyTier] }, gold)).toBe(goldFixed);
+    expect(matchFacet(viewRoot(lens), { facets: [anyTier, goldFixed] }, gold)).toBe(goldFixed);
+    expect(matchFacet(viewRoot(lens), { facets: [goldFixed, anyTier] }, gold)).toBe(goldFixed);
   });
 
   test('anything outside the slot must match exactly', () => {
     expect(
-      matchFacet(lens, decoration, { field: 'tier', operator: 'notEquals', value: 'gold' }),
+      matchFacet(viewRoot(lens), decoration, {
+        field: 'tier',
+        operator: 'notEquals',
+        value: 'gold',
+      }),
     ).toBeUndefined();
     expect(
-      matchFacet(lens, decoration, {
+      matchFacet(viewRoot(lens), decoration, {
         field: 'rewards',
         aggregate: { mode: 'sum', field: 'amount' },
         operator: 'greaterThanEquals',
@@ -384,13 +392,13 @@ describe('variables — the builder shape is the identity', () => {
       arrayOperator: 'none',
       condition: { field: 'createdAt', dateOperator: 'within', value: { ago: { days: 90 } } },
     } as Condition;
-    expect(matchFacet(lens, decoration, savedBare)).toBe(inactiveMissions);
+    expect(matchFacet(viewRoot(lens), decoration, savedBare)).toBe(inactiveMissions);
 
     const node = build(savedBare, decoration) as ArrayNode;
     expect(node.atomic).toBe(true);
     expect(node.variables?.[0].value.current).toEqual({ ago: { days: 90 } });
     node.variables?.[0].value.set({ ago: { days: 7 } });
-    expect(matchFacet(lens, decoration, committed as Condition)).toBe(inactiveMissions);
+    expect(matchFacet(viewRoot(lens), decoration, committed as Condition)).toBe(inactiveMissions);
     const again = build(committed as Condition, decoration) as ArrayNode;
     expect(again.atomic).toBe(true);
     expect(again.variables?.[0].value.current).toEqual({ ago: { days: 7 } });
@@ -416,7 +424,7 @@ describe('variables — the builder shape is the identity', () => {
     };
     expect(variableSlots(a.condition as FacetCondition)).toEqual([]);
     expect(facetId(a)).not.toBe(facetId(b));
-    expect(matchFacet(lens, { facets: [a, b] }, b.condition as Condition)).toBe(b);
+    expect(matchFacet(viewRoot(lens), { facets: [a, b] }, b.condition as Condition)).toBe(b);
   });
 });
 
@@ -424,8 +432,8 @@ describe('variables — precedence and ambiguity', () => {
   test('a matched preset beats a path facet on the same field, whatever the order', () => {
     const tierPath: Facet = { path: 'tier', label: 'Tier (path)' };
     const gold = { field: 'tier', operator: 'equals', value: 'gold' } as Condition;
-    expect(matchFacet(lens, { facets: [tierPath, anyTier] }, gold)).toBe(anyTier);
-    expect(matchFacet(lens, { facets: [anyTier, tierPath] }, gold)).toBe(anyTier);
+    expect(matchFacet(viewRoot(lens), { facets: [tierPath, anyTier] }, gold)).toBe(anyTier);
+    expect(matchFacet(viewRoot(lens), { facets: [anyTier, tierPath] }, gold)).toBe(anyTier);
   });
 
   test('two presets with crossing slots over one body are ambiguous — a violation, and a stable pick', () => {
@@ -452,8 +460,8 @@ describe('variables — precedence and ambiguity', () => {
       { field: 'tier', operator: 'equals', value: 'gold' },
       { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
     ) as Condition;
-    expect(matchFacet(lens, { facets: [left, right] }, saved)).toBe(
-      matchFacet(lens, { facets: [right, left] }, saved),
+    expect(matchFacet(viewRoot(lens), { facets: [left, right] }, saved)).toBe(
+      matchFacet(viewRoot(lens), { facets: [right, left] }, saved),
     );
   });
 
@@ -483,7 +491,7 @@ describe('variables — precedence and ambiguity', () => {
         { field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } },
       ],
     } as Condition;
-    expect(matchFacet(lens, { facets: [both, one] }, saved)).toBe(one);
+    expect(matchFacet(viewRoot(lens), { facets: [both, one] }, saved)).toBe(one);
   });
 });
 

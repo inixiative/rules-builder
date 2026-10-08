@@ -1,12 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  type Bridge,
-  type Condition,
-  check,
-  createLens,
-  type FieldMap,
-  projectLens,
-} from '@inixiative/json-rules';
+import { type Bridge, type Condition, check, type FieldMap } from '@inixiative/json-rules';
 import {
   consumedTopFields,
   type Decoration,
@@ -15,6 +8,8 @@ import {
   stampFacetIds,
   validateDecoration,
 } from '../src/schema/decoration';
+import { viewRoot } from '../src/schema/surface';
+import { openView } from './setup/open';
 
 const prisma: FieldMap = {
   models: {
@@ -56,13 +51,10 @@ const bridges: Bridge[] = [
   },
 ];
 
-const lens = projectLens(
-  createLens({ maps: { prisma, salesforce }, bridges, mapName: 'prisma', model: 'User' }),
-  { by: 'model' },
-);
+const lens = openView({ maps: { prisma, salesforce }, bridges, mapName: 'prisma', model: 'User' });
 
 const byName = (decoration: Decoration) =>
-  Object.fromEntries(describeFacets(lens, decoration).map((f) => [f.name, f]));
+  Object.fromEntries(describeFacets(viewRoot(lens), decoration).map((f) => [f.name, f]));
 
 describe('describeFacets — leaf facets', () => {
   test('hoists a same-map relation leaf; name is the full path so emit is unchanged', () => {
@@ -106,56 +98,55 @@ describe('describeFacets — leaf facets', () => {
   });
 
   test('drops an unresolvable path', () => {
-    expect(describeFacets(lens, { facets: [{ path: 'tier.nope' }, { path: 'ghost' }] })).toEqual(
-      [],
-    );
+    expect(
+      describeFacets(viewRoot(lens), { facets: [{ path: 'tier.nope' }, { path: 'ghost' }] }),
+    ).toEqual([]);
   });
 });
 
-const eav = projectLens(
-  createLens({
-    maps: {
-      prisma: {
-        models: {
-          User: {
-            fields: {
-              orders: { kind: 'object', type: 'Order', isList: true },
-              customFields: { kind: 'object', type: 'CustomField', isList: true },
-              account: { kind: 'object', type: 'Account' },
-            },
+const eav = openView({
+  maps: {
+    prisma: {
+      models: {
+        User: {
+          fields: {
+            orders: { kind: 'object', type: 'Order', isList: true },
+            customFields: { kind: 'object', type: 'CustomField', isList: true },
+            account: { kind: 'object', type: 'Account' },
           },
-          Account: {
-            fields: { contracts: { kind: 'object', type: 'Contract', isList: true } },
+        },
+        Account: {
+          fields: { contracts: { kind: 'object', type: 'Contract', isList: true } },
+        },
+        Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
+        Order: {
+          fields: {
+            total: { kind: 'scalar', type: 'Int' },
+            items: { kind: 'object', type: 'Item', isList: true },
+            customFields: { kind: 'object', type: 'CustomField', isList: true },
           },
-          Contract: { fields: { amount: { kind: 'scalar', type: 'Int' } } },
-          Order: {
-            fields: {
-              total: { kind: 'scalar', type: 'Int' },
-              items: { kind: 'object', type: 'Item', isList: true },
-              customFields: { kind: 'object', type: 'CustomField', isList: true },
-            },
-          },
-          Item: { fields: { sku: { kind: 'scalar', type: 'String' } } },
-          CustomField: {
-            fields: {
-              key: { kind: 'scalar', type: 'String' },
-              value: { kind: 'scalar', type: 'String' },
-              score: { kind: 'scalar', type: 'Int' },
-              status: { kind: 'scalar', type: 'String' },
-            },
+        },
+        Item: { fields: { sku: { kind: 'scalar', type: 'String' } } },
+        CustomField: {
+          fields: {
+            key: { kind: 'scalar', type: 'String' },
+            value: { kind: 'scalar', type: 'String' },
+            score: { kind: 'scalar', type: 'Int' },
+            status: { kind: 'scalar', type: 'String' },
           },
         },
       },
     },
-    mapName: 'prisma',
-    model: 'User',
-  }),
-  { by: 'model' },
-);
+  },
+  mapName: 'prisma',
+  model: 'User',
+});
 
 describe('describeFacets — collection facets', () => {
   test('a list-crossing path seeds an array node (never a broken flat leaf)', () => {
-    const [f] = describeFacets(eav, { facets: [{ path: 'orders.total', label: 'Order total' }] });
+    const [f] = describeFacets(viewRoot(eav), {
+      facets: [{ path: 'orders.total', label: 'Order total' }],
+    });
     expect(f.isList).toBe(true);
     expect(f.seed).toMatchObject({
       field: 'orders',
@@ -165,7 +156,7 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('single boundary: the fixed `where` leads the destination condition, value follows', () => {
-    const [f] = describeFacets(eav, {
+    const [f] = describeFacets(viewRoot(eav), {
       facets: [
         {
           path: 'customFields.value',
@@ -186,7 +177,7 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('multi boundary: defaultWhere is one operator per array traversal; the where lands at the destination model', () => {
-    const [f] = describeFacets(eav, {
+    const [f] = describeFacets(viewRoot(eav), {
       facets: [
         {
           path: 'orders.customFields.value',
@@ -220,7 +211,7 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('the upstream traversal defaults to `any` when defaultWhere is omitted', () => {
-    const [f] = describeFacets(eav, {
+    const [f] = describeFacets(viewRoot(eav), {
       facets: [
         {
           path: 'orders.customFields.value',
@@ -232,7 +223,7 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('the seeded fixed-where node evaluates as "the NPS element > 5"', () => {
-    const [f] = describeFacets(eav, {
+    const [f] = describeFacets(viewRoot(eav), {
       facets: [
         {
           path: 'customFields.value',
@@ -264,7 +255,9 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('nested lists seed nested array nodes (never a flat two-list path) and evaluate', () => {
-    const [f] = describeFacets(eav, { facets: [{ path: 'orders.items.sku', label: 'SKU' }] });
+    const [f] = describeFacets(viewRoot(eav), {
+      facets: [{ path: 'orders.items.sku', label: 'SKU' }],
+    });
     expect(f.seed).toMatchObject({
       field: 'orders',
       arrayOperator: 'any',
@@ -285,7 +278,7 @@ describe('describeFacets — collection facets', () => {
   });
 
   test('multi-hop: reaches a list through a to-one relation and emits a resolver field', () => {
-    const out = describeFacets(eav, {
+    const out = describeFacets(viewRoot(eav), {
       facets: [{ path: 'account.contracts.amount', label: 'Contract' }],
     });
     const selector = out.find((f) => f.seed);
@@ -331,7 +324,7 @@ describe('consumedTopFields / matchFacet', () => {
         ],
       },
     } as Condition;
-    expect(matchFacet(eav, npsDecoration, node)?.label).toBe('NPS');
+    expect(matchFacet(viewRoot(eav), npsDecoration, node)?.label).toBe('NPS');
   });
 
   test('a multi-hop path facet is a seed only — the inner block is recognized at its own scope', () => {
@@ -355,11 +348,11 @@ describe('consumedTopFields / matchFacet', () => {
         ],
       },
     };
-    const [f] = describeFacets(eav, decoration);
+    const [f] = describeFacets(viewRoot(eav), decoration);
     // The outer node never matches — recognition does not reach down the chain.
-    expect(matchFacet(eav, decoration, f.seed as Condition)).toBeUndefined();
+    expect(matchFacet(viewRoot(eav), decoration, f.seed as Condition)).toBeUndefined();
     // Ingest re-anchors: the inner customFields node stamps at the Order scope.
-    const stamped = stampFacetIds({ all: [f.seed as Condition] }, eav, decoration) as {
+    const stamped = stampFacetIds({ all: [f.seed as Condition] }, viewRoot(eav), decoration) as {
       all: [{ __facetId?: string; condition: { all: [{ __facetId?: string }] } }];
     };
     expect(stamped.all[0].__facetId).toBeUndefined();
@@ -406,8 +399,8 @@ describe('consumedTopFields / matchFacet', () => {
         ],
       },
     } as Condition;
-    expect(matchFacet(eav, decoration, onTotal)?.label).toBe('Order total');
-    expect(matchFacet(eav, decoration, onSomethingElse)).toBeUndefined();
+    expect(matchFacet(viewRoot(eav), decoration, onTotal)?.label).toBe('Order total');
+    expect(matchFacet(viewRoot(eav), decoration, onSomethingElse)).toBeUndefined();
   });
 
   test('a different leading where is not the NPS facet', () => {
@@ -416,34 +409,33 @@ describe('consumedTopFields / matchFacet', () => {
       arrayOperator: 'any',
       condition: { all: [{ field: 'key', operator: 'equals', value: 'csat' }] },
     } as Condition;
-    expect(matchFacet(eav, npsDecoration, node)).toBeUndefined();
+    expect(matchFacet(viewRoot(eav), npsDecoration, node)).toBeUndefined();
   });
 });
 
 describe('describeFacets / matchFacet — branch facets', () => {
-  const branchLens = projectLens(
-    createLens({
-      maps: {
-        app: {
-          models: {
-            User: { fields: { account: { kind: 'object', type: 'Account' } } },
-            Account: {
-              fields: {
-                industry: { kind: 'scalar', type: 'String' },
-                tier: { kind: 'scalar', type: 'String' },
-              },
+  const branchLens = openView({
+    maps: {
+      app: {
+        models: {
+          User: { fields: { account: { kind: 'object', type: 'Account' } } },
+          Account: {
+            fields: {
+              industry: { kind: 'scalar', type: 'String' },
+              tier: { kind: 'scalar', type: 'String' },
             },
           },
         },
       },
-      mapName: 'app',
-      model: 'User',
-    }),
-    { by: 'model' },
-  );
+    },
+    mapName: 'app',
+    model: 'User',
+  });
 
   test('a to-one relation seeds a group of prefixed conditions', () => {
-    const [f] = describeFacets(branchLens, { facets: [{ path: 'account', label: 'Company' }] });
+    const [f] = describeFacets(viewRoot(branchLens), {
+      facets: [{ path: 'account', label: 'Company' }],
+    });
     expect(f.seed).toMatchObject({ all: [{ field: 'account.industry' }] });
   });
 
@@ -452,7 +444,7 @@ describe('describeFacets / matchFacet — branch facets', () => {
     const node = {
       all: [{ field: 'account.tier', operator: 'equals', value: 'gold' }],
     } as Condition;
-    expect(matchFacet(branchLens, decoration, node)?.label).toBe('Company');
+    expect(matchFacet(viewRoot(branchLens), decoration, node)?.label).toBe('Company');
   });
 
   test('validateDecoration rejects two whereless branches on the same relation', () => {
@@ -529,6 +521,12 @@ describe('validateDecoration — models scopes and selector-completion collision
     expect(
       validateDecoration(eav, { facets: [], models: { Ghost: [{ path: 'x', label: 'X' }] } }),
     ).toEqual(["models['Ghost'] does not bind to any model in the lens"]);
+    // The anchor is never an element scope: models[...] apply only inside an array condition.
+    expect(
+      validateDecoration(eav, { facets: [], models: { User: [{ path: 'id', label: 'Id' }] } }),
+    ).toEqual([
+      "models['User'] is never an element scope — no list relation the lens turns on reaches it",
+    ]);
     const bad = validateDecoration(eav, {
       facets: [],
       models: { Order: [{ path: 'nope.value', label: 'Broken' }] },
@@ -580,6 +578,6 @@ describe('validateDecoration — models scopes and selector-completion collision
         ],
       },
     } as Condition;
-    expect(matchFacet(eav, decoration, picked)?.label).toBe('NPS');
+    expect(matchFacet(viewRoot(eav), decoration, picked)?.label).toBe('NPS');
   });
 });

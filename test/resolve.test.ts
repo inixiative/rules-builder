@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { type Condition, type FieldMap, validateRuleInLens } from '@inixiative/json-rules';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import {
+  describeScopeFields,
+  rawView,
+  resolve,
+  viewAt,
+  viewRoot,
+  withAllRelations,
+} from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -16,30 +23,31 @@ const map: FieldMap = {
   enums: { UserRole: ['admin', 'member', 'guest'] },
 };
 
-describe('resolve — serializable source → public surface', () => {
-  test('builds an exposed-surface lens from maps + entrypoint', () => {
-    const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-    const names = describeModelFields(lens, 'app', 'User')
-      .map((f) => f.name)
-      .sort();
-    expect(names).toEqual(['email', 'password', 'role', 'tier']);
+const names = (fields: { name: string }[]) => fields.map((f) => f.name).sort();
+
+describe('resolve — serializable source → view', () => {
+  test('a bare source shows the anchor columns', () => {
+    const view = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
+    expect(names(describeScopeFields(viewRoot(view)))).toEqual([
+      'email',
+      'password',
+      'role',
+      'tier',
+    ]);
   });
 
   test('applies a parent-less narrowing and does not leak the omitted field', () => {
-    const lens = resolve({
+    const view = resolve({
       maps: { app: map },
       mapName: 'app',
       model: 'User',
       narrowing: { mapDefaults: { app: { models: { User: { omits: ['password'] } } } } },
     });
-    const names = describeModelFields(lens, 'app', 'User')
-      .map((f) => f.name)
-      .sort();
-    expect(names).toEqual(['email', 'role', 'tier']);
+    expect(names(describeScopeFields(viewRoot(view)))).toEqual(['email', 'role', 'tier']);
   });
 });
 
-describe('resolve — fetched sourceValues fold onto the surface', () => {
+describe('resolve — fetched sourceValues fold onto the view and the gate', () => {
   const source = { maps: { app: map }, mapName: 'app', model: 'User' };
   const sourceValues = [
     {
@@ -52,17 +60,130 @@ describe('resolve — fetched sourceValues fold onto the surface', () => {
   ];
 
   test('fetched values surface as enumValues, kind preserved', () => {
-    const lens = resolve(source, { sourceValues });
-    const tier = describeModelFields(lens, 'app', 'User').find((f) => f.name === 'tier');
+    const view = resolve(source, { sourceValues });
+    const tier = describeScopeFields(viewRoot(view)).find((f) => f.name === 'tier');
     expect(tier?.enumValues).toEqual(['gold', 'silver']);
     expect(tier?.kind).toBe('String'); // keeps native operators
   });
 
-  test('validateRuleInLens gates rule values against the folded set', () => {
-    const lens = resolve(source, { sourceValues });
-    const good: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'gold' }] };
-    const bad: Condition = { all: [{ field: 'tier', operator: 'equals', value: 'platinum' }] };
-    expect(validateRuleInLens(good, lens).ok).toBe(true);
-    expect(validateRuleInLens(bad, lens).ok).toBe(false);
+  test('the fetched set rides the visit at its path; the gate (view.lens) does not know it', () => {
+    const view = resolve(source, { sourceValues });
+    expect(view.visit('User')?.fields.tier.options?.map((o) => o.value)).toEqual([
+      'gold',
+      'silver',
+    ]);
+    const platinum: Condition = { field: 'tier', operator: 'equals', value: 'platinum' };
+    expect(validateRuleInLens(platinum, view.lens).ok).toBe(true);
+  });
+
+  test('the caller maps are never mutated', () => {
+    resolve(source, { sourceValues });
+    expect(map.models.User.fields.tier.options).toBeUndefined();
+  });
+});
+
+const orgMap: FieldMap = {
+  models: {
+    User: {
+      fields: {
+        name: { kind: 'scalar', type: 'String' },
+        org: { kind: 'object', type: 'Org' },
+        posts: { kind: 'object', type: 'Post', isList: true },
+      },
+    },
+    Org: {
+      fields: {
+        name: { kind: 'scalar', type: 'String' },
+        parent: { kind: 'object', type: 'Org' },
+        users: { kind: 'object', type: 'User', isList: true },
+      },
+    },
+    Post: { fields: { title: { kind: 'scalar', type: 'String' } } },
+  },
+};
+const orgSource = { maps: { app: orgMap }, mapName: 'app', model: 'User' };
+
+describe('relations — off until the narrowing turns them on (json-rules 3.4)', () => {
+  test('a bare source shows no relation', () => {
+    const view = resolve(orgSource);
+    expect(names(describeScopeFields(viewRoot(view)))).toEqual(['name']);
+    expect(view.visit('User.org')).toBeUndefined();
+  });
+
+  test('root.relations turns a relation on along the path, and each visit shows its own', () => {
+    const view = resolve({
+      ...orgSource,
+      narrowing: { root: { relations: { org: { relations: { parent: {} } } } } },
+    });
+    const root = viewRoot(view);
+    expect(names(describeScopeFields(root))).toEqual(['name', 'org']);
+    expect(names(describeScopeFields(viewAt(root, 'org')))).toEqual(['name', 'parent']);
+    // Org at org.parent: nothing spelled below it, so no relation is on there.
+    expect(names(describeScopeFields(viewAt(root, 'org.parent')))).toEqual(['name']);
+    expect(view.visit('User.posts')).toBeUndefined();
+  });
+
+  test('the model defaults grow a tree: each model once, a second reach spelled', () => {
+    const defaults = {
+      app: { models: { User: { relations: { org: {} } }, Org: { relations: { users: {} } } } },
+    };
+    const root = viewRoot(resolve({ ...orgSource, narrowing: { mapDefaults: defaults } }));
+    // Org.users leads back to User, the anchor: already reached.
+    expect(names(describeScopeFields(viewAt(root, 'org')))).toEqual(['name']);
+    const spelled = viewRoot(
+      resolve({
+        ...orgSource,
+        narrowing: {
+          mapDefaults: defaults,
+          root: { relations: { org: { relations: { users: {} } } } },
+        },
+      }),
+    );
+    expect(names(describeScopeFields(viewAt(spelled, 'org')))).toEqual(['name', 'users']);
+    // From the spelled node the tree grows again: User.org is on the spelled path, so off.
+    expect(names(describeScopeFields(viewAt(spelled, 'org.users')))).toEqual(['name']);
+  });
+});
+
+describe('a layered narrowing — a chain, outermost first', () => {
+  test('a later layer narrows what the first turned on, and the gate is the whole chain', () => {
+    const view = resolve({
+      ...orgSource,
+      narrowing: [{ root: { relations: { org: {}, posts: {} } } }, { root: { omits: ['posts'] } }],
+    });
+    expect(names(describeScopeFields(viewRoot(view)))).toEqual(['name', 'org']);
+    const posts: Condition = { field: 'posts', arrayOperator: 'notEmpty' };
+    expect(validateRuleInLens(posts, view.lens).ok).toBe(false);
+  });
+
+  test('withAllRelations turns relations on in the first layer and keeps the later ones', () => {
+    const source = withAllRelations({
+      ...orgSource,
+      narrowing: [{}, { root: { omits: ['posts'] } }],
+    });
+    const view = resolve(source);
+    expect(names(describeScopeFields(viewRoot(view)))).toEqual(['name', 'org']);
+    // Org's parent and users lead to models already on the path.
+    expect(names(describeScopeFields(viewAt(viewRoot(view), 'org')))).toEqual(['name']);
+  });
+});
+
+describe('rawView — the record a permission or transition gates', () => {
+  test('every relation of the record on, self-relations included; the gate agrees', () => {
+    const orgView = rawView({ ...orgSource, model: 'Org' });
+    const root = viewRoot(orgView);
+    expect(names(describeScopeFields(root))).toEqual(['name', 'parent', 'users']);
+    // users → User: its posts reached for the first time; its org leads back to Org.
+    expect(names(describeScopeFields(viewAt(root, 'users')))).toEqual(['name', 'posts']);
+    expect(
+      validateRuleInLens({ field: 'parent.name', operator: 'equals', value: 'x' }, orgView.lens).ok,
+    ).toBe(true);
+    expect(
+      validateRuleInLens(
+        { field: 'parent.parent.name', operator: 'equals', value: 'x' },
+        orgView.lens,
+      ).ok,
+    ).toBe(false);
+    expect(orgView.visit('Org.parent.parent')).toBeUndefined();
   });
 });

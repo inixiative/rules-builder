@@ -195,8 +195,8 @@ const ValueField = ({ value }: { value: ValueControl }) => {
         onChange={(m) => value.setMode(m as 'value' | 'path' | 'bind')}
       />
       {value.mode === 'path' && value.path ? (
-        // `$.` is this row, `$$.` the enclosing element, … A bare (context) path is not
-        // enumerable, so a saved one is kept selectable as itself.
+        // `$.` is this row, `$$.` the enclosing element, … A saved bare path (a root-row
+        // column) or any other spelling not offered is kept selectable as itself.
         <Picker
           ariaLabel="path"
           value={value.path.value}

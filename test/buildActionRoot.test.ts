@@ -6,7 +6,7 @@ import {
   buildActionRoot,
 } from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
-import { describeModelFields, resolve } from '../src/schema/surface';
+import { describeScopeFields, rawView, viewRoot } from '../src/schema/surface';
 
 const map: FieldMap = {
   models: {
@@ -31,22 +31,22 @@ const map: FieldMap = {
   enums: { Role: ['owner', 'admin', 'member'] },
 };
 
-const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeModelFields(lens, 'app', 'User');
+const view = rawView({ maps: { app: map }, mapName: 'app', model: 'User' });
+const fields = describeScopeFields(viewRoot(view));
 const actionsByResource = {
   'app:User': ['own', 'manage', 'read'],
   'app:Organization': ['own', 'manage', 'read'],
 };
 const resourceFields = (res: string) => {
   const [m, mdl] = res.split(':');
-  return describeModelFields(resolve({ maps: { app: map }, mapName: m, model: mdl }), m, mdl);
+  return describeScopeFields(viewRoot(rawView({ maps: { app: map }, mapName: m, model: mdl })));
 };
 
 let committed: ActionRule | undefined;
 const build = (rule: ActionRule) => {
   committed = undefined;
   return buildActionRoot(rule, {
-    lens,
+    view,
     fields,
     siblingActions: ['manage', 'read'],
     actionsByResource,

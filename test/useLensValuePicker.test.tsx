@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createLens, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/json-rules';
 import { cleanup, renderHook } from '@testing-library/react';
 import { type LensValuePickerOptions, useLensValuePicker } from '../src/schema/lensValuePicker';
+import { composeNarrowed, withAllRelations } from '../src/schema/surface';
 
 afterEach(cleanup);
 
@@ -18,7 +19,9 @@ const map: FieldMap = {
   },
   enums: { UserRole: ['admin', 'member'] },
 };
-const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'User' });
+const lens = composeNarrowed(
+  withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' }),
+);
 
 const byPath = (out: ReturnType<typeof useLensValuePicker>) =>
   Object.fromEntries(out.map((o) => [o.path, o]));

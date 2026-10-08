@@ -89,7 +89,7 @@ describe('useFilteredCollection', () => {
     };
     const { result } = renderHook(() => useFilteredCollection({ source: sourced, rows }));
 
-    const options = result.current.lens.maps.sdk.models.Reward.fields.points.options;
+    const options = result.current.view.visit('Reward')?.fields.points.options;
     expect(options?.map((o) => o.value)).toEqual(['5', '25', '50']);
 
     const picked = options?.[1].value;
@@ -104,7 +104,7 @@ describe('useFilteredCollection', () => {
     };
     const { result } = renderHook(() => useFilteredCollection({ source: sourced, rows }));
 
-    const options = result.current.lens.maps.sdk.models.Reward.fields.regionId.options;
+    const options = result.current.view.visit('Reward')?.fields.regionId.options;
     expect(options).toEqual([
       { value: 'eu', label: 'Europe' },
       { value: 'us', label: 'United States' },

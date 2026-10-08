@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '@inixiative/json-rules';
 import { type ArrayNode, buildRoot, type LeafNode } from '../src/builder/buildNodes';
-import { describeModelFields, resolve, type SurfaceOptions } from '../src/schema/surface';
+import {
+  describeScopeFields,
+  resolve,
+  type SurfaceOptions,
+  viewRoot,
+  withAllRelations,
+} from '../src/schema/surface';
 import { parseSavedRule, type SavedRule, stringifySavedRule } from '../src/serialize';
 
 const map: FieldMap = {
@@ -28,8 +34,8 @@ const map: FieldMap = {
   enums: { OrderStatus: ['pending', 'paid'] },
 };
 
-const lens = resolve({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeModelFields(lens, 'app', 'User');
+const lens = resolve(withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' }));
+const fields = describeScopeFields(viewRoot(lens));
 
 let committed: Condition | undefined;
 const build = (c: Condition, surfaceOpts: SurfaceOptions = {}) => {

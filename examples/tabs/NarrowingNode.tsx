@@ -7,10 +7,12 @@ import type {
   SourceValues,
 } from '@inixiative/json-rules';
 import { useState } from 'react';
+import { withAllRelations } from '../../src';
 import { RuleEditor } from '../RuleTree';
 import { Badge, Button, Row, Select, tokens } from '../ui';
 
 // sourceValues are folded into the where-editor's surface so it renders pseudo-enum selects.
+// A grant reads any relation on its menu (`maps`), so its editor turns every one of them on.
 export type NodeCtx = {
   maps: Record<string, FieldMap>;
   bridges: Bridge[];
@@ -241,7 +243,7 @@ export const NarrowingNode = ({
         </Row>
         {showWhere && (
           <RuleEditor
-            source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
+            source={withAllRelations({ maps: ctx.maps, bridges: ctx.bridges, mapName, model })}
             sourceValues={ctx.sourceValues}
             maxDepth={ctx.maxDepth}
             rule={value.where && typeof value.where === 'object' ? value.where : { all: [] }}
@@ -293,7 +295,7 @@ export const NarrowingNode = ({
                 {spec?.label ? ` — label: ${spec.label}` : ''}
               </span>
               <RuleEditor
-                source={{ maps: ctx.maps, bridges: ctx.bridges, mapName, model }}
+                source={withAllRelations({ maps: ctx.maps, bridges: ctx.bridges, mapName, model })}
                 sourceValues={ctx.sourceValues}
                 maxDepth={ctx.maxDepth}
                 rule={where}
