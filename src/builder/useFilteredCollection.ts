@@ -4,17 +4,27 @@ import {
   type EngineGlobalsState,
   engineGlobals,
   materializeSources,
+  registerEngineGlobals,
 } from '@inixiative/json-rules';
 import { useMemo } from 'react';
 import { composeNarrowed } from '../schema/surface';
 import { type UseRuleBuilder, type UseRuleBuilderOptions, useRuleBuilder } from './useRuleBuilder';
 
+declare module '@inixiative/json-rules' {
+  interface EngineGlobalValues {
+    /** Client search's string match: on by default, unlike the engine's own `string.*`. */
+    'rulesBuilder.filter.caseInsensitive': EngineGlobalsState['string']['caseInsensitive'];
+    'rulesBuilder.filter.fuzzy': EngineGlobalsState['string']['fuzzy'];
+  }
+}
+
 // Client search leans on the engine's string settings: case-insensitive and slightly
-// typo-tolerant by default (short tokens exact, longer tolerate one edit). Override per call.
-const DEFAULT_STRING_MATCH = {
-  caseInsensitive: true,
-  fuzzy: { maxRatio: 0.2, maxDistance: 1 },
-} satisfies EngineGlobalsState['string'];
+// typo-tolerant by default (short tokens exact, longer tolerate one edit). An app changes the
+// default in engineGlobals; a call overrides it.
+registerEngineGlobals('rulesBuilder', {
+  'filter.caseInsensitive': true,
+  'filter.fuzzy': { maxRatio: 0.2, maxDistance: 1 },
+});
 
 export type UseFilteredCollectionOptions<T> = Omit<UseRuleBuilderOptions, 'sourceValues'> & {
   /** The already-fetched collection to author against and filter. */
@@ -53,8 +63,8 @@ export const useFilteredCollection = <T extends Record<string, unknown>>(
 
   const stringMatch = useMemo(
     () => ({
-      caseInsensitive: caseInsensitive ?? DEFAULT_STRING_MATCH.caseInsensitive,
-      fuzzy: fuzzy ?? DEFAULT_STRING_MATCH.fuzzy,
+      caseInsensitive: caseInsensitive ?? engineGlobals.get('rulesBuilder.filter.caseInsensitive'),
+      fuzzy: fuzzy ?? engineGlobals.get('rulesBuilder.filter.fuzzy'),
     }),
     [caseInsensitive, fuzzy],
   );

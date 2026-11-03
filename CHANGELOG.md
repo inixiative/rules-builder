@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.0 — the filter's string match is an engine setting
+
+- **Peer `@inixiative/json-rules` ^3.17.0.**
+- **`rulesBuilder.filter.caseInsensitive` / `rulesBuilder.filter.fuzzy`** in json-rules'
+  `engineGlobals` (the one engine interaction point shared with permissions and transitions) hold
+  `useFilteredCollection`'s default string match: case-insensitive, `fuzzy: { maxRatio: 0.2,
+  maxDistance: 1 }`, as before. An app sets them once; a call's `caseInsensitive` / `fuzzy` still
+  win.
+
 ## 0.31.0 — validity is json-rules' answer, on the builder's targets
 
 Breaking, with no compatibility path (no users).
