@@ -1,7 +1,7 @@
 {
   "name": "@inixiative/rules-builder",
   "version": "0.31.0",
-  "description": "Visual rule builder for @inixiative/json-rules",
+  "description": "Headless rule builder for @inixiative/json-rules that offers only what a lens exposes and the engine can run",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

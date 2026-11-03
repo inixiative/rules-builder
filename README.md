@@ -1,13 +1,10 @@
 # @inixiative/rules-builder
 
-Headless visual rule builder for [@inixiative/json-rules](https://github.com/inixiative/json-rules).
+> One of the [inixiative](https://www.inixiative.com) building blocks. Stop rediscovering what you need to build. See [all the projects](https://github.com/inixiative).
 
-Compose a json-rules `Condition` against a **lens** — driven by the lens's
-exposed surface and the json-rules operator catalog, so the builder always offers
-exactly what the engine can run. The hook renders nothing: you bring your own
-components (or copy the reference renderers).
+A headless rule builder for [@inixiative/json-rules](https://github.com/inixiative/json-rules). It edits a json-rules `Condition` against a **lens** and offers only what the lens exposes and the json-rules operator catalog defines for each field, so a user can only build a rule the engine can run. The hook renders nothing: you bring your own components or copy the reference renderers.
 
-**Live demo:** [www.inixiative.com/rules-builder](https://www.inixiative.com/rules-builder/) — the lifecycle playground (fieldMaps → bridges → lenses → narrowings → sources → builder → value picker).
+**Live demo:** [www.inixiative.com/rules-builder](https://www.inixiative.com/rules-builder/) is the lifecycle playground (fieldMaps → bridges → lenses → narrowings → sources → builder → value picker).
 
 ## Install
 
@@ -19,7 +16,7 @@ bun add @inixiative/rules-builder @inixiative/json-rules
 
 ## Quick start
 
-`useRuleBuilder` owns the `Condition` JSON and returns a **descriptor tree** — a
+`useRuleBuilder` owns the `Condition` JSON and returns a **descriptor tree**: a
 `root` group whose nodes carry the controls (field / operator / value), their
 options, and bound actions. You walk the tree and render it however you like.
 
@@ -76,9 +73,9 @@ function Leaf({ node }: { node: LeafNode }) {
 
 Since json-rules 3.4 a relation is a field, off by default: a bare `source` offers its
 anchor's columns and nothing else. The source's `narrowing` (its first layer) turns
-relations on — along a path (`root.relations`) or wherever a model is visited
+relations on, either along a path (`root.relations`) or wherever a model is visited
 (`mapDefaults[map].models[Model].relations`). Model-default turn-ons grow a tree from the
-anchor and each spelled path — each model once, at its nearest reach — so a second way to a
+anchor and each spelled path (each model once, at its nearest reach), so a second way to a
 model is spelled under `root.relations`:
 
 ```ts
@@ -88,13 +85,13 @@ const source = {
 };
 ```
 
-The builder offers exactly what the narrowed lens shows on each path — an element scope
-reads the visit the lens shows at that relation — and gates, coerces and describes every
+The builder offers exactly what the narrowed lens shows on each path (an element scope
+reads the visit the lens shows at that relation), and gates, coerces and describes every
 rule against the narrowed lens itself (`useRuleBuilder().lens`), never against a projected
 surface. `narrowing` may also be a list of parent-less layers, outermost first, each
 narrowing the one before. `withAllRelations(source)` turns every relation on in the first
 layer, spells the anchor's own at the root, and spells there every path a later layer
-spells — the posture of a raw record or a first-layer grant. A view resolves each visit on demand (json-rules `lensVisit`), so nothing
+spells: the posture of a raw record or a first-layer grant. A view resolves each visit on demand (json-rules `lensVisit`), so nothing
 is enumerated; `rawView(source)` is the raw-record view permissions and transitions gate.
 
 A sourced field's fetched options (`sourceValues`) ride the visit at their own path: the
@@ -103,7 +100,7 @@ not know fetched sets, so another path to the same model keeps its declared valu
 
 ### Rendering values
 
-`useRuleBuilder` is headless — it does **not** render value inputs, because the
+`useRuleBuilder` is headless. It does **not** render value inputs, because the
 right input depends on the operator's `shape` and the field's `kind`. The
 `ValueControl` gives you everything to switch on:
 
@@ -113,13 +110,13 @@ right input depends on the operator's `shape` and the field's `kind`. The
 | `control.shape === 'array'` | a multi-select (e.g. `in` / `notIn`) |
 | `control.shape === 'range'` | two inputs (e.g. `between`) |
 | `control.shape === 'none'` | no input (e.g. `isEmpty`) |
-| `control.kind === 'Boolean'` | a true/false select — coerce to a real boolean |
-| `control.kind === 'Int' \| 'Float'` | a number input — coerce with `Number()` |
+| `control.kind === 'Boolean'` | a true/false select; coerce to a boolean |
+| `control.kind === 'Int' \| 'Float'` | a number input; coerce with `Number()` |
 | `control.kind === 'DateTime'` | a date input |
 
 Coercion matters: store `true`, not `"true"`. The two reference renderers in the
-demo — [`RuleTree.tsx`](./examples/RuleTree.tsx) (plain) and
-[`RuleTreeShadcn.tsx`](./examples/RuleTreeShadcn.tsx) (shadcn/ui) — implement this
+demo, [`RuleTree.tsx`](./examples/RuleTree.tsx) (plain) and
+[`RuleTreeShadcn.tsx`](./examples/RuleTreeShadcn.tsx) (shadcn/ui), implement this
 matrix in full. They're **copy-paste** (shadcn-style), not exported: drop one in
 and adapt it.
 
@@ -131,7 +128,7 @@ falls outside an enum/sourced set) so you can mark the exact input.
 
 `valid` is the engine's own answer: the lens gate (`validateRuleInLens`) and
 json-rules `validateRule` on each of the builder's `targets` (default `check`), with
-the lens's schema — so a column compare, a window or an aggregate is valid exactly
+the lens's schema, so a column compare, a window or an aggregate is valid exactly
 where the compiler takes it. In path mode, `value.path.scopes` offers only refs of
 the field's own type that every target compiles (toPrisma reaches the current
 row's columns only), and an aggregate offers `filter` where every target takes a
@@ -139,7 +136,7 @@ window. `validate(target)` and `describe()` read the same schema.
 
 ## Sourced fields (data-backed options)
 
-A narrowing can declare `sources` — a field whose option set is the DISTINCT
+A narrowing can declare `sources`: a field whose option set is the DISTINCT
 values of its own column (after an eligibility `where`). json-rules compiles and
 materializes them; your app runs the queries and hands the results back:
 
@@ -161,12 +158,12 @@ Over a collection already in hand (the lens's anchor rows), json-rules
 
 ## Filtering a collection in hand
 
-For collections fetched whole — a calendar range, a Kanban board — where the
+For collections fetched whole (a calendar range, a Kanban board), where the
 server owns scope and the narrowing is display-only, `useFilteredCollection`
 composes the builder with the in-memory half of the rules duality. The builder
 owns the one `Condition`; sourced fields' options materialize from the rows
 themselves (a plain column becomes a pseudo-enum picker of the values that
-actually occur); `data` is the rows passing the emitted rule via `check()`:
+occur in the rows); `data` is the rows passing the emitted rule via `check()`:
 
 ```ts
 import { useFilteredCollection } from '@inixiative/rules-builder';
@@ -179,47 +176,47 @@ const { data, root, value, setCondition } = useFilteredCollection({
 
 Emitted rules are coercion-stamped from the lens, so widget-authored values
 (date strings, stringified numbers) match wire-format rows. `source`, `rows`,
-and `checkOptions` must be referentially stable — memoize them at the call site.
+and `checkOptions` must be referentially stable: memoize them at the call site.
 
 ## Array (list/relation) rules
 
-A list or relation field builds an `ArrayNode` — a predicate / count / presence
+A list or relation field builds an `ArrayNode`, a predicate / count / presence
 over its elements:
 
-- **presence** — `empty` / `notEmpty`
-- **count** — `atLeast` / `atMost` / `exactly` (+ a numeric `count`)
-- **predicate** — `all` / `any` / `none` (+ a `condition` sub-builder)
+- **presence**: `empty` / `notEmpty`
+- **count**: `atLeast` / `atMost` / `exactly` (+ a numeric `count`)
+- **predicate**: `all` / `any` / `none` (+ a `condition` sub-builder)
 
 `node.condition` and `node.filter` are nested `GroupNode`s scoped to the **related
-model's** surface — author them exactly like the top-level tree.
+model's** surface; author them exactly like the top-level tree.
 
 ### Scope references
 
 Inside an element sub-builder a rule can reach back out: json-rules resolves `$.` as
 the current element, `$$.` as the element of the enclosing array, `$$$.` the one
-outside that, up to the root row — on `path` (compare against an ancestor's value)
+outside that, up to the root row. This works on `path` (compare against an ancestor's value)
 and on `field` (rule on an ancestor's column from inside the element). The
 descriptor exposes what is reachable so a renderer never spells a prefix:
 
-- `LeafNode.scopes` / `ArrayNode.scopes` — the enclosing scopes a prefixed `field`
+- `LeafNode.scopes` / `ArrayNode.scopes`: the enclosing scopes a prefixed `field`
   may name, nearest first; each carries its `prefix`, the model's label, and
   pickable `options` whose values are already prefixed (`'$$.creditLimit'`) for
   `field.set`. Absent at the root.
-- `value.path.scopes` (path mode) — the value locations a `path` may name: the
+- `value.path.scopes` (path mode): the value locations a `path` may name: the
   current row as `$.`, then each enclosing scope. Relations and lists are not
-  offered. A bare path is a root-row column (json-rules 3.4) — the outermost scope,
+  offered. A bare path is a root-row column (json-rules 3.4), the outermost scope,
   offered under its prefix.
 
 Validity is judged in situ: a leaf's `valid` gates the node wrapped in the array rules
 it sits under, so `$$.creditLimit` is valid one array deep and `$$$.creditLimit` is not.
-Scope refs are check()-only beyond `path: '$.x'` on `toSql` — `describe()` reports it.
+Scope refs are check()-only beyond `path: '$.x'` on `toSql`; `describe()` reports it.
 
-## Decoration — hoisting, relabeling & aliasing
+## Decoration: hoisting, relabeling & aliasing
 
 By default the root selector offers only the anchor model's own fields; to reach
 anything else you traverse relations. A **`Decoration`** pre-traverses for you: it
 moves chosen lens locations *up* to the root selector as named **facets** and
-relabels them. It is purely presentational — the lens stays the source of truth,
+relabels them. It is purely presentational: the lens stays the source of truth,
 and every facet emits its real dotted path (bridges included) as the rule's
 `field`, so nothing the engine runs changes.
 
@@ -244,7 +241,7 @@ useRuleBuilder({ source, decoration }); // facets now appear in the root selecto
 ```
 
 The facet kind is decided by the path's shape against the lens (a path may
-traverse any number of to-one relations/bridges first — `account.contracts.amount`
+traverse any number of to-one relations/bridges first, so `account.contracts.amount`
 is fine):
 
 - **Leaf** (ends at a scalar/enum) → a directly rule-able field; emits `{ field: path }`.
@@ -254,21 +251,21 @@ is fine):
 - **Branch** (ends at a to-one relation, e.g. `account`) → a top-level **scoped
   group**. Its field picker is scoped to the related model and emits `account.*`
   dotted paths; a saved `account.*` group rehydrates as the named branch. Its
-  `hoist`/`lockedLeading` live on the `GroupNode`. The scoped picker reaches
+  `hoist` lives on the `GroupNode`. The scoped picker reaches
   **nested** to-one fields (`account.owner.email`) and offers list relations
   (`account.contracts`) as nested array nodes.
 
-A facet can instead be a **preset** — `condition` in place of `path`: a named alias
+A facet can instead be a **preset** (`condition` in place of `path`): a named alias
 for a *complete* pre-authored `Condition` (`{ label: 'Mature', condition: {…} }`).
 Selecting it drops the whole condition in as one **atomic** node (`GroupNode.atomic`
-/ `LeafNode.atomic` / `ArrayNode.atomic`) — no field/operator/value pickers, it just
-*is* a rule — and a saved node equal to the condition collapses back to the name.
+/ `LeafNode.atomic` / `ArrayNode.atomic`) with no field/operator/value pickers; it
+*is* a rule. A saved node equal to the condition collapses back to the name.
 `validateDecoration` checks the preset is a valid rule against the lens.
 
-#### Variables — a preset the user can still tune
+#### Variables: a preset the user can still tune
 
 A preset may leave **value slots** to the author. A leaf (or an aggregate rule) in
-the template carries `variable` in its value-source position — beside `value` /
+the template carries `variable` in its value-source position, beside `value` /
 `path` / `bind`, mutually exclusive with them, never nested inside `value` (a real
 value can be any JSON, so a marker inside it is indistinguishable from data):
 
@@ -288,55 +285,55 @@ value can be any JSON, so a marker inside it is indistinguishable from data):
 }
 ```
 
-`Variable` is the **value domain only** — `{ default?, options?, range? }`. The
+`Variable` is the **value domain only**: `{ default?, options?, range? }`. The
 control's label is the slot's field decor, option prose is `labels.values`, the value
 shape comes from the operator, the allowed set from the lens. A default is a literal
-`RuleValue` / `DateExpr` — never a `bind` or `path`. `{ bind }` in a template is *not*
+`RuleValue` / `DateExpr`, never a `bind` or `path`. `{ bind }` in a template is *not*
 a slot: the server fills it, the user never sees it.
 
 `Facet.condition` is a `FacetCondition`: a `Condition` whose rules may carry
-`variable` — a plain `Condition` is one, and a template with slots needs no cast.
+`variable`. A plain `Condition` is one, and a template with slots needs no cast.
 Templates are read on the **builder's own shape** (`normalizeGroups`: every
 array/aggregate `condition` and `filter` as a group, the shape the sub-builder
 round-trips), so a bare `condition: { field … }` and `condition: { all: [ { field … } ] }`
 are one facet, one id, and both recognize the rules the other spelling saved.
 
-- **Insert** — `presetSeed(facet)`: each slot takes its default; an open slot inserts
+- **Insert**: `presetSeed(facet)`: each slot takes its default; an open slot inserts
   with no value source at all (the state a freshly added leaf has).
-- **Recognize** — `matchFacet` compares the template with each slot taking the node's
+- **Recognize**: `matchFacet` compares the template with each slot taking the node's
   own value source (`value`/`path`/`bind`, or still open) to the node: any value at a
   slot, exact equality everywhere else. Fewest wildcard slots wins, so a fixed
   `tier = gold` preset beats a variable `tier = ?` on a `gold` rule regardless of
   facet order, and a matched preset beats any path facet on the same field. `facetId`
   erases the default (like `defaultWhere`, it is editable, not identity), so two
-  presets differing only by default are one id — a validation violation, not two
+  presets differing only by default are one id: a validation violation, not two
   cards. A `variable` key *inside* a rule's `value` is Json data, never a slot.
-- **Render** — the atomic node exposes `variables: VariableControl[]`, one per slot:
+- **Render**: the atomic node exposes `variables: VariableControl[]`, one per slot:
   `{ path, field, label, variable, options, value }` where `value` is the leaf's own
   `ValueControl` (or the aggregate threshold control) already built for that
   position; `options` are labeled by whatever that control already calls the value.
   Everything else on the card is inert. Zero variables is the plain atomic case.
-  `variableSlots(template)` lists the slots for non-builder consumers — paths address
+  `variableSlots(template)` lists the slots for non-builder consumers. Paths address
   the builder's shape, so read a saved rule as `getNode(normalizeGroups(node), slot.path)`.
-- **Validate** — the seed must be a valid rule against the lens; every `options`
+- **Validate**: the seed must be a valid rule against the lens; every `options`
   entry must be admitted in its slot (the lens is asked directly); `selectors` on a
-  preset is a violation — a preset's editable slots are its variables; two presets
-  over one body whose slot sets cross (neither contains the other) are ambiguous — a
+  preset is a violation (a preset's editable slots are its variables); two presets
+  over one body whose slot sets cross (neither contains the other) are ambiguous, since a
   saved rule would match both at equal rank.
 
 Aggregate rules are never *path* facets (no `arrayOperator` for the whereless-prefix
-heuristic) but can be presets — the first consumer above is one.
+heuristic) but can be presets. The first consumer above is one.
 
 ### Two `where`s
 
 A collection facet carries two things, kept distinct because only one is identity:
 
-- **`where`** — **fixed, non-editable**: the facet's identity. It sits on the model
+- **`where`**: **fixed, non-editable**, the facet's identity. It sits on the model
   its fields reference (the **destination** the path travels to) as the leading
   condition(s), and is the *only* thing rehydration matches on.
-- **`defaultWhere`** — the **array-traversal layer**: one `ArrayOperator` per array
+- **`defaultWhere`**: the **array-traversal layer**: one `ArrayOperator` per array
   boundary the path crosses to reach that model, each defaulting to `any` (the
-  "contains" semantic). Its length must equal the path's array-traversal count —
+  "contains" semantic). Its length must equal the path's array-traversal count;
   `validateDecoration` enforces it. Editable defaults, not identity, never matched.
 
 ```ts
@@ -353,49 +350,50 @@ const decoration: Decoration = {
 };
 ```
 
-Selecting "NPS" seeds `customFields any ( key='nps' AND value … )` — `any(key=nps AND value…)`
+Selecting "NPS" seeds `customFields any ( key='nps' AND value … )`; `any(key=nps AND value…)`
 is exactly "the NPS element matches." The multi-boundary one seeds
-`orders any ( customFields any ( key='nps' AND value … ) )` — both boundary operators
+`orders any ( customFields any ( key='nps' AND value … ) )`: both boundary operators
 come from `defaultWhere`, and the `where` lands on `CustomField`, whose fields it
-actually references. Every traversal operator is **editable but hidden**
+references. Every traversal operator is **editable but hidden**
 (`arrayOperator.hidden` on each array node); `kind` retypes an untyped
 EAV `value` column so its operators are right.
 
 **Move, not copy.** A facet that consumes a top-level field *wholesale* (a bare
-relation, no `where`, no deeper leaf) is removed from the root selector — a thing
+relation, no `where`, no deeper leaf) is removed from the root selector, so a thing
 lives in one place. `where`/deep facets leave their origin.
 
 **Rehydration.** A saved rule is a raw path/array node with no trace of the alias.
-The builder recognizes it via `matchFacet` — a leaf by `field`, a collection when
-its **leading condition block equals the facet's fixed `where`** — and **collapses
+The builder recognizes it via `matchFacet` (a leaf by `field`, a collection when
+its **leading condition block equals the facet's fixed `where`**) and **collapses
 it back** to the named entry: a leaf gets a `hoist` badge; a collection gets
-`hoist` + `lockedLeading` (how many leading conditions to hide) + `arrayOperator.hidden`,
-with the element surface retyped by `kind`. So a reopened "NPS" reads as "NPS."
+`hoist` + `arrayOperator.hidden`, with the element surface retyped by `kind`. The
+fixed `where` sits outside the collection's user-rows group, so the rows a renderer
+shows never include it. So a reopened "NPS" reads as "NPS."
 
 **No collisions.** Because rehydration matches on the leading `where`, the facet set
 must be collision-free. `validateDecoration(lens, decoration)` returns violations
-(empty = valid): unresolvable paths, duplicate ids, and — the key guarantee — two
+(empty = valid): unresolvable paths, duplicate ids, and (the key guarantee) two
 facets on the same target whose fixed `where`s aren't prefix-free (a rule under the
 specific one would also match the general one). Validate at construction.
 
 `describeFacets` is the pure function behind hoisting; `decorationSurfaceOptions`
 folds labels into the plain surface; `consumedTopFields` is the move-not-copy set;
-`matchFacet` / `facetElementLeaf` / `facetLockedLeading` drive rehydration. Absent
+`matchFacet` / `facetElementLeaf` drive rehydration. Absent
 `decoration`, behavior is unchanged.
 
 **Nesting.** Fully recursive. A collection path crossing several lists
-(`orders.items.sku`) seeds **nested array nodes** (`orders any (items any (sku …))`)
-— a flat two-list path would silently mis-evaluate. A branch's scoped picker
+(`orders.items.sku`) seeds **nested array nodes** (`orders any (items any (sku …))`);
+a flat two-list path would silently mis-evaluate. A branch's scoped picker
 descends nested to-one relations (`account.owner.email`) and surfaces lists as
-nested array nodes. The fixed `where` is presentation, not security — the lens
+nested array nodes. The fixed `where` is presentation, not security: the lens
 gate doesn't enforce it.
 
 ### Splitting one relation into tagged sources
 
-A single physical relation often carries rows from several integrations — a shared
+A single physical relation often carries rows from several integrations, for example a shared
 EAV/enrichment table (`customFields`, `enrichments`) discriminated by a `system` /
 `source` slug: "here are Salesforce's custom fields, here are Gong's." Because a
-facet is just a `where`-slice of a relation, this needs **no new primitive** — point
+facet is just a `where`-slice of a relation, this needs **no new primitive**. Point
 several facets at the *same* path, each leading its `where` with a different slug,
 and give each its own tag (`label` + `icon`):
 
@@ -414,7 +412,7 @@ const decoration: Decoration = {
 
 Each source seeds its slug as a leading, locked condition, so it evaluates only on
 its own integration's rows and rehydrates back to its own name. And since each is a
-slice of the *same* relation, **the relation can be adjoined N times in one rule** —
+slice of the *same* relation, **the relation can be adjoined N times in one rule**,
 one slice per source, each traversed independently:
 
 ```
@@ -428,7 +426,7 @@ one slice per source, each traversed independently:
 The slices are collision-free (`validateDecoration` enforces prefix-free `where`s),
 compose for free, and each stays independently tagged. See
 [`test/multiSourceAdjoin.test.ts`](./test/multiSourceAdjoin.test.ts). What's *not*
-provided yet is ergonomic sugar — declaring `system='a'` once as a named scope and
+provided yet is ergonomic sugar: declaring `system='a'` once as a named scope and
 grouping the picker into "System A/B/C" sections; that deferred `scope` concept and
 its limits (sources carry a `where` filter but no provenance, so auto-*discovery* of
 the sources is a separate problem) are in [docs/OPEN_QUESTIONS.md](./docs/OPEN_QUESTIONS.md).
@@ -445,26 +443,26 @@ const json = stringifySavedRule({ source: ref, rule, sourceValues });
 const back = parseSavedRule(json); // validated; throws on malformed input
 ```
 
-`source` is generic — a self-contained app stores a `RuleBuilderSource`; an app
+`source` is generic: a self-contained app stores a `RuleBuilderSource`; an app
 with a registry stores its own by-name reference.
 
 ## API
 
-- `useRuleBuilder(opts)` → `{ value, root, lens, view, setCondition, validate, describe }` — `lens` is the narrowed lens (the gate), `view` what the builder reads
+- `useRuleBuilder(opts)` → `{ value, root, lens, view, setCondition, validate, describe }`: `lens` is the narrowed lens (the gate), `view` what the builder reads
 - `useFilteredCollection({ ...opts, rows, checkOptions? })` → the same surface plus `data` (rows passing the current rule)
-- `buildRoot(condition, view, fields, maxDepth, commit)` — the pure tree builder behind the hook
+- `buildRoot(condition, view, fields, maxDepth, commit)`: the pure tree builder behind the hook
 - `resolve(source, { sourceValues })` → `LensView`: the narrowed lens (`view.lens`, the gate) and `view.visit(at)`, the fields the lens shows at a dotted path from the anchor (`'User'`, `'User.orders'`)
-- `createView(lensOrNarrowing, { sourceValues })` — the same over a lens in hand; `rawView(source)` — a raw record, every relation on (permissions, transitions)
-- `composeNarrowed(source)` — the source's narrowed lens; `withAllRelations(source)` — every relation turned on in its first layer
-- `builderSource(lens, { sourceValues })` — a lens in hand as a serializable source: its model-keyed surface plus one layer spelling, path by path, exactly what the lens shows (no clamp, no bridge) — what a server ships a builder
-- `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })` — the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
-- `lensValuePicker` / `useLensValuePicker` — the field/path picker atom (`{ at, maxDepth }`)
-- `lensScopeSurface` / `useLensScopeSurface` — one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
-- `parseSavedRule` / `stringifySavedRule` — validated rule serialization
+- `createView(lensOrNarrowing, { sourceValues })`: the same over a lens in hand. `rawView(source)`: a raw record, every relation on (permissions, transitions)
+- `composeNarrowed(source)`: the source's narrowed lens. `withAllRelations(source)`: every relation turned on in its first layer
+- `builderSource(lens, { sourceValues })`: a lens in hand as a serializable source (its model-keyed surface plus one layer spelling, path by path, exactly what the lens shows; no clamp, no bridge). This is what a server ships a builder
+- `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })`: the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
+- `lensValuePicker` / `useLensValuePicker`: the field/path picker atom (`{ at, maxDepth }`)
+- `lensScopeSurface` / `useLensScopeSurface`: one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
+- `parseSavedRule` / `stringifySavedRule`: validated rule serialization
 
 See [PLAN.md](./PLAN.md) for the architecture.
 
 ## Related
 
-- [@inixiative/json-rules](https://github.com/inixiative/json-rules) - Core rule engine
-- [@inixiative/conditional-form](https://github.com/inixiative/conditional-form) - Render forms using rules
+- [@inixiative/json-rules](https://github.com/inixiative/json-rules): the rule engine
+- [@inixiative/conditional-form](https://github.com/inixiative/conditional-form): forms rendered from rules
