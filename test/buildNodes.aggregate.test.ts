@@ -154,7 +154,7 @@ describe('buildRoot — aggregate nodes', () => {
     expect(windows.map((w) => valid(w, ['toSql']))).toEqual([false, false, false, false]);
   });
 
-  test('the operator picker offers every aggregate comparison, whatever the targets', () => {
+  test('the operator picker offers every aggregate operator, whatever the targets', () => {
     const a = build(aggRule(), { targets: ['toPrisma'] }).children[0] as ArrayNode;
     expect(a.aggregate?.operator.options.map((o) => o.value)).toEqual([
       'equals',
@@ -165,6 +165,8 @@ describe('buildRoot — aggregate nodes', () => {
       'greaterThanEquals',
       'between',
       'notBetween',
+      'exists',
+      'notExists',
     ]);
   });
 
@@ -213,6 +215,18 @@ describe('buildRoot — aggregate nodes', () => {
     a2.aggregate?.value.set([100, 500]);
     const afterVal = (committed as { all: Condition[] }).all[0] as Record<string, unknown>;
     expect(afterVal.value).toEqual([100, 500]);
+  });
+
+  test('switching to exists drops the threshold and takes no value', () => {
+    const a = build(aggRule({ aggregate: { mode: 'avg', field: 'total' } }))
+      .children[0] as ArrayNode;
+    a.aggregate?.operator.set('exists');
+    const afterOp = (committed as { all: Condition[] }).all[0] as Record<string, unknown>;
+    expect(afterOp.operator).toBe('exists');
+    expect('value' in afterOp).toBe(false);
+    const a2 = build(committed as Condition).children[0] as ArrayNode;
+    expect(a2.aggregate?.value.shape).toBe('none');
+    expect(a2.valid).toBe(true);
   });
 
   test('editing the element window commits back under the aggregate rule condition', () => {
