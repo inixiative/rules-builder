@@ -1,67 +1,82 @@
-# Rules Builder
+# Rules Builder: architecture
 
 Headless visual rule builder for [`@inixiative/json-rules`](https://github.com/inixiative/json-rules).
-Composes a json-rules `Condition` against a **lens**, without writing JSON.
+It edits a json-rules `Condition` against a **lens**, without writing JSON. The builder
+defines no field-type or operator registry of its own: it reads json-rules' lens and
+operator catalog directly, so it can only offer what the engine can run.
 
-> This plan supersedes the pre-lens (v0) design. The builder no longer defines its
-> own field-type or operator registry — it consumes json-rules' lens surface and
-> operator catalog directly.
+## The flow
 
-## Architecture
+1. The server narrows a lens and hands the builder a serializable **source**
+   (`RuleBuilderSource`): maps, `mapName`, `model` (the anchor), optional `bridges`, and
+   parent-less `narrowing` layers. Relations are off until the first layer turns them on
+   (json-rules 3.4 and later). `builderSource(lens, { sourceValues })` turns a lens in hand
+   into such a source.
+2. The builder reads the source as a **view** (`resolve(source, { sourceValues })`, or
+   `createView` over a lens in hand): the narrowed lens (`view.lens`) plus `view.visit(at)`,
+   each visit resolved on demand through json-rules `lensVisit`. Each scope reads the fields
+   the lens shows on that path. Nothing is enumerated up front.
+3. Each rule is gated by `validateRuleInLens` against the narrowed lens and by json-rules
+   `validateRule` on every configured target (default `check`). It is coerced by
+   `coerceRule` and described by `describeRule` (sources touched, bridges crossed, valid
+   targets). A `projectLens(…, { by: 'model' })` surface turns no relation on, so it is
+   never the gate.
 
-The builder is driven by a **lens**, not a hand-written schema:
+## Layers
 
-1. The server narrows a lens and hands the builder a serializable **source** — maps,
-   anchor and parent-less narrowing layers. Relations are off until the first layer turns
-   them on (json-rules ≥ 3.4).
-2. The builder reads it as a **view** (`resolve`): the narrowed lens, and each visit
-   resolved on demand (`lensVisit`) for field metadata — each scope reads the fields the
-   lens shows on that path — plus the json-rules **operator catalog** for valid operators
-   (target-aware), so it always matches what the engine can actually run.
-3. Every rule is gated (`validateRuleInLens`), coerced (`coerceRule`) and classified
-   (`describeRule`: sources touched, bridges crossed ⇒ check-only, valid targets) against
-   the narrowed lens itself. A `projectLens(…, { by: 'model' })` surface is a bare lens —
-   it turns no relation on — so it is never the gate.
+- **`src/schema/surface.ts`**: sources and views. `composeNarrowed`, `builderSource`,
+  `withAllRelations`, `resolve`, `createView`, `rawView` (every relation on, the raw record
+  that permissions and transitions gate), `viewRoot` / `viewAt`, and
+  `describeScopeFields` / `describeModelFields`, which return `BuilderField[]`: each
+  field's kind, its operators (intersected across `targets`), enum or sourced values,
+  `groupBy` axes, and its relation target. `valueShapeForOperator` gives the value slot
+  to render.
+- **`src/schema/decoration.ts`**: the presentational `Decoration`. Path and preset facets
+  hoisted to the root selector, per-model facets (`models`), relabeling (`labels`), preset
+  variables, and inner `selectors`. Also the pure functions behind them:
+  `describeFacets`, `matchFacet` (rehydration), `presetSeed`, `variableSlots`,
+  `consumedTopFields`, `decorationSurfaceOptions`, and `validateDecoration`, which keeps
+  facets collision-free.
+- **`src/schema/lensValuePicker.ts`, `src/schema/lensScopeSurface.ts`**: lens walks for
+  consumers outside the rule tree. `lensValuePicker` lists the value locations reachable
+  to `maxDepth` hops. `lensScopeSurface` splits one scope into flat `values` (through
+  to-one relations) and to-many `loops`.
+- **`src/core/tree.ts`, `src/core/decorate.ts`**: pure, immutable, path-addressed
+  `Condition` edits (`getNode`, `setNode`, `addRule`, `removeNode`, `wrapInCompound`,
+  `groupSiblings`, `unwrapCompound`, `normalizeGroups`) and editor metadata
+  (`withIds`, `stripMeta`, `trimEmptyGroups`, `switchGroupOperator`).
+- **`src/builder/`**: `buildRoot` turns a condition, a view and its fields into the
+  descriptor tree (`GroupNode`, `LeafNode`, `ArrayNode`) with bound actions.
+  `useRuleBuilder` owns the condition and emits a clean `value`.
+  `useFilteredCollection` adds the in-memory half: options from the rows in hand, and
+  `data` filtered by `check`.
+- **`src/permissions/`, `src/transitions/`**: schema-level builders for
+  `@inixiative/permissions` (`ActionRule`, `RebacSchema`) and `@inixiative/transitions`
+  (`TransitionMap`). Their types are re-declared here, so the package depends only on
+  json-rules. The `rule` leaves and transition predicates embed the condition builder over
+  `rawView`.
+- **`src/serialize.ts`**: `SavedRule` (a rule with its `source` reference and captured
+  `sourceValues`), via `stringifySavedRule` / `parseSavedRule`.
 
-### Layers
-
-- **`schema/surface.ts`** — `resolve(source)` → `LensView` (the narrowed lens + its
-  visits by path); `describeScopeFields(scope, opts)` → `BuilderField[]`: per-field kind, valid operators (intersected across the
-  configured `targets`), enum values, and relation targets for drill-down.
-  `valueShapeForOperator` drives which input slot to render. ✅ Done + tested.
-- **`core/tree.ts`** — pure, immutable, path-addressed `Condition` mutations:
-  `getNode` / `setNode` / `addRule` / `removeNode` / `wrapInCompound` /
-  `unwrapCompound`. The state engine the UI sits on. ✅ Done + tested.
-- **`builder/slots.ts`** — typed component-injection contracts. Consumers provide
-  their own components (e.g. shadcn); the package ships contracts + an example
-  set, not bundled UI. ✅ Contracts in place.
-
-## Status
-
-- ✅ Headless core: surface adapter + condition-tree engine (typechecked, tested).
-- ✅ Slot contracts.
-- ✅ React layer: `useRuleBuilder` hook (wraps the tree engine + surface), recursive
-  `RuleBuilder` / `RuleGroup` / `RuleRow`, value slot rendering, live
-  classification via `describeRule` + `validateRuleInLens`.
-- ✅ Hydration seam (`src/hydration/`): `hydrateFieldMaps` projects fetched table
-  contents onto fields as gated pseudo-enums (`kind:'enum'` + `values`); wired into
-  `RuleBuilderSource.hydration` → `composeSurface`. A consumer fetches from the DB,
-  passes `source.hydration`, and the field takes over with no component changes.
-- ✅ Lifecycle playground (`examples/`): tabbed demo (fieldmaps → bridges → lenses →
-  hydration → builder) over an ephemeral workspace with JSON import/export. The
-  Lenses tab is a recursive narrowing editor (`where` dogfoods an embedded
-  `RuleBuilder`); the Builder tab is classify-only.
-- ⏳ Example shadcn slot set + `testing/` slot contract test suite.
-- ⏳ Preview panel running `check()` against sample data; bridge-data hydration
-  (`buildBridgeDictionary`) — distinct from the value-hydration seam above.
-
-Design: `docs/plans/2026-06-27-lifecycle-demo-and-hydration-design.md`.
+The reference renderers (`examples/RuleTree.tsx`, `examples/RuleTreeShadcn.tsx`,
+`examples/ActionRuleTree.tsx`) and the lifecycle playground (`examples/App.tsx`) are
+copy-paste references. They are not exported.
 
 ## Slot value shapes
 
-`valueShapeForOperator(operator, family)` returns the json-rules `ValueShape` an operator expects;
-the renderer maps it to a slot: `scalar`/`ordered`→input, `string`→text,
-`array`→multiselect, `range`/`dateRange`→two inputs, `dateValue`→date picker,
-`dateWindow`→relative/period picker, `dayList`→weekday multiselect,
-`count`→number + nested predicate, `predicate`→nested condition builder,
-`none`→no input.
+`valueShapeForOperator(operator, family)` returns the json-rules `ValueShape` an operator
+expects, and the renderer maps it to a slot:
+
+- `scalar` / `ordered`: an input;
+- `string` / `pattern`: a text input;
+- `array`: a multiselect;
+- `range` / `dateRange`: two inputs;
+- `dateValue`: a date picker;
+- `dateWindow`: a relative or period picker;
+- `dayList`: a weekday multiselect;
+- `count`: a number plus a nested predicate;
+- `predicate`: a nested condition builder;
+- `none`: no input.
+
+Design history (the hydration seam that `sourceValues` replaced, and the playground
+design) is in `docs/plans/` and `CHANGELOG.md`.

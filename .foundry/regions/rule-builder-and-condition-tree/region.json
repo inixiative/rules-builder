@@ -1,0 +1,48 @@
+{
+  "id": "rule-builder-and-condition-tree",
+  "title": "Rule builder hook and condition tree",
+  "routing": "Is this about owning and editing a json-rules Condition in React: useRuleBuilder (value, root, lens, view, setCondition, validate, describe; options source, sourceValues, targets, defaultValue, empty, onChange, labels, valueLabels, decoration, maxDepth), the GroupNode / LeafNode / ArrayNode descriptor tree from buildRoot / asRoot, field / operator / value controls and per-control `valid`, coercing widget values, array rules (presence, count, predicate, sum/avg aggregates, nested condition and filter groups), $. / $$. / $$$. scope references, filtering rows in hand with useFilteredCollection (caseInsensitive, fuzzy, engineGlobals defaults), or path-addressed tree edits (RulePath, getNode, setNode, removeNode, addRule, wrapInCompound, groupSiblings, unwrapCompound, normalizeGroups, asGroupRoot, withIds, stripMeta, trimEmptyGroups, switchGroupOperator)?",
+  "concepts": [
+    "rule-builder-hook",
+    "descriptor-tree",
+    "array-rules-scope-refs",
+    "filtered-collection",
+    "tree-edits"
+  ],
+  "tokens": 13044,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 1990,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 13044
+    }
+  },
+  "runsAgreed": 3,
+  "sources": {
+    "docs": ["PLAN.md", "README.md"],
+    "docUnits": [
+      "doc:PLAN.md#the-flow",
+      "doc:README.md#quick-start",
+      "doc:README.md#array-list-relation-rules",
+      "doc:README.md#filtering-a-collection-in-hand",
+      "doc:README.md#api"
+    ],
+    "catalogClusters": [
+      "primitive-array-rules-and-scope-refs",
+      "primitive-descriptor-tree",
+      "primitive-rule-builder-hook",
+      "primitive-sourced-fields-and-filtering",
+      "primitive-tree-edits"
+    ],
+    "codeEntries": 26,
+    "docMembers": 21
+  },
+  "bypassLines": 11,
+  "glossaryTerms": 23
+}

@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "project": "rules-builder",
+  "builtFrom": {
+    "docs": ["README.md", "PLAN.md", "docs/OPEN_QUESTIONS.md"],
+    "excluded": [
+      {
+        "path": "docs/plans/2026-06-27-lifecycle-demo-and-hydration-design.md",
+        "kind": "history",
+        "reason": "The 2026-06 design of the playground and the hydration seam (hydrateFieldMaps, composeSurface); hydration was replaced by json-rules sources and `sourceValues`."
+      },
+      {
+        "path": "CHANGELOG.md",
+        "kind": "history",
+        "reason": "Release history 0.13 to 0.32. Its current facts are in the README and PLAN.md; the breaking removals are carried as legacy notes."
+      },
+      {
+        "path": "examples/**",
+        "kind": "excluded",
+        "reason": "The Vite lifecycle playground and the copy-paste reference renderers; consumers of the package, not exported. The README and PLAN.md point at them."
+      },
+      {
+        "path": "test/**",
+        "kind": "excluded",
+        "reason": "Bun tests; outside the regions (codeScope is src/)."
+      },
+      {
+        "path": ".github/**",
+        "kind": "excluded",
+        "reason": "CI, pages and release workflows only."
+      }
+    ],
+    "catalog": "code read through the repo's Atlas map when it has one, else the plan's code scope; described with Foundry's catalog describer prompts",
+    "atlas": ".atlas/concepts.ts",
+    "libraries": {},
+    "method": "three independent model proposals, item-level majority vote (2 of 3), seams to the size ceiling, per-region authoring"
+  },
+  "concepts": [
+    {
+      "tag": "package-overview",
+      "atlas": null,
+      "description": "What the package is and where things live: headless hooks plus descriptor trees, peer deps, the source -> view -> gate flow, layers by file, the public API list",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "source-and-view",
+      "atlas": "primitive:source-and-view",
+      "description": "RuleBuilderSource and narrowing layers (relations off until the first layer turns them on), composeNarrowed (the gate lens), builderSource, withAllRelations, resolve/createView/rawView, LensView, viewRoot/viewAt/visitOf",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "field-surface",
+      "atlas": "primitive:field-surface",
+      "description": "What one scope offers: describeScopeFields/describeModelFields -> BuilderField (kind, operators intersected across targets, enum/sourced options, groupBy, relation target, acceptsSubPath) and valueShapeForOperator slot shapes",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "sourced-values",
+      "atlas": "primitive:sourced-fields-and-filtering",
+      "description": "Data-backed field options: narrowing `sources`, json-rules toSourceQueries/materializeSourceQuery/materializeSources producing sourceValues passed to resolve/useRuleBuilder and riding the visit at their path",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "lens-pickers",
+      "atlas": "primitive:lens-pickers",
+      "description": "Lens walks for consumers outside the rule tree: lensValuePicker/useLensValuePicker (value locations to maxDepth) and lensScopeSurface/useLensScopeSurface (flat values plus to-many loop portals)",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "saved-rule-serialization",
+      "atlas": "primitive:serialization",
+      "description": "Persisting a rule with its binding: SavedRule {source, rule, sourceValues?}, stringifySavedRule, parseSavedRule (validated, throws)",
+      "region": "lens-sources-and-surfaces"
+    },
+    {
+      "tag": "rule-builder-hook",
+      "atlas": "primitive:rule-builder-hook",
+      "description": "useRuleBuilder options and {value, root, lens, view, setCondition, validate, describe}: the gate (validateRuleInLens + validateRule per target), coerceRule, describeRule, per-control valid",
+      "region": "rule-builder-and-condition-tree"
+    },
+    {
+      "tag": "descriptor-tree",
+      "atlas": "primitive:descriptor-tree",
+      "description": "buildRoot/asRoot and the GroupNode/LeafNode/ArrayNode descriptors with field/operator/value controls and bound actions; how a renderer maps ValueControl modes to inputs",
+      "region": "rule-builder-and-condition-tree"
+    },
+    {
+      "tag": "array-rules-scope-refs",
+      "atlas": "primitive:array-rules-and-scope-refs",
+      "description": "ArrayNode presence/count/predicate, nested condition and filter groups, sum/avg AggregateControl, $./$$./$$$. scope refs via LeafNode.scopes and value.path.scopes",
+      "region": "rule-builder-and-condition-tree"
+    },
+    {
+      "tag": "filtered-collection",
+      "atlas": "primitive:sourced-fields-and-filtering",
+      "description": "useFilteredCollection over rows in hand: options materialized from rows, `data` = rows passing check(), engineGlobals rulesBuilder.filter.caseInsensitive/fuzzy defaults",
+      "region": "rule-builder-and-condition-tree"
+    },
+    {
+      "tag": "tree-edits",
+      "atlas": "primitive:tree-edits",
+      "description": "Pure path-addressed Condition edits (RulePath, getNode/setNode/removeNode/addRule/wrapInCompound/groupSiblings/unwrapCompound/normalizeGroups/asGroupRoot) and editor meta (withIds, stripMeta, trimEmptyGroups, switchGroupOperator)",
+      "region": "rule-builder-and-condition-tree"
+    },
+    {
+      "tag": "decoration-facets",
+      "atlas": "primitive:decoration-facets",
+      "description": "Presentational Decoration: path facets (leaf/collection/branch), labels and relabelRelations, fixed `where` vs editable `defaultWhere`, kind retype, move-not-copy, rehydration via matchFacet/stampFacetIds, validateDecoration, useFacetFields",
+      "region": "decoration-facets-and-presets"
+    },
+    {
+      "tag": "preset-variables",
+      "atlas": "primitive:preset-variables",
+      "description": "Preset facets (`condition`, atomic nodes) with Variable value slots {default, options, range}: presetSeed, variableSlots, isPreset, VariableControl, preset matching",
+      "region": "decoration-facets-and-presets"
+    },
+    {
+      "tag": "selectors-facet-mode",
+      "atlas": "primitive:selectors-and-facet-mode",
+      "description": "Per-model facets (Decoration.models), Facet.selectors with selectorClauses/setSelectorClause/writeSelectorClause, groupBy partition pinning, faceted/raw facetMode toggle backed by __facetId",
+      "region": "decoration-facets-and-presets"
+    },
+    {
+      "tag": "tagged-sources",
+      "atlas": "primitive:decoration-facets",
+      "description": "Splitting one physical relation into tagged logical sources by leading `where` slices and adjoining them; decoration is curation, lens narrowing is security; deferred `scope` sugar; no auto-discovery",
+      "region": "decoration-facets-and-presets"
+    },
+    {
+      "tag": "permission-builder",
+      "atlas": "primitive:permission-builder",
+      "description": "usePermissionBuilder over a RebacSchema, useActionRuleBuilder over one ActionRule (delegate, rel/action, self, rule, any, all), buildActionRoot descriptors, actionTree/schema helpers over rawView",
+      "region": "permission-and-transition-builders"
+    },
+    {
+      "tag": "transition-builder",
+      "atlas": "primitive:transition-builder",
+      "description": "useTransitionBuilder over a TransitionMap (resource -> action -> paths {from, to}): predicate/permission roots per side, to.merge spread/deepMerge/append/appendUnique, transitionTree helpers",
+      "region": "permission-and-transition-builders"
+    }
+  ],
+  "regions": [
+    {
+      "id": "lens-sources-and-surfaces",
+      "tokens": 15052,
+      "recogniseTokens": 2232,
+      "concepts": [
+        "package-overview",
+        "source-and-view",
+        "field-surface",
+        "sourced-values",
+        "lens-pickers",
+        "saved-rule-serialization"
+      ],
+      "runsAgreed": 3
+    },
+    {
+      "id": "rule-builder-and-condition-tree",
+      "tokens": 13044,
+      "recogniseTokens": 1990,
+      "concepts": [
+        "rule-builder-hook",
+        "descriptor-tree",
+        "array-rules-scope-refs",
+        "filtered-collection",
+        "tree-edits"
+      ],
+      "runsAgreed": 3
+    },
+    {
+      "id": "decoration-facets-and-presets",
+      "tokens": 15570,
+      "recogniseTokens": 2317,
+      "concepts": [
+        "decoration-facets",
+        "preset-variables",
+        "selectors-facet-mode",
+        "tagged-sources"
+      ],
+      "runsAgreed": 3
+    },
+    {
+      "id": "permission-and-transition-builders",
+      "tokens": 7377,
+      "recogniseTokens": 1323,
+      "concepts": ["permission-builder", "transition-builder"],
+      "runsAgreed": 3
+    }
+  ],
+  "dropped": {
+    "doc:README.md#related": "Pure navigation: two links to sibling packages (json-rules, conditional-form); establishes nothing to reuse or obey."
+  }
+}

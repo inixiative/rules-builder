@@ -178,6 +178,12 @@ Emitted rules are coercion-stamped from the lens, so widget-authored values
 (date strings, stringified numbers) match wire-format rows. `source`, `rows`,
 and `checkOptions` must be referentially stable: memoize them at the call site.
 
+String matching defaults to case-insensitive with fuzzy matching
+(`{ maxRatio: 0.2, maxDistance: 1 }`). The defaults live in json-rules'
+`engineGlobals` as `rulesBuilder.filter.caseInsensitive` and
+`rulesBuilder.filter.fuzzy`, so an app sets them once. A call's own
+`caseInsensitive` / `fuzzy` options still win.
+
 ## Array (list/relation) rules
 
 A list or relation field builds an `ArrayNode`, a predicate / count / presence
@@ -262,7 +268,7 @@ Selecting it drops the whole condition in as one **atomic** node (`GroupNode.ato
 *is* a rule. A saved node equal to the condition collapses back to the name.
 `validateDecoration` checks the preset is a valid rule against the lens.
 
-#### Variables: a preset the user can still tune
+### Variables: a preset the user can still tune
 
 A preset may leave **value slots** to the author. A leaf (or an aggregate rule) in
 the template carries `variable` in its value-source position, beside `value` /
@@ -364,14 +370,14 @@ lives in one place. `where`/deep facets leave their origin.
 
 **Rehydration.** A saved rule is a raw path/array node with no trace of the alias.
 The builder recognizes it via `matchFacet` (a leaf by `field`, a collection when
-its **leading condition block equals the facet's fixed `where`**) and **collapses
-it back** to the named entry: a leaf gets a `hoist` badge; a collection gets
+its condition block **contains the facet's fixed `where`**, in any order, the most
+specific facet winning) and **collapses it back** to the named entry: a leaf gets a `hoist` badge; a collection gets
 `hoist` + `arrayOperator.hidden`, with the element surface retyped by `kind`. The
 fixed `where` sits outside the collection's user-rows group, so the rows a renderer
 shows never include it. So a reopened "NPS" reads as "NPS."
 
-**No collisions.** Because rehydration matches on the leading `where`, the facet set
-must be collision-free. `validateDecoration(lens, decoration)` returns violations
+**No collisions.** Because rehydration matches on the fixed `where`, the facet set
+must be collision-free. `validateDecoration(view, decoration)` returns violations
 (empty = valid): unresolvable paths, duplicate ids, and (the key guarantee) two
 facets on the same target whose fixed `where`s aren't prefix-free (a rule under the
 specific one would also match the general one). Validate at construction.
@@ -431,6 +437,52 @@ grouping the picker into "System A/B/C" sections; that deferred `scope` concept 
 its limits (sources carry a `where` filter but no provenance, so auto-*discovery* of
 the sources is a separate problem) are in [docs/OPEN_QUESTIONS.md](./docs/OPEN_QUESTIONS.md).
 
+### Per-model facets, selectors and the raw toggle
+
+- **`models`**: facets keyed `map:Model` or `Model` (`map:Model` wins), with paths
+  relative to that model. They apply wherever an array `condition` surface for that
+  model is built, so each facet is one hop at its level. They never apply at the anchor
+  root, in `filter` subtrees or in aggregate windows.
+- **`selectors`** (path facets only): declared inner rows, `{ field, label?, anyLabel? }`,
+  that a renderer draws as dedicated dropdowns ("Field: [Any ▾]") instead of hardcoding
+  paths. A matched `GroupNode` / `ArrayNode` carries `selectors`, the canonical
+  `selectorClauses` (lifted out of the rows so the rows toggle cannot absorb them), and
+  `setSelectorClause(field, value | null)`, which writes the clause after the fixed
+  `where`. A grouped sourced field (`groupBy` axes) pins its options to the partition
+  that conjoined sibling clauses on its axes select.
+- **`facetMode`**: on a node a facet governs, `{ value: 'faceted' | 'raw', set }`. `raw`
+  suspends recognition for the session: the hoist and lock drop and the identity rows
+  render as plain editable children. It is backed by `__facetId` meta, which is stripped
+  before `value` emits, so a saved rule always reloads faceted.
+
+## Permissions and transitions
+
+The same descriptor approach covers the two schemas that embed json-rules conditions.
+Their types are re-declared here, so the package depends only on json-rules.
+
+- `usePermissionBuilder({ value, onChange, maps, bridges?, maxDepth? })` owns a whole
+  `@inixiative/permissions` `RebacSchema` (`{ bridges?, permissions }`, resources keyed
+  `map:Model`). It returns the resource and action lists, add/remove/set actions, and
+  `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches
+  between `rule` (abac, an embedded condition builder), `self`, `rel` (a walk of relation
+  hops, then a target action), `delegate`, `any`, `all`, `allow` and `deny`.
+- `useActionRuleBuilder({ source, sourceValues?, defaultValue?, onChange?, siblingActions?,
+  actionsByResource? })` edits one `ActionRule` against a lens source.
+- `useTransitionBuilder({ value, onChange, maps, bridges?, permissionActions?, maxDepth? })`
+  owns an `@inixiative/transitions` `TransitionMap` (resource, then action, then
+  `{ paths: { from, to }[] }`). `predicateRoot(resource, action, i, side)` is each side's
+  condition builder, `permissionRoot` the side's optional `ActionRule`, and
+  `mergeOf` / `setMerge` the `to.merge` strategy (`spread`, `deepMerge`, `append`,
+  `appendUnique`).
+
+A permission or transition gates the raw record, so `usePermissionBuilder` and
+`useTransitionBuilder` build each resource's surface from the maps over `rawView` (every
+relation on), not a narrowed lens. `useActionRuleBuilder` is the one that authors against
+a lens source. The pure helpers (`buildActionRoot`,
+`getActionNode` / `setActionNode` / `addActionChild` / `removeActionNode`,
+`setSchemaAction` / `removeSchemaAction`, `emptyAction`) are exported too.
+[`examples/ActionRuleTree.tsx`](./examples/ActionRuleTree.tsx) is the reference renderer.
+
 ## Serialization
 
 A rule loses meaning without its binding. `SavedRule` packages the rule with a
@@ -459,6 +511,8 @@ with a registry stores its own by-name reference.
 - `lensValuePicker` / `useLensValuePicker`: the field/path picker atom (`{ at, maxDepth }`)
 - `lensScopeSurface` / `useLensScopeSurface`: one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule`: validated rule serialization
+- Tree edits, pure and path-addressed (`RulePath` segments: child index, `if` / `then` / `else`, `condition`, `filter`): `getNode`, `setNode`, `addRule`, `removeNode`, `wrapInCompound`, `groupSiblings`, `unwrapCompound`, `normalizeGroups`, `asGroupRoot`; editor metadata: `withIds`, `stripMeta`, `trimEmptyGroups`, `switchGroupOperator`
+- `usePermissionBuilder`, `useActionRuleBuilder`, `useTransitionBuilder`: see [Permissions and transitions](#permissions-and-transitions)
 
 See [PLAN.md](./PLAN.md) for the architecture.
 

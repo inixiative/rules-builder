@@ -1,0 +1,42 @@
+{
+  "id": "decoration-facets-and-presets",
+  "title": "Decoration: facets and presets",
+  "routing": "Is this about presenting the lens differently without changing the rule: a Decoration passed to useRuleBuilder with facets (leaf, collection, branch), labels and value labels, the fixed identity `where` vs editable `defaultWhere`, `kind` retyping an EAV value column, move-not-copy (consumedTopFields), rehydrating a saved rule back to its named facet (matchFacet, stampFacetIds), validateDecoration / useFacetFields / describeFacets, preset facets (`condition`, atomic nodes) with Variable slots (presetSeed, variableSlots, VariableControl), per-model facets (Decoration.models), `selectors` and writeSelectorClause, the faceted/raw facetMode toggle, or splitting one table into tagged sources (Salesforce vs Gong) by facet where?",
+  "concepts": ["decoration-facets", "preset-variables", "selectors-facet-mode", "tagged-sources"],
+  "tokens": 15570,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 2317,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 15570
+    }
+  },
+  "runsAgreed": 3,
+  "sources": {
+    "docs": ["README.md", "docs/OPEN_QUESTIONS.md"],
+    "docUnits": [
+      "doc:README.md#decoration-hoisting-relabeling-aliasing",
+      "doc:README.md#decoration-hoisting-relabeling-aliasing/two-where-s",
+      "doc:README.md#decoration-hoisting-relabeling-aliasing/variables-a-preset-the-user-can-still-tune",
+      "doc:README.md#decoration-hoisting-relabeling-aliasing/per-model-facets-selectors-and-the-raw-toggle",
+      "doc:README.md#decoration-hoisting-relabeling-aliasing/splitting-one-relation-into-tagged-sources",
+      "doc:docs/OPEN_QUESTIONS.md#splitting-one-physical-source-into-logical-sub-sources-by-a-where"
+    ],
+    "catalogClusters": [
+      "primitive-decoration-facets",
+      "primitive-preset-variables",
+      "primitive-selectors-and-facet-mode",
+      "primitive-sourced-fields-and-filtering"
+    ],
+    "codeEntries": 25,
+    "docMembers": 36
+  },
+  "bypassLines": 13,
+  "glossaryTerms": 28
+}

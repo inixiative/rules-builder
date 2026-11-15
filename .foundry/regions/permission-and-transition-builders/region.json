@@ -1,0 +1,30 @@
+{
+  "id": "permission-and-transition-builders",
+  "title": "Permission and transition builders",
+  "routing": "Is this about editing an access-control schema or a state-transition schema in a UI: a RebacSchema of resources and actions (usePermissionBuilder, useActionRuleBuilder, buildActionRoot, actionRoot, setSchemaAction / removeSchemaAction, getActionNode / setActionNode / addActionChild / removeActionNode, actionKind), or a TransitionMap of from/to edges (useTransitionBuilder, predicateRoot / permissionRoot, mergeOf / setMerge, emptyAction)? Jobs: who may do what to a record, allow/deny/self/rel/delegate/any/all rules, workflow state changes and how the record is merged after them.",
+  "concepts": ["permission-builder", "transition-builder"],
+  "tokens": 7377,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 1323,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 7377
+    }
+  },
+  "runsAgreed": 3,
+  "sources": {
+    "docs": ["README.md"],
+    "docUnits": ["doc:README.md#permissions-and-transitions"],
+    "catalogClusters": ["primitive-permission-builder", "primitive-transition-builder"],
+    "codeEntries": 23,
+    "docMembers": 5
+  },
+  "bypassLines": 6,
+  "glossaryTerms": 25
+}
