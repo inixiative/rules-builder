@@ -1,8 +1,8 @@
 import type {
   Bridge,
   Condition,
-  FieldMap,
   FieldMapEntry,
+  LensFieldMap,
   ModelNarrowing,
   SourceValues,
 } from '@inixiative/json-rules';
@@ -14,7 +14,7 @@ import { Badge, Button, Row, Select, tokens } from '../ui';
 // sourceValues are folded into the where-editor's surface so it renders pseudo-enum selects.
 // A grant reads any relation on its menu (`maps`), so its editor turns every one of them on.
 export type NodeCtx = {
-  maps: Record<string, FieldMap>;
+  maps: Record<string, LensFieldMap>;
   bridges: Bridge[];
   sourceValues: SourceValues[];
   maxDepth: number;
@@ -94,7 +94,7 @@ const EnumNarrowingEditor = ({
   value,
   onChange,
 }: {
-  map: FieldMap;
+  map: LensFieldMap;
   model: string;
   value: ModelNarrowing;
   onChange: (v: ModelNarrowing) => void;

@@ -1,9 +1,5 @@
-import {
-  type Bridge,
-  type BridgeCardinality,
-  type FieldMap,
-  stitchFieldMaps,
-} from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/field-map';
+import { type Bridge, type BridgeCardinality, stitchFieldMaps } from '@inixiative/json-rules';
 import { useState } from 'react';
 import { sampleBridges } from '../samples';
 import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';

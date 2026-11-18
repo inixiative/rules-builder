@@ -1,4 +1,5 @@
-import type { Bridge, FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/field-map';
+import type { Bridge } from '@inixiative/json-rules';
 import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';

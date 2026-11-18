@@ -1,4 +1,5 @@
-import { createLens, type FieldMap, projectLens } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/field-map';
+import { createLens, projectLens } from '@inixiative/json-rules';
 import { useEffect, useMemo, useState } from 'react';
 import { describeModelFields } from '../../src/schema/surface';
 import { Badge, EditorHeader, Empty, Panel, Row, Select, tokens } from '../ui';

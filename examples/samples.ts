@@ -1,6 +1,6 @@
+import type { FieldMap } from '@inixiative/field-map';
 import {
   type Bridge,
-  type FieldMap,
   getLensRoot,
   indexBridges,
   type Lens,

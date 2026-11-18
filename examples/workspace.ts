@@ -1,8 +1,8 @@
+import type { FieldMap } from '@inixiative/field-map';
 import {
   type Bridge,
   type Condition,
   createLens,
-  type FieldMap,
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
