@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.33.0 — json-rules 4.2 and @inixiative/field-map
+
+- **Peer `@inixiative/json-rules` ^4.2.0** (was ^3.17). 4.0's lens gate refuses a rule path past a
+  to-many relation; 4.2 takes the schema map from field-map (Aron 2026-11-18, R-2026-11-18-11).
+- **`@inixiative/field-map` ^0.1.1** is a dependency. Schema maps (`usePermissionBuilder`,
+  `useTransitionBuilder`, the example workspace) are field-map's `FieldMap`; maps a lens has
+  projected or stitched (`LensBuilderSource.maps`, the narrowing editor) are json-rules'
+  `LensFieldMap`, which carries bridges and options.
+- No behaviour change: the full check passes (429). The composed editors for computation and
+  evaluation follow in 0.34.0.
+
 ## 0.32.0 — the filter's string match is an engine setting
 
 - **Peer `@inixiative/json-rules` ^3.17.0.**
