@@ -5,13 +5,13 @@ import {
   createLens,
   type DateOperator,
   type FieldKind,
-  type FieldMap,
   type FieldMapEntry,
   getArrayOperators,
   getLensRoot,
   getOperatorsForKind,
   getValueShape,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   type ModelNarrowing,
@@ -29,7 +29,7 @@ import {
 } from '@inixiative/json-rules';
 
 export type RuleBuilderSource = {
-  maps: Record<string, FieldMap>;
+  maps: Record<string, LensFieldMap>;
   bridges?: Bridge[];
   mapName: string;
   model: string;

@@ -1,4 +1,5 @@
-import { assertValidFieldMaps, type Bridge, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/field-map';
+import { assertValidFieldMaps, type Bridge } from '@inixiative/json-rules';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { defaultWorkspace } from '../samples';
 import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';

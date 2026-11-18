@@ -1,6 +1,7 @@
 import {
   assertValidNarrowing,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   type ModelNarrowing,
   projectLens,

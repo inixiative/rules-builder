@@ -1,4 +1,5 @@
-import { assertValidFieldMaps, type FieldMap } from '@inixiative/json-rules';
+import type { FieldMap } from '@inixiative/field-map';
+import { assertValidFieldMaps } from '@inixiative/json-rules';
 import { useEffect, useState } from 'react';
 import { Badge, EditorHeader, Panel, Row, tokens } from '../ui';
 import type { TabProps } from './types';
@@ -29,8 +30,8 @@ const MapView = ({ name, map }: { name: string; map: FieldMap }) => (
               {e.kind}:{e.type}
             </span>
             {e.isList && <Badge>list</Badge>}
-            {(e.kind === 'object' || e.kind === 'bridge') && <Badge tone="accent">relation</Badge>}
-            {e.values && <Badge tone="ok">{e.values.length} values</Badge>}
+            {e.kind === 'object' && <Badge tone="accent">relation</Badge>}
+            {'values' in e && e.values && <Badge tone="ok">{e.values.length} values</Badge>}
           </Row>
         ))}
       </div>
