@@ -80,14 +80,17 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
     expect(grown.children[0].kind.value).toBe('rule');
   });
 
-  test('self leaf offers non-relation fields and commits { self: field }', () => {
+  test('a lens-authored builder offers no list arm: a list is crossed on the raw record only', () => {
     const { result } = renderHook(() =>
-      useActionRuleBuilder({ source, defaultValue: { self: '' } }),
+      useActionRuleBuilder({
+        source,
+        defaultValue: { rel: 'items', arrayOperator: 'any', condition: 'read' },
+      }),
     );
     const root = result.current.root as ActionLeafNode;
-    expect(root.self?.options.map((o) => o.value)).toEqual(['tier', 'ownerId']);
-    act(() => root.self?.set('ownerId'));
-    expect(result.current.value).toEqual({ self: 'ownerId' });
+    expect(root.kind.value).toBe('list');
+    expect(root.list?.relation.options).toEqual([]);
+    expect(root.list?.condition).toBeUndefined();
   });
 
   test('rel leaf resolves the hop target and offers that resource’s actions', () => {

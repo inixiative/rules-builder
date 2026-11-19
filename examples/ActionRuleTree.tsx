@@ -53,14 +53,18 @@ const ActionNode = ({ node }: { node: ActionRuleNode }) => {
           />
         )}
 
-        {leaf?.self && (
-          <Select
-            ariaLabel="self field"
-            value={leaf.self.value ?? ''}
-            placeholder="field…"
-            onChange={leaf.self.set}
-            options={leaf.self.options}
-          />
+        {leaf?.list && (
+          <>
+            <Select
+              ariaLabel="list relation"
+              value={leaf.list.relation.value ?? ''}
+              placeholder="declared list…"
+              onChange={leaf.list.relation.set}
+              options={leaf.list.relation.options}
+            />
+            {leaf.list.target && <span>any item of {leaf.list.target}:</span>}
+            {leaf.list.condition && <ActionNode node={leaf.list.condition} />}
+          </>
         )}
 
         {leaf?.rel && (

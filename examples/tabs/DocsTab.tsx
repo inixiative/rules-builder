@@ -169,11 +169,13 @@ export const DocsTab = () => (
         <Mono>{'{ bridges, permissions: resource → { actions } }'}</Mono>) over the RAW model
         records (resources are map-qualified, e.g. <Mono>db:User</Mono>). An <Mono>ActionRule</Mono>{' '}
         is a recursive algebra: <Mono>{'{ rule }'}</Mono> (abac predicate — embeds the json-rules
-        builder), <Mono>{'{ self }'}</Mono> (owner field), <Mono>{'{ rel, action }'}</Mono> (walk a
-        relation, check an action on the target), a <Mono>string</Mono> (delegate to another
-        action), <Mono>{'{ any }'}</Mono>/<Mono>{'{ all }'}</Mono>, or <Mono>null</Mono> (deny). The
-        leaves are model-aware: <Mono>self</Mono> picks the model's fields, <Mono>delegate</Mono>{' '}
-        its other actions, <Mono>rel</Mono> a relation + the target model's actions.
+        builder; the actor reads as <Mono>__actor</Mono>), <Mono>{'{ rel, action }'}</Mono> (walk a
+        relation, check an action on the target),{' '}
+        <Mono>{"{ rel, arrayOperator: 'any', condition }"}</Mono> (any item of a declared list), a{' '}
+        <Mono>string</Mono> (delegate to another action), <Mono>{'{ any }'}</Mono>/
+        <Mono>{'{ all }'}</Mono>, or <Mono>null</Mono> (deny). The leaves are model-aware:{' '}
+        <Mono>delegate</Mono> its other actions, <Mono>rel</Mono> a relation + the target model's
+        actions.
       </P>
       <Code>{PERMS}</Code>
     </Panel>

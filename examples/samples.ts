@@ -340,7 +340,8 @@ export const samplePermissions: Workspace['permissions'] = {
       manage: 'own', // delegate
       read: {
         any: [
-          { self: 'id' },
+          // acting as yourself: your own row, by the actor permissions puts under `__actor`
+          { rule: { field: 'id', operator: 'equals', path: '__actor.record.id' } },
           { rule: { all: [{ field: 'active', operator: 'equals', value: true }] } },
           'manage',
           { rel: 'crm:Account', action: 'read' }, // walk the bridge → use Account's read
@@ -350,13 +351,13 @@ export const samplePermissions: Workspace['permissions'] = {
   },
   'crm:Account': {
     actions: {
-      own: { self: 'ownerEmail' },
+      own: { rule: { field: 'ownerEmail', operator: 'equals', path: '__actor.record.email' } },
       read: 'own',
     },
   },
   'app:Order': {
     actions: {
-      own: { self: 'userId' },
+      own: { rule: { field: 'userId', operator: 'equals', path: '__actor.record.id' } },
       manage: 'own',
     },
   },

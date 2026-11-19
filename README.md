@@ -464,8 +464,10 @@ Their types are re-declared here, so the package depends only on json-rules.
   `@inixiative/permissions` `RebacSchema` (`{ bridges?, permissions }`, resources keyed
   `map:Model`). It returns the resource and action lists, add/remove/set actions, and
   `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches
-  between `rule` (abac, an embedded condition builder), `self`, `rel` (a walk of relation
-  hops, then a target action), `delegate`, `any`, `all`, `allow` and `deny`.
+  between `rule` (abac, an embedded condition builder; the actor reads as `__actor`), `rel` (a
+  walk of relation hops, then a target action), `list` (any item of a list declared
+  `@permissions(down: […])`, its condition built on the item's resource), `delegate`, `any`,
+  `all`, `allow` and `deny`. The types are `@inixiative/permissions`' own (an optional peer).
 - `useActionRuleBuilder({ source, sourceValues?, defaultValue?, onChange?, siblingActions?,
   actionsByResource? })` edits one `ActionRule` against a lens source.
 - `useTransitionBuilder({ value, onChange, maps, bridges?, permissionActions?, maxDepth? })`

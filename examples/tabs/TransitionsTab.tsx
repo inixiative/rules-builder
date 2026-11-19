@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { type MergeStrategy, type UseTransitionBuilder, useTransitionBuilder } from '../../src';
+import {
+  actionNamesByResource,
+  type MergeStrategy,
+  type UseTransitionBuilder,
+  useTransitionBuilder,
+} from '../../src';
 import { ActionRuleTree } from '../ActionRuleTree';
 import { RuleTree } from '../RuleTree';
 import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
@@ -147,9 +152,7 @@ const SideEditor = ({
  *  predicate (legality, via the rule builder) + optional permission (authz, via the ActionRule
  *  builder); `to` carries a serializable merge. */
 export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
-  const permissionActions = Object.fromEntries(
-    Object.entries(ws.permissions).map(([r, p]) => [r, Object.keys(p.actions)]),
-  );
+  const permissionActions = actionNamesByResource({ permissions: ws.permissions });
   const tb = useTransitionBuilder({
     value: ws.transitions,
     onChange: (transitions) => patch({ transitions }),

@@ -22,7 +22,8 @@ export type UseActionRuleBuilderOptions = {
 /**
  * Headless builder for the recursive permission algebra (`ActionRule`) over a
  * lens/narrowing base. Owns the rule; exposes a `root` descriptor tree. The `rule`
- * (abac) leaf embeds the json-rules builder; `self`/`rel`/`delegate` are resource-aware.
+ * (abac) leaf embeds the json-rules builder; `rel`/`delegate` are resource-aware. A list arm is
+ * offered only by the raw-record builders (`usePermissionBuilder`), which know the declared lists.
  */
 export type UseActionRuleBuilder = {
   value: ActionRule;

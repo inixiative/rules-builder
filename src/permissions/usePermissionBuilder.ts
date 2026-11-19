@@ -1,15 +1,11 @@
 import type { FieldMap } from '@inixiative/field-map';
 import type { Bridge } from '@inixiative/json-rules';
-import { type BuilderField, describeScopeFields, rawView, viewRoot } from '../schema/surface';
+import { describeScopeFields, viewRoot } from '../schema/surface';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
+import { declaredListRelations, rawResourceViews } from './rawResources';
 import { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
 import type { ActionRule, RebacSchema } from './types';
-
-const splitResource = (resource: string): [string, string] => {
-  const i = resource.indexOf(':');
-  return i === -1 ? ['', resource] : [resource.slice(0, i), resource.slice(i + 1)];
-};
 
 export type UsePermissionBuilderOptions = {
   /** The whole rebac schema ({ bridges, permissions }). Controlled — edits flow out via onChange. */
@@ -71,25 +67,22 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
     setSchema({ ...schema, permissions: rest });
   };
 
-  const resourceFields = (res: string): BuilderField[] => {
-    const [m, mdl] = splitResource(res);
-    if (!maps[m]?.models[mdl]) return [];
-    return describeScopeFields(viewRoot(rawView({ maps, bridges, mapName: m, model: mdl })));
-  };
+  const resourceView = rawResourceViews(maps, bridges);
+  const listRelations = declaredListRelations(maps);
 
   const actionRoot = (resource: string, action: string): ActionRuleNode | null => {
     const rule = schema.permissions[resource]?.actions[action];
     if (rule === undefined) return null;
-    const [mapName, model] = splitResource(resource);
-    if (!maps[mapName]?.models[model]) return null;
-    const view = rawView({ maps, bridges, mapName, model });
+    const view = resourceView(resource);
+    if (!view) return null;
     const fields = describeScopeFields(viewRoot(view));
     return buildActionRoot(rule, {
       view,
       fields,
       siblingActions: actionsOf(resource).filter((a) => a !== action),
       actionsByResource,
-      resourceFields,
+      resourceView,
+      listRelations,
       maxDepth,
       commit: (next) => setAction(resource, action, next),
     });

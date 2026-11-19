@@ -9,7 +9,7 @@ import {
 import type {
   Decoration,
   NarrowingLayer,
-  ResourcePermission,
+  RebacSchema,
   RuleBuilderSource,
   SavedRule,
   TransitionMap,
@@ -47,7 +47,7 @@ export type Workspace = {
   rule: Condition; // the working draft in the builder
   rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
   decorations: Record<string, Decoration>; // saved, named display decorations
-  permissions: Record<string, ResourcePermission>; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
+  permissions: RebacSchema['permissions']; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
   transitions: TransitionMap; // resource (`map:model`) → action → Action (from/to edges)
   maxDepth: number; // builder nesting depth — applies to every rule field
 };
@@ -182,7 +182,7 @@ export const importWorkspace = (json: string): Workspace => {
     ws.decorations = parsed.decorations as Record<string, Decoration>;
   }
   if ('permissions' in parsed && isPlainObject(parsed.permissions)) {
-    ws.permissions = parsed.permissions as Record<string, ResourcePermission>;
+    ws.permissions = parsed.permissions as RebacSchema['permissions'];
   }
   if ('transitions' in parsed && isPlainObject(parsed.transitions)) {
     ws.transitions = parsed.transitions as TransitionMap;

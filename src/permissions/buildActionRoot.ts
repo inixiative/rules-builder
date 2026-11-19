@@ -12,15 +12,16 @@ import {
   actionKind,
   addActionChild,
   childrenOfAction,
+  defaultActionRule,
   removeActionNode,
   setActionNode,
 } from './actionTree';
-import type { ActionRule, ActionRuleKind } from './types';
+import type { ActionRule, ActionRuleKind, ListCheck } from './types';
 
 const KIND_OPTIONS: PickOption[] = [
   { value: 'rule', label: 'rule (abac)' },
-  { value: 'self', label: 'self (owner)' },
   { value: 'rel', label: 'rel (walk)' },
+  { value: 'list', label: 'list (any item)' },
   { value: 'delegate', label: 'delegate' },
   { value: 'any', label: 'any (OR)' },
   { value: 'all', label: 'all (AND)' },
@@ -34,8 +35,8 @@ const defaultForKind = (kind: ActionRuleKind): ActionRule => {
       return '';
     case 'rel':
       return { rel: '', action: '' };
-    case 'self':
-      return { self: '' };
+    case 'list':
+      return { rel: '', arrayOperator: 'any', condition: { rule: { all: [] } } };
     case 'rule':
       return { rule: { all: [] } };
     case 'any':
@@ -75,10 +76,13 @@ export type RelControl = {
   action: Control;
   target?: string;
 };
+/** A list arm: the declared list relation it crosses, and its condition, judged on an item as
+ *  its own resource. */
+export type ListControl = { relation: Control; target?: string; condition?: ActionRuleNode };
 export type ActionLeafNode = BaseNode & {
   delegate?: Control;
   rel?: RelControl;
-  self?: Control;
+  list?: ListControl;
   rule?: BuilderNode;
 };
 export type ActionGroupNode = BaseNode & { children: ActionRuleNode[]; addChild?: () => void };
@@ -92,19 +96,25 @@ export type BuildActionOptions = {
   siblingActions: string[];
   /** Action names per resource (`map:model`) — the `rel` walk's target actions. */
   actionsByResource: Record<string, string[]>;
-  /** Raw-record builders only (permissions, transitions gate the record, not a lens): the
-   *  fields of the resource (`map:model`) a hop reaches. Absent, every hop reads the view's
-   *  visit at the path walked so far — what a lens-authored builder must do. */
-  resourceFields?: (resource: string) => BuilderField[];
+  /** Raw-record builders only (permissions, transitions gate the record, not a lens): the view
+   *  of the resource (`map:model`) a hop reaches. Absent, every hop reads the view's visit at the
+   *  path walked so far — what a lens-authored builder must do — and no list arm is offered. */
+  resourceView?: (resource: string) => LensView | undefined;
+  /** The list relations of a resource a list arm may cross (`@permissions(down: […])`). */
+  listRelations?: (resource: string) => string[];
   maxDepth?: number;
   commit: (next: ActionRule) => void;
 };
 
-type Ctx = Required<Omit<BuildActionOptions, 'maxDepth' | 'resourceFields'>> & {
+type Ctx = Required<Omit<BuildActionOptions, 'maxDepth' | 'resourceView' | 'listRelations'>> & {
   root: ActionRule;
   maxDepth: number;
-  resourceFields?: (resource: string) => BuilderField[];
+  resourceView?: (resource: string) => LensView | undefined;
+  listRelations?: (resource: string) => string[];
 };
+
+const fieldsOfView = (view: LensView | undefined): BuilderField[] =>
+  view ? describeScopeFields(viewRoot(view)) : [];
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
@@ -141,13 +151,42 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
     };
   }
 
-  if (kind === 'self') {
+  if (kind === 'list') {
+    const list = node as ListCheck;
+    const resource = `${ctx.view.mapName}:${ctx.view.model}`;
+    const relations = ctx.resourceView ? (ctx.listRelations?.(resource) ?? []) : [];
+    const field = ctx.fields.find((f) => f.name === list.rel && f.isList && f.relation);
+    const target =
+      field?.relation && relations.includes(list.rel)
+        ? `${field.relation.mapName}:${field.relation.modelName}`
+        : undefined;
+    const itemView = target ? ctx.resourceView?.(target) : undefined;
     return {
       ...base,
-      self: {
-        value: (node as { self: string }).self,
-        options: ctx.fields.filter((f) => !f.relation).map((f) => opt(f.name)),
-        set: (f) => ctx.commit(setActionNode(ctx.root, path, { self: f })),
+      list: {
+        relation: {
+          value: list.rel,
+          options: relations.map(opt),
+          // A new list moves the item resource, so the condition starts over.
+          set: (rel) =>
+            ctx.commit(
+              setActionNode(ctx.root, path, {
+                rel,
+                arrayOperator: 'any',
+                condition: defaultActionRule(),
+              }),
+            ),
+        },
+        target,
+        condition:
+          itemView && target && depth < ctx.maxDepth
+            ? build(list.condition, [...path, 0], depth + 1, {
+                ...ctx,
+                view: itemView,
+                fields: fieldsOfView(itemView),
+                siblingActions: ctx.actionsByResource[target] ?? [],
+              })
+            : undefined,
       },
     };
   }
@@ -160,8 +199,8 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
     const fieldsAt = (walked: string[], resource: string): BuilderField[] =>
       walked.length === 0
         ? ctx.fields
-        : ctx.resourceFields
-          ? ctx.resourceFields(resource)
+        : ctx.resourceView
+          ? fieldsOfView(ctx.resourceView(resource))
           : describeScopeFields(viewAt(viewRoot(ctx.view), walked.join('.')));
     const relTargetOf = (f: BuilderField | undefined): string | undefined =>
       f?.relation ? `${f.relation.mapName}:${f.relation.modelName}` : undefined;

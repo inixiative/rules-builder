@@ -97,8 +97,14 @@ describe('usePermissionBuilder — resource + action edits', () => {
     const { result } = renderHook(() =>
       useControlled({ permissions: { 'app:User': { actions: { read: true } } } }),
     );
-    act(() => result.current.setAction('app:User', 'read', { self: 'ownerId' }));
-    expect(result.current.value.permissions['app:User'].actions.read).toEqual({ self: 'ownerId' });
+    act(() =>
+      result.current.setAction('app:User', 'read', {
+        rule: { field: 'ownerId', operator: 'equals', path: '__actor.record.id' },
+      }),
+    );
+    expect(result.current.value.permissions['app:User'].actions.read).toEqual({
+      rule: { field: 'ownerId', operator: 'equals', path: '__actor.record.id' },
+    });
   });
 });
 

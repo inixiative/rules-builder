@@ -3,7 +3,12 @@ import type { Bridge } from '@inixiative/json-rules';
 import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';
-import { type BuilderField, describeScopeFields, rawView, viewRoot } from '../schema/surface';
+import {
+  declaredListRelations,
+  rawResourceViews,
+  splitResource,
+} from '../permissions/rawResources';
+import { describeScopeFields, viewRoot } from '../schema/surface';
 import {
   addPath as addPathOp,
   emptyAction,
@@ -13,11 +18,6 @@ import {
   updateSide,
 } from './transitionTree';
 import type { MergeStrategy, SideKey, TransitionMap } from './types';
-
-const splitResource = (r: string): [string, string] => {
-  const i = r.indexOf(':');
-  return i === -1 ? ['', r] : [r.slice(0, i), r.slice(i + 1)];
-};
 
 export type UseTransitionBuilderOptions = {
   /** The whole transition schema (resource → action → Action). Controlled — edits flow via onChange. */
@@ -72,15 +72,13 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
   const sideOf = (resource: string, action: string, i: number, side: SideKey) =>
     schema[resource]?.[action]?.paths[i]?.[side];
 
+  const resourceView = rawResourceViews(maps, bridges);
+  const listRelations = declaredListRelations(maps);
   const surface = (resource: string) => {
+    const view = resourceView(resource);
+    if (!view) return null;
     const [mapName, model] = splitResource(resource);
-    if (!maps[mapName]?.models[model]) return null;
-    const view = rawView({ maps, bridges, mapName, model });
     return { view, fields: describeScopeFields(viewRoot(view)), mapName, model };
-  };
-  const resourceFields = (res: string): BuilderField[] => {
-    const s = surface(res);
-    return s ? s.fields : [];
   };
 
   const addResource = (resource: string) => {
@@ -128,7 +126,8 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
       fields: s.fields,
       siblingActions: permissionActions[resource] ?? [],
       actionsByResource: permissionActions,
-      resourceFields,
+      resourceView,
+      listRelations,
       maxDepth,
       commit: (next) =>
         setSchema(

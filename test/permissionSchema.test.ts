@@ -25,11 +25,11 @@ describe('actionNamesByResource', () => {
 describe('setSchemaAction', () => {
   test('adds an action to an existing resource immutably', () => {
     const s = base();
-    const next = setSchemaAction(s, 'db:User', 'manage', { self: 'id' });
+    const next = setSchemaAction(s, 'db:User', 'manage', { rel: 'user', action: 'own' });
     expect(next.permissions['db:User'].actions).toEqual({
       own: null,
       read: 'own',
-      manage: { self: 'id' },
+      manage: { rel: 'user', action: 'own' },
     });
     expect(s.permissions['db:User'].actions).toEqual({ own: null, read: 'own' });
   });
