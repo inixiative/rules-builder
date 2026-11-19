@@ -33,10 +33,13 @@ export {
   whereConditions,
   writeSelectorClause,
 } from './decoration';
-export type { LensLoopOption, LensScope, LensScopeSurfaceOptions } from './lensScopeSurface';
+export type {
+  LensLoopOption,
+  LensScope,
+  LensScopeSurfaceOptions,
+  LensValueOption,
+} from './lensScopeSurface';
 export { lensScopeSurface, useLensScopeSurface } from './lensScopeSurface';
-export type { LensValueOption, LensValuePickerOptions } from './lensValuePicker';
-export { lensValuePicker, useLensValuePicker } from './lensValuePicker';
 export type {
   BuilderField,
   LensBuilderSource,

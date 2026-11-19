@@ -1,7 +1,53 @@
-import type { Lens, LensNarrowing } from '@inixiative/json-rules';
+import type { FieldKind, FieldMapEntry, Lens, LensNarrowing } from '@inixiative/json-rules';
 import { useMemo } from 'react';
-import { type LensValueOption, leafOption } from './lensValuePicker';
-import { createView, relationTarget, type ViewAt, viewAt, viewRoot, visitOf } from './surface';
+import {
+  createView,
+  relationTarget,
+  toFieldKind,
+  type ViewAt,
+  viewAt,
+  viewRoot,
+  visitOf,
+} from './surface';
+
+/** One pickable value-location in a lens. `path` is dotted from the start model
+ *  (e.g. `tier`, `account.industry`). The shared atom behind a rule's `field`
+ *  (LHS) and `path` (RHS reference), and reusable downstream (permissions, email, the value
+ *  editor). */
+export type LensValueOption = {
+  path: string;
+  field: string;
+  kind: FieldKind;
+  label: string;
+  isList: boolean;
+  values?: readonly string[];
+  /** A `Json` column has no declared sub-fields, but the kernel resolves a dotted
+   *  sub-path into it (`check`/`toPrisma`/`toSql`). When set, a renderer may let the
+   *  user append a freeform sub-path to `path` (e.g. `metadata` → `metadata.theme`). */
+  acceptsSubPath?: boolean;
+};
+
+/** The pickable option for one leaf (scalar/enum) field at `path`. Enum values are the
+ *  ones the lens allows at that visit. Shared by every walk over a lens so they all emit
+ *  the same option shape. */
+export const leafOption = (
+  name: string,
+  entry: FieldMapEntry,
+  path: string,
+  labels?: Record<string, string>,
+): LensValueOption => {
+  const isEnum = entry.kind === 'enum';
+  const kind: FieldKind = isEnum ? 'Enum' : toFieldKind(entry.type);
+  return {
+    path,
+    field: name,
+    kind,
+    label: labels?.[path] ?? name,
+    isList: entry.isList === true,
+    values: entry.values,
+    acceptsSubPath: kind === 'Json',
+  };
+};
 
 /** A to-many relation reached on the way to a scope's flat values — a loop portal.
  *  `path` is dotted from the scope's start (e.g. `account.opportunities`); a consumer

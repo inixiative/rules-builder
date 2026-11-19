@@ -510,8 +510,7 @@ with a registry stores its own by-name reference.
 - `composeNarrowed(source)`: the source's narrowed lens. `withAllRelations(source)`: every relation turned on in its first layer
 - `builderSource(lens, { sourceValues })`: a lens in hand as a serializable source (its model-keyed surface plus one layer spelling, path by path, exactly what the lens shows; no clamp, no bridge). This is what a server ships a builder
 - `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })`: the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
-- `lensValuePicker` / `useLensValuePicker`: the field/path picker atom (`{ at, maxDepth }`)
-- `lensScopeSurface` / `useLensScopeSurface`: one scope's `{ values, loops }`: leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
+- `lensScopeSurface` / `useLensScopeSurface`: one scope's `{ values, loops }` (each value a `LensValueOption`, the field/path picker atom): leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule`: validated rule serialization
 - Tree edits, pure and path-addressed (`RulePath` segments: child index, `if` / `then` / `else`, `condition`, `filter`): `getNode`, `setNode`, `addRule`, `removeNode`, `wrapInCompound`, `groupSiblings`, `unwrapCompound`, `normalizeGroups`, `asGroupRoot`; editor metadata: `withIds`, `stripMeta`, `trimEmptyGroups`, `switchGroupOperator`
 - `usePermissionBuilder`, `useActionRuleBuilder`, `useTransitionBuilder`: see [Permissions and transitions](#permissions-and-transitions)
