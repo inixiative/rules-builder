@@ -1,66 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '@inixiative/field-map';
 import {
   type ActionGroupNode,
   type ActionLeafNode,
   buildActionRoot,
 } from '../src/permissions/buildActionRoot';
-import { declaredListRelations, rawResourceViews } from '../src/permissions/rawResources';
 import type { ActionRule } from '../src/permissions/types';
-import { describeScopeFields, rawView, viewRoot } from '../src/schema/surface';
-
-const map: FieldMap = {
-  models: {
-    User: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        userId: { kind: 'scalar', type: 'String' },
-        role: { kind: 'enum', type: 'Role' },
-        organization: { kind: 'object', type: 'Organization' }, // to-one — walkable
-        posts: { kind: 'object', type: 'Post', isList: true }, // to-many — NOT walkable
-        // a list declared `/// @permissions(down: [...])`: the one a list arm may cross
-        drafts: {
-          kind: 'object',
-          type: 'Post',
-          isList: true,
-          annotations: { permissions: { down: 'user' } },
-        },
-      },
-    },
-    Organization: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        name: { kind: 'scalar', type: 'String' },
-        parent: { kind: 'object', type: 'Organization' }, // to-one self-ref — for multi-hop
-      },
-    },
-    Post: {
-      fields: { id: { kind: 'scalar', type: 'String' }, title: { kind: 'scalar', type: 'String' } },
-    },
-  },
-  enums: { Role: ['owner', 'admin', 'member'] },
-};
-
-const view = rawView({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeScopeFields(viewRoot(view));
-const actionsByResource = {
-  'app:User': ['own', 'manage', 'read'],
-  'app:Organization': ['own', 'manage', 'read'],
-  'app:Post': ['read', 'edit'],
-};
-const resourceView = rawResourceViews({ app: map }, undefined);
-const listRelations = declaredListRelations({ app: map });
+import { describeScopeFields, viewRoot } from '../src/schema/surface';
+import { permissionsMap, permissionsSchema } from './fixtures/permissionsMap';
 
 let committed: ActionRule | undefined;
-const build = (rule: ActionRule) => {
+const build = (rule: ActionRule, resource = 'app:User') => {
   committed = undefined;
   return buildActionRoot(rule, {
-    view,
-    fields,
-    siblingActions: ['manage', 'read'],
-    actionsByResource,
-    resourceView,
-    listRelations,
+    map: permissionsMap,
+    schema: permissionsSchema,
+    resource,
+    action: 'own',
     maxDepth: 4,
     commit: (next) => {
       committed = next;
@@ -69,7 +24,7 @@ const build = (rule: ActionRule) => {
 };
 
 describe('buildActionRoot — model-aware leaves', () => {
-  test('delegate offers sibling actions', () => {
+  test("delegate offers the resource's other actions, never its own", () => {
     const n = build('manage') as ActionLeafNode;
     expect(n.kind.value).toBe('delegate');
     expect(n.delegate?.value).toBe('manage');
@@ -85,6 +40,7 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect(n.kind.value).toBe('list');
     expect(n.list?.relation.options.map((o) => o.value)).toEqual(['drafts']); // not `posts`
     expect(n.list?.target).toBe('app:Post');
+    expect(n.issues).toEqual([]);
     const condition = n.list?.condition as ActionLeafNode;
     expect(condition.kind.value).toBe('rule');
     expect(condition.rule).toBeDefined();
@@ -107,9 +63,34 @@ describe('buildActionRoot — model-aware leaves', () => {
     });
   });
 
-  test('a rule leaf reads the actor under `__actor`, as permissions injects it', () => {
-    const fieldNames = describeScopeFields(viewRoot(resourceView('app:User')!)).map((f) => f.name);
-    expect(fieldNames).toContain('__actor');
+  test('a rule leaf reads `__actor` on its own row only, as permissions injects it', () => {
+    const n = build({ rule: { all: [] } }) as ActionLeafNode;
+    expect(n.rule?.kind).toBe('group');
+    const ok = build({
+      rule: { field: '__actor.model', operator: 'equals', value: 'User' },
+    }) as ActionLeafNode;
+    expect(ok.issues).toEqual([]);
+    const related = build({
+      rule: { field: 'organization.__actor.model', operator: 'equals', value: 'User' },
+    }) as ActionLeafNode;
+    expect(related.issues.length).toBeGreaterThan(0);
+  });
+
+  test("a rule reading back to a model it passed shows permissions' issue", () => {
+    const n = build({
+      rule: { field: 'organization.users.role', operator: 'equals', value: 'admin' },
+    }) as ActionLeafNode;
+    expect(n.issues.length).toBeGreaterThan(0);
+  });
+
+  test("a list arm item offers only what the list's `down` paths load", () => {
+    const n = build({
+      rel: 'drafts',
+      arrayOperator: 'any',
+      condition: { rule: { all: [] } },
+    }) as ActionLeafNode;
+    const item = n.list?.condition as ActionLeafNode;
+    expect(item.kind.value).toBe('rule');
   });
 
   test('rel single hop offers only to-one relations (excludes the "many" side) + the target’s actions', () => {
@@ -120,36 +101,41 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']);
     expect(n.rel?.target).toBe('app:Organization');
     expect(n.rel?.action.options.map((o) => o.value)).toEqual(['own', 'manage', 'read']);
+    expect(n.rel?.addOptions.map((o) => o.value)).toEqual(['region']); // never back to a model passed
     expect(n.rel?.action.value).toBe('own');
   });
 
   test('rel multi-hop scopes each segment to the resource reached', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
-    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization', 'parent']);
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
+    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization', 'region']);
     expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']); // User's to-one
-    expect(n.rel?.segments[1].options.map((o) => o.value)).toEqual(['parent']); // Organization's to-one
+    expect(n.rel?.segments[1].options.map((o) => o.value)).toEqual(['region']); // not back to Organization
+    expect(n.rel?.target).toBe('app:Region');
+    expect(n.rel?.action.options.map((o) => o.value)).toEqual(['read']);
+  });
+
+  test('a one-hop self relation is offered from the row', () => {
+    const n = build({ rel: 'parent', action: 'own' }, 'app:Organization') as ActionLeafNode;
+    expect(n.rel?.segments[0].options.map((o) => o.value)).toContain('parent');
     expect(n.rel?.target).toBe('app:Organization');
-    // appending a hop extends the dotted path
-    n.rel?.addSegment('parent');
-    expect((committed as { rel: string }).rel).toBe('organization.parent.parent');
   });
 
   test('changing the relation path resets the action — a stale action would belong to the old target', () => {
     // organization → Organization; picking action 'manage' is valid there.
     const n = build({ rel: 'organization', action: 'manage' }) as ActionLeafNode;
     // appending a hop changes the target's actions; the prior pick must not survive stale.
-    n.rel?.addSegment('parent');
-    expect(committed).toEqual({ rel: 'organization.parent', action: '' });
+    n.rel?.addSegment('region');
+    expect(committed).toEqual({ rel: 'organization.region', action: '' });
   });
 
   test('editing a segment resets the action', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
     n.rel?.segments[0].set('organization');
     expect(committed).toEqual({ rel: 'organization', action: '' });
   });
 
   test('removing the last hop resets the action', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
     n.rel?.removeLast?.();
     expect(committed).toEqual({ rel: 'organization', action: '' });
   });

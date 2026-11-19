@@ -4,10 +4,11 @@ import {
   type MergeStrategy,
   type UseTransitionBuilder,
   useTransitionBuilder,
-} from '../../src';
+} from '../../src/permissions';
 import { ActionRuleTree } from '../ActionRuleTree';
 import { RuleTree } from '../RuleTree';
 import { Badge, Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
+import { schemaMapOf } from '../workspace';
 import type { TabProps } from './types';
 
 const box: React.CSSProperties = {
@@ -152,13 +153,11 @@ const SideEditor = ({
  *  predicate (legality, via the rule builder) + optional permission (authz, via the ActionRule
  *  builder); `to` carries a serializable merge. */
 export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: string }) => {
-  const permissionActions = actionNamesByResource({ permissions: ws.permissions });
   const tb = useTransitionBuilder({
     value: ws.transitions,
     onChange: (transitions) => patch({ transitions }),
-    maps: ws.maps,
-    bridges: ws.bridges,
-    permissionActions,
+    map: schemaMapOf(ws),
+    permissions: { bridges: ws.bridges, permissions: ws.permissions },
     maxDepth: ws.maxDepth,
   });
 

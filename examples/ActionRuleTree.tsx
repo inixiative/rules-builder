@@ -1,4 +1,9 @@
-import type { ActionGroupNode, ActionLeafNode, ActionRuleKind, ActionRuleNode } from '../src';
+import type {
+  ActionGroupNode,
+  ActionLeafNode,
+  ActionRuleKind,
+  ActionRuleNode,
+} from '../src/permissions';
 import { RuleTree } from './RuleTree';
 import { Badge, Row, Select, tokens } from './ui';
 

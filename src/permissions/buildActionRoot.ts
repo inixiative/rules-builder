@@ -1,12 +1,15 @@
-import type { Condition } from '@inixiative/json-rules';
-import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
+import type { Condition, ValidationIssue } from '@inixiative/json-rules';
 import {
-  type BuilderField,
-  describeScopeFields,
-  type LensView,
-  viewAt,
-  viewRoot,
-} from '../schema/surface';
+  declaredListsOf,
+  issuesForRuleReadsOutsideLens,
+  type LensesAtRow,
+  lensesAtListItem,
+  lensesAtRow,
+  relationHopsFrom,
+  type SchemaMap,
+} from '@inixiative/permissions';
+import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
+import { createView, describeScopeFields, viewRoot } from '../schema/surface';
 import {
   type ActionPath,
   actionKind,
@@ -16,7 +19,7 @@ import {
   removeActionNode,
   setActionNode,
 } from './actionTree';
-import type { ActionRule, ActionRuleKind, ListCheck } from './types';
+import type { ActionRule, ActionRuleKind, ListCheck, RebacSchema } from './types';
 
 const KIND_OPTIONS: PickOption[] = [
   { value: 'rule', label: 'rule (abac)' },
@@ -63,10 +66,13 @@ type BaseNode = {
   depth: number;
   kind: KindControl;
   remove?: () => void;
+  /** permissions' issues at this node: a read outside the lens it is judged in, a hop it cannot
+   *  take (`issuesForRuleReadsOutsideLens`). */
+  issues: ValidationIssue[];
 };
-/** A `rel` walk as a path of hops: one segment per relation crossed, each offering the to-one
- *  relations shown where the walk stands (intra-map relations + bridges) — the view's visit at
- *  the path walked so far, so a narrowed lens gates every hop. `target` is the final resource. */
+/** A `rel` walk as a path of hops: one segment per relation crossed, each offering the hops
+ *  permissions takes where the walk stands (`relationHopsFrom`: followed to-one relations and
+ *  bridges). `target` is the final resource. */
 export type RelControl = {
   segments: Control[];
   /** Relations available to append as the next hop (of the final resource). */
@@ -76,8 +82,8 @@ export type RelControl = {
   action: Control;
   target?: string;
 };
-/** A list arm: the declared list relation it crosses, and its condition, judged on an item as
- *  its own resource. */
+/** A list arm: the declared list it crosses (`declaredListsOf`), and its condition, judged at an
+ *  item in what the list's `down` paths load (`lensesAtListItem`). */
 export type ListControl = { relation: Control; target?: string; condition?: ActionRuleNode };
 export type ActionLeafNode = BaseNode & {
   delegate?: Control;
@@ -89,36 +95,42 @@ export type ActionGroupNode = BaseNode & { children: ActionRuleNode[]; addChild?
 export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
 
 export type BuildActionOptions = {
-  /** The view the `rule` leaves are authored in; its anchor is this resource. */
-  view: LensView;
-  fields: BuilderField[];
-  /** Other action names on this resource — delegate targets. */
-  siblingActions: string[];
-  /** Action names per resource (`map:model`) — the `rel` walk's target actions. */
-  actionsByResource: Record<string, string[]>;
-  /** Raw-record builders only (permissions, transitions gate the record, not a lens): the view
-   *  of the resource (`map:model`) a hop reaches. Absent, every hop reads the view's visit at the
-   *  path walked so far — what a lens-authored builder must do — and no list arm is offered. */
-  resourceView?: (resource: string) => LensView | undefined;
-  /** The list relations of a resource a list arm may cross (`@permissions(down: […])`). */
-  listRelations?: (resource: string) => string[];
+  /** permissions' schema map, the one `createRebacCheck` takes. */
+  map: SchemaMap;
+  /** The schema the rule belongs to: its bridges, and each resource's actions. */
+  schema: RebacSchema;
+  /** The resource the rule is on (a key of `map.resources`, or a bridge's far end). */
+  resource: string;
+  /** The action the rule defines, never offered as its own delegate. */
+  action?: string;
   maxDepth?: number;
   commit: (next: ActionRule) => void;
 };
 
-type Ctx = Required<Omit<BuildActionOptions, 'maxDepth' | 'resourceView' | 'listRelations'>> & {
+type Ctx = {
+  map: SchemaMap;
+  schema: RebacSchema;
+  /** Where the node is judged: a row, or an item of a declared list. */
+  at: LensesAtRow;
+  action?: string;
   root: ActionRule;
   maxDepth: number;
-  resourceView?: (resource: string) => LensView | undefined;
-  listRelations?: (resource: string) => string[];
+  commit: (next: ActionRule) => void;
+  issues: ValidationIssue[];
 };
 
-const fieldsOfView = (view: LensView | undefined): BuilderField[] =>
-  view ? describeScopeFields(viewRoot(view)) : [];
+const actionsOf = (schema: RebacSchema, resource: string): string[] =>
+  Object.keys(schema.permissions[resource]?.actions ?? {});
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
-const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): ActionRuleNode => {
+const build = (
+  node: ActionRule,
+  path: ActionPath,
+  issuePath: string,
+  depth: number,
+  ctx: Ctx,
+): ActionRuleNode => {
   const kind = actionKind(node);
   const base: BaseNode = {
     id: path.length ? path.join('.') : 'root',
@@ -130,12 +142,15 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
       set: (k) => ctx.commit(setActionNode(ctx.root, path, defaultForKind(k))),
     },
     remove: path.length ? () => ctx.commit(removeActionNode(ctx.root, path)) : undefined,
+    issues: ctx.issues.filter((issue) => issue.path === issuePath),
   };
 
   if (kind === 'any' || kind === 'all') {
     return {
       ...base,
-      children: childrenOfAction(node).map((c, i) => build(c, [...path, i], depth + 1, ctx)),
+      children: childrenOfAction(node).map((c, i) =>
+        build(c, [...path, i], `${issuePath}.${kind}[${i}]`, depth + 1, ctx),
+      ),
       addChild: depth < ctx.maxDepth ? () => ctx.commit(addActionChild(ctx.root, path)) : undefined,
     };
   }
@@ -145,7 +160,9 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
       ...base,
       delegate: {
         value: node as string,
-        options: ctx.siblingActions.map(opt),
+        options: actionsOf(ctx.schema, ctx.at.resource)
+          .filter((a) => ctx.at.under || a !== ctx.action)
+          .map(opt),
         set: (a) => ctx.commit(setActionNode(ctx.root, path, a)),
       },
     };
@@ -153,14 +170,11 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
 
   if (kind === 'list') {
     const list = node as ListCheck;
-    const resource = `${ctx.view.mapName}:${ctx.view.model}`;
-    const relations = ctx.resourceView ? (ctx.listRelations?.(resource) ?? []) : [];
-    const field = ctx.fields.find((f) => f.name === list.rel && f.isList && f.relation);
-    const target =
-      field?.relation && relations.includes(list.rel)
-        ? `${field.relation.mapName}:${field.relation.modelName}`
-        : undefined;
-    const itemView = target ? ctx.resourceView?.(target) : undefined;
+    // One list per walk: under an item no list arm is offered.
+    const relations = ctx.at.under ? [] : declaredListsOf(ctx.map, ctx.at.resource);
+    const item = relations.includes(list.rel)
+      ? lensesAtListItem(ctx.map, ctx.at.resource, list.rel)
+      : null;
     return {
       ...base,
       list: {
@@ -177,14 +191,12 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
               }),
             ),
         },
-        target,
+        target: item?.resource,
         condition:
-          itemView && target && depth < ctx.maxDepth
-            ? build(list.condition, [...path, 0], depth + 1, {
+          item && depth < ctx.maxDepth
+            ? build(list.condition, [...path, 0], `${issuePath}.condition`, depth + 1, {
                 ...ctx,
-                view: itemView,
-                fields: fieldsOfView(itemView),
-                siblingActions: ctx.actionsByResource[target] ?? [],
+                at: item,
               })
             : undefined,
       },
@@ -193,58 +205,37 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
 
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
-    const currentResource = `${ctx.view.mapName}:${ctx.view.model}`;
-    // What a hop offers where the walk stands: the view's visit at the path walked so far (a
-    // narrowed lens gates every hop), or — for a raw-record builder — the resource's own fields.
-    const fieldsAt = (walked: string[], resource: string): BuilderField[] =>
-      walked.length === 0
-        ? ctx.fields
-        : ctx.resourceView
-          ? fieldsOfView(ctx.resourceView(resource))
-          : describeScopeFields(viewAt(viewRoot(ctx.view), walked.join('.')));
-    const relTargetOf = (f: BuilderField | undefined): string | undefined =>
-      f?.relation ? `${f.relation.mapName}:${f.relation.modelName}` : undefined;
-    // Only to-one relations are walkable — a hop evaluates a single record, so the "many" side
-    // (a list relation / the one→many bridge direction) is never a valid rel target.
-    const relOptionsAt = (walked: string[], resource: string) =>
-      fieldsAt(walked, resource)
-        .filter((f) => f.relation && !f.isList)
-        .map((f) => opt(f.name));
+    const hopsAfter = (walked: string[]) =>
+      relationHopsFrom(ctx.map, ctx.schema, ctx.at, walked.join('.'));
     // Editing the relation path can move the target resource, so the previously-picked action
     // (an action on the OLD target) no longer applies — reset it. Only `action.set` keeps it.
     const setRel = (next: string) =>
       ctx.commit(setActionNode(ctx.root, path, { rel: next, action: '' }));
 
     const segs = rel.rel ? rel.rel.split('.') : [];
-    let resource = currentResource;
-    let resolved = true;
+    let target: string | undefined = ctx.at.resource;
     const segments: Control[] = segs.map((seg, i) => {
-      // A hop past an unresolved one stands nowhere: it offers nothing.
-      const options = resolved ? relOptionsAt(segs.slice(0, i), resource) : [];
-      const next = options.some((o) => o.value === seg)
-        ? relTargetOf(fieldsAt(segs.slice(0, i), resource).find((x) => x.name === seg))
-        : undefined;
-      if (next) resource = next;
-      else resolved = false;
-      // Changing a hop truncates everything past it (deeper hops are scoped to it).
+      // A hop past one permissions refuses stands nowhere: it offers nothing.
+      const hops = target ? hopsAfter(segs.slice(0, i)) : [];
+      target = hops.find((hop) => hop.segment === seg)?.resource;
       return {
         value: seg,
-        options,
+        options: hops.map((hop) => opt(hop.segment)),
+        // Changing a hop truncates everything past it (deeper hops are scoped to it).
         set: (r) => setRel([...segs.slice(0, i), r].join('.')),
       };
     });
-    const target = resolved ? resource : undefined;
 
     return {
       ...base,
       rel: {
         segments,
-        addOptions: target ? relOptionsAt(segs, target) : [],
+        addOptions: target ? hopsAfter(segs).map((hop) => opt(hop.segment)) : [],
         addSegment: (r) => setRel([...segs, r].join('.')),
         removeLast: segs.length ? () => setRel(segs.slice(0, -1).join('.')) : undefined,
         action: {
           value: rel.action,
-          options: ((target && ctx.actionsByResource[target]) || []).map(opt),
+          options: (target ? actionsOf(ctx.schema, target) : []).map(opt),
           set: (a) => ctx.commit(setActionNode(ctx.root, path, { rel: rel.rel, action: a })),
         },
         target,
@@ -255,14 +246,32 @@ const build = (node: ActionRule, path: ActionPath, depth: number, ctx: Ctx): Act
   if (kind === 'allow' || kind === 'deny') return base; // terminal true/false — kind picker only, no operands
 
   // rule (abac) — embed the condition builder; its commits fold back as { rule }.
+  // A `{ rule }` is authored in the rule lens it is judged in: the row with `__actor`.
   const cond = (node as { rule: Condition }).rule;
+  if (!ctx.at.rule) return base;
+  const view = createView(ctx.at.rule);
   return {
     ...base,
-    rule: buildRoot(cond, ctx.view, ctx.fields, ctx.maxDepth, (next) =>
+    rule: buildRoot(cond, view, describeScopeFields(viewRoot(view)), ctx.maxDepth, (next) =>
       ctx.commit(setActionNode(ctx.root, path, { rule: next })),
     ),
   };
 };
 
+/**
+ * The descriptor tree of a permissions action rule on `resource`, offering what permissions
+ * accepts: `{ rule }` leaves in the rule lens (`lensesAtRow`), `{ rel }` hops from
+ * `relationHopsFrom`, list arms over `declaredListsOf` with their condition at the item
+ * (`lensesAtListItem`), and permissions' issues on the node they name. Pure.
+ */
 export const buildActionRoot = (rule: ActionRule, opts: BuildActionOptions): ActionRuleNode =>
-  build(rule, [], 0, { ...opts, root: rule, maxDepth: opts.maxDepth ?? 4 });
+  build(rule, [], '$', 0, {
+    map: opts.map,
+    schema: opts.schema,
+    at: lensesAtRow(opts.map, opts.resource),
+    action: opts.action,
+    root: rule,
+    maxDepth: opts.maxDepth ?? 4,
+    commit: opts.commit,
+    issues: issuesForRuleReadsOutsideLens(opts.map, opts.schema, opts.resource, rule),
+  });

@@ -1,29 +1,27 @@
-import type { SourceValues } from '@inixiative/json-rules';
+import type { SchemaMap } from '@inixiative/permissions';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { describeScopeFields, type RuleBuilderSource, resolve, viewRoot } from '../schema/surface';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
-import type { ActionRule } from './types';
+import type { ActionRule, RebacSchema } from './types';
 
 export type UseActionRuleBuilderOptions = {
-  /** The lens/narrowing the rule is authored against — its fields, relations, and surface. */
-  source: RuleBuilderSource;
-  sourceValues?: SourceValues[];
+  /** permissions' schema map; the rule is authored in the lens permissions judges it in. */
+  map: SchemaMap;
+  /** The schema the rule belongs to: its bridges and each resource's actions. */
+  schema: RebacSchema;
+  /** The resource the rule is on. */
+  resource: string;
+  /** The action the rule defines, never offered as its own delegate. */
+  action?: string;
   /** Uncontrolled seed — read once at mount. Re-mount (`key`) or `setRule` to reseed. */
   defaultValue?: ActionRule;
   onChange?: (rule: ActionRule) => void;
-  /** Other action names on this resource → delegate targets. */
-  siblingActions?: string[];
-  /** Action names per resource (`map:model`) → the `rel` walk's target actions. */
-  actionsByResource?: Record<string, string[]>;
   maxDepth?: number;
 };
 
 /**
- * Headless builder for the recursive permission algebra (`ActionRule`) over a
- * lens/narrowing base. Owns the rule; exposes a `root` descriptor tree. The `rule`
- * (abac) leaf embeds the json-rules builder; `rel`/`delegate` are resource-aware. A list arm is
- * offered only by the raw-record builders (`usePermissionBuilder`), which know the declared lists.
+ * Headless builder for one permissions action rule (`ActionRule`) on a resource. Owns the rule;
+ * exposes the `buildActionRoot` tree, which offers what permissions accepts.
  */
 export type UseActionRuleBuilder = {
   value: ActionRule;
@@ -32,12 +30,6 @@ export type UseActionRuleBuilder = {
 };
 
 export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActionRuleBuilder => {
-  const view = useMemo(
-    () => resolve(opts.source, { sourceValues: opts.sourceValues }),
-    [opts.source, opts.sourceValues],
-  );
-  const fields = useMemo(() => describeScopeFields(viewRoot(view)), [view]);
-
   const [tree, setTree] = useState<ActionRule>(() => opts.defaultValue ?? defaultActionRule());
 
   const onChangeRef = useRef(opts.onChange);
@@ -55,14 +47,14 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
   const root = useMemo(
     () =>
       buildActionRoot(tree, {
-        view,
-        fields,
-        siblingActions: opts.siblingActions ?? [],
-        actionsByResource: opts.actionsByResource ?? {},
+        map: opts.map,
+        schema: opts.schema,
+        resource: opts.resource,
+        action: opts.action,
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, view, fields, opts.siblingActions, opts.actionsByResource, opts.maxDepth, commit],
+    [tree, opts.map, opts.schema, opts.resource, opts.action, opts.maxDepth, commit],
   );
 
   return { value: tree, root, setRule: setTree };

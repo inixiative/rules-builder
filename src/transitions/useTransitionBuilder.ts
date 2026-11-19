@@ -1,14 +1,10 @@
-import type { FieldMap } from '@inixiative/field-map';
-import type { Bridge } from '@inixiative/json-rules';
+import type { Lens, LensNarrowing } from '@inixiative/json-rules';
+import type { SchemaMap } from '@inixiative/permissions';
 import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';
-import {
-  declaredListRelations,
-  rawResourceViews,
-  splitResource,
-} from '../permissions/rawResources';
-import { describeScopeFields, viewRoot } from '../schema/surface';
+import type { RebacSchema } from '../permissions/types';
+import { createView, describeScopeFields, rawView, viewRoot } from '../schema/surface';
 import {
   addPath as addPathOp,
   emptyAction,
@@ -23,10 +19,14 @@ export type UseTransitionBuilderOptions = {
   /** The whole transition schema (resource → action → Action). Controlled — edits flow via onChange. */
   value: TransitionMap;
   onChange: (schema: TransitionMap) => void;
-  maps: Record<string, FieldMap>;
-  bridges?: Bridge[];
-  /** The permission schema's actions per resource — `delegate`/`rel` awareness for a side's permission. */
-  permissionActions?: Record<string, string[]>;
+  /** permissions' schema map: a side's `permission` is authored in the lens permissions judges it
+   *  in, and a predicate on the record's model. */
+  map: SchemaMap;
+  /** The permission schema a side's `permission` delegates and walks into. */
+  permissions: RebacSchema;
+  /** The lens a resource's predicates are judged in, as transitions' `validateTransition({ lens })`
+   *  takes; absent, the raw record (every column and relation). */
+  predicateLens?: (resource: string) => Lens | LensNarrowing | undefined;
   maxDepth?: number;
 };
 
@@ -34,7 +34,8 @@ export type UseTransitionBuilderOptions = {
  * Schema-level transition builder. Owns the whole TransitionMap; hands each edge's `from`/`to`
  * predicate as a json-rules descriptor (`predicateRoot`, via buildRoot) and each side's optional
  * authz `permission` as an ActionRule descriptor (`permissionRoot`, via buildActionRoot). Surfaces
- * are built from the maps per resource (`map:model`); `to.merge` is a serializable strategy.
+ * are permissions' own lenses for a `permission` and the record (or `predicateLens`) for a
+ * predicate; `to.merge` is a serializable strategy.
  */
 export type UseTransitionBuilder = {
   value: TransitionMap;
@@ -63,22 +64,22 @@ export type UseTransitionBuilder = {
 };
 
 export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTransitionBuilder => {
-  const { maps, bridges, maxDepth } = opts;
+  const { map, maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
-  const permissionActions = opts.permissionActions ?? {};
 
   const actionsOf = (resource: string) => Object.keys(schema[resource] ?? {});
   const sideOf = (resource: string, action: string, i: number, side: SideKey) =>
     schema[resource]?.[action]?.paths[i]?.[side];
 
-  const resourceView = rawResourceViews(maps, bridges);
-  const listRelations = declaredListRelations(maps);
   const surface = (resource: string) => {
-    const view = resourceView(resource);
-    if (!view) return null;
-    const [mapName, model] = splitResource(resource);
-    return { view, fields: describeScopeFields(viewRoot(view)), mapName, model };
+    const model = map.resources[resource];
+    if (!model) return null;
+    const lens = opts.predicateLens?.(resource);
+    const view = lens
+      ? createView(lens)
+      : rawView({ maps: { app: map.fieldMap }, mapName: 'app', model });
+    return { view, fields: describeScopeFields(viewRoot(view)) };
   };
 
   const addResource = (resource: string) => {
@@ -119,15 +120,11 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     side: SideKey,
   ): ActionRuleNode | null => {
     const sideObj = sideOf(resource, action, i, side);
-    const s = surface(resource);
-    if (!sideObj || sideObj.permission === undefined || !s) return null;
+    if (!sideObj || sideObj.permission === undefined) return null;
     return buildActionRoot(sideObj.permission, {
-      view: s.view,
-      fields: s.fields,
-      siblingActions: permissionActions[resource] ?? [],
-      actionsByResource: permissionActions,
-      resourceView,
-      listRelations,
+      map,
+      schema: opts.permissions,
+      resource,
       maxDepth,
       commit: (next) =>
         setSchema(

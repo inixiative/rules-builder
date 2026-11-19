@@ -6,14 +6,9 @@ import {
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type {
-  Decoration,
-  NarrowingLayer,
-  RebacSchema,
-  RuleBuilderSource,
-  SavedRule,
-  TransitionMap,
-} from '../src';
+import type { SchemaMap } from '@inixiative/permissions';
+import type { Decoration, NarrowingLayer, RuleBuilderSource, SavedRule } from '../src';
+import type { RebacSchema, TransitionMap } from '../src/permissions';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -191,4 +186,17 @@ export const importWorkspace = (json: string): Workspace => {
     ws.maxDepth = parsed.maxDepth;
   }
   return ws;
+};
+
+/** permissions' schema map over one of the workspace's fieldMaps (the first by default): its
+ *  models are the resources (`map:Model`); the other maps are reached through bridges, as
+ *  permissions walks them. */
+export const schemaMapOf = (ws: Workspace, mapName = Object.keys(ws.maps)[0] ?? ''): SchemaMap => {
+  const fieldMap = ws.maps[mapName] ?? { models: {} };
+  return {
+    resources: Object.fromEntries(
+      Object.keys(fieldMap.models).map((model) => [`${mapName}:${model}`, model]),
+    ),
+    fieldMap,
+  };
 };

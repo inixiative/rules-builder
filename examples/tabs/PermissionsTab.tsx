@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { usePermissionBuilder } from '../../src';
+import { usePermissionBuilder } from '../../src/permissions';
 import { ActionRuleTree } from '../ActionRuleTree';
 import { Button, Code, Empty, Panel, Row, Select, tokens } from '../ui';
-import type { Workspace } from '../workspace';
+import { schemaMapOf, type Workspace } from '../workspace';
 import type { TabProps } from './types';
 
 const box: React.CSSProperties = {
@@ -24,8 +24,8 @@ const removeBtn = (label: string, onClick: () => void) => (
 );
 
 /** The rebac SCHEMA editor: the whole `{ bridges, permissions }` object. Resources are map-qualified
- *  (`app:User`); a permission gates the RAW record, so each resource's editing surface is the full
- *  fieldMap model (relations via bridges) — built inside usePermissionBuilder from the maps. */
+ *  (`app:User`). Every rule is authored in the lens permissions judges it in, from the schema map
+ *  over the first fieldMap; the other maps are reached through the checked bridges. */
 const bridgeKey = (b: Workspace['bridges'][number]) =>
   `${b.endpoints[0].fieldMap}:${b.endpoints[0].model} ↔ ${b.endpoints[1].fieldMap}:${b.endpoints[1].model}`;
 const toggle = (s: Set<string>, k: string): Set<string> => {
@@ -45,8 +45,7 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const pb = usePermissionBuilder({
     value: { bridges: includedBridges, permissions: ws.permissions },
     onChange: (schema) => patch({ permissions: schema.permissions }),
-    maps: ws.maps,
-    bridges: includedBridges,
+    map: schemaMapOf(ws),
     maxDepth: ws.maxDepth,
   });
 

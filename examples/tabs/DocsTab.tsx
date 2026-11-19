@@ -68,13 +68,13 @@ const SAVE = `import { stringifySavedRule, parseSavedRule } from '@inixiative/ru
 const json = stringifySavedRule({ source: ref, rule, sourceValues });
 const back = parseSavedRule(json); // validated; throws on malformed input`;
 
-const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder';
+const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
 
-const pb = usePermissionBuilder({ value: schema, onChange: setSchema, maps, bridges });
-pb.addResource('db:User');                       // resources are map-qualified
-pb.addAction('db:User', 'read');                 // open action names — yours
-const root = pb.actionRoot('db:User', 'read');   // the ActionRule editor for one action
-// pb.value = { bridges, permissions: { 'db:User': { actions: { name → ActionRule } } } }`;
+const pb = usePermissionBuilder({ value: schema, onChange: setSchema, map }); // permissions' SchemaMap
+pb.addResource('db:user');                       // the map's resource names
+pb.addAction('db:user', 'read');                 // open action names — yours
+const root = pb.actionRoot('db:user', 'read');   // the ActionRule editor, in permissions' own lens
+// pb.value = { bridges, permissions: { 'db:user': { actions: { name → ActionRule } } } }`;
 
 export const DocsTab = () => (
   <div style={{ display: 'grid', gap: 16 }}>

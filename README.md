@@ -455,35 +455,74 @@ the sources is a separate problem) are in [docs/OPEN_QUESTIONS.md](./docs/OPEN_Q
   render as plain editable children. It is backed by `__facetId` meta, which is stripped
   before `value` emits, so a saved rule always reloads faceted.
 
+## Computation and evaluation
+
+One editor per json-rules primitive, nested wherever json-rules' grammar nests them. Each is a
+pure root builder taking one `commit` (so they compose) with a thin hook over it.
+
+- **Conditions** (`check`): `useRuleBuilder` / `buildRoot`, as above. Nodes cover groups, field
+  leaves, array and aggregate rules (modes from json-rules' `AGGREGATE_MODES`, the window
+  `orderBy` / `take` / `skip` on `ArrayNode.window`), implications (`IfNode`, `{ if, then, else? }`)
+  and literals. `positive: true` (in `useRuleBuilder` and `SurfaceOptions`) offers only operators
+  that cannot hold on a missing value, and marks a negated rule, an array rule or an implication
+  invalid.
+- **Value expressions** (`evaluateValue`): `useValueExpressionBuilder({ source, defaultValue?,
+  onChange?, bindings?, shapes?, expectedKind?, acceptsType? })` / `buildValueExpressionRoot`. A
+  node per value: a literal (stamped `{ value, coerceType }` from `expectedKind` when the target is
+  a date or a number), a source (`value | path | bind`), an aggregate, an `if` whose condition is
+  the condition builder, a list. Types from `inferValueType`, issues from `describeValue`.
+  `cleanValue` is what the editor emits.
+- **Categorizations** (`categorize`): `useCategorizationBuilder` / `buildCategorizationRoot`:
+  ordered cases (a condition root and a value root each; add, remove, reorder), `match`, and
+  `default`, with `describeCategorization`'s type and issues placed on the case they name. A
+  preview runs the caller's evaluator, so it never disagrees with production.
+- **Entitlement grants**: `buildEntitlementGrantRoot({ operations?, where?, lens? })`, each part
+  optional. Operations over the caller's operation tree (signet's nodes pass as they are; what is
+  offered, chosen and how a toggle changes picks stay the caller's); the conditions the grant adds,
+  a positive condition builder over the caller's where lens, with the held conditions read-only
+  beside it (the caller composes them with permissions' `delegatedWhere`); and the grant's one
+  narrowing, checked by the caller's validator (Kingdom's wraps signet's `composeGrantLensChain`).
+
 ## Permissions and transitions
 
-The same descriptor approach covers the two schemas that embed json-rules conditions.
-Their types are re-declared here, so the package depends only on json-rules.
+`@inixiative/rules-builder/permissions` holds the permission and transition builders. They read
+`@inixiative/permissions` at runtime, so install it to use this entry (the main entry never
+imports it). Every rule is authored in the lens permissions judges it in, so the builder offers
+what `validateSchema` accepts and nothing else.
 
-- `usePermissionBuilder({ value, onChange, maps, bridges?, maxDepth? })` owns a whole
-  `@inixiative/permissions` `RebacSchema` (`{ bridges?, permissions }`, resources keyed
-  `map:Model`). It returns the resource and action lists, add/remove/set actions, and
-  `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches
-  between `rule` (abac, an embedded condition builder; the actor reads as `__actor`), `rel` (a
-  walk of relation hops, then a target action), `list` (any item of a list declared
-  `@permissions(down: […])`, its condition built on the item's resource), `delegate`, `any`,
-  `all`, `allow` and `deny`. The types are `@inixiative/permissions`' own (an optional peer).
-- `useActionRuleBuilder({ source, sourceValues?, defaultValue?, onChange?, siblingActions?,
-  actionsByResource? })` edits one `ActionRule` against a lens source.
-- `useTransitionBuilder({ value, onChange, maps, bridges?, permissionActions?, maxDepth? })`
-  owns an `@inixiative/transitions` `TransitionMap` (resource, then action, then
-  `{ paths: { from, to }[] }`). `predicateRoot(resource, action, i, side)` is each side's
-  condition builder, `permissionRoot` the side's optional `ActionRule`, and
+```ts
+import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
+
+const pb = usePermissionBuilder({ value: schema, onChange: setSchema, map }); // map: the SchemaMap createRebacCheck takes
+const root = pb.actionRoot('db:user', 'read');
+```
+
+- `usePermissionBuilder({ value, onChange, map, maxDepth? })` owns a whole `RebacSchema`
+  (`{ bridges?, permissions }`) over permissions' `SchemaMap`. Resources are the map's resource
+  names. It returns the resource and action lists, add/remove/set actions, and
+  `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches between:
+  - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(map, resource).rule`);
+    `__actor` is a Json field of this row only;
+  - `rel`: a walk of hops from `relationHopsFrom` (followed to-one relations and bridges, never
+    back to a model passed), then an action of the resource it lands on;
+  - `list`: any item of a list from `declaredListsOf`, its condition built at the item in what the
+    list's `down` paths load (`lensesAtListItem`);
+  - `delegate` (the resource's other actions), `any`, `all`, `allow`, `deny`.
+
+  Each node carries permissions' `issues` at its path (`issuesForRuleReadsOutsideLens`).
+- `useActionRuleBuilder({ map, schema, resource, action?, defaultValue?, onChange?, maxDepth? })`
+  edits one `ActionRule` on a resource.
+- `useTransitionBuilder({ value, onChange, map, permissions, predicateLens?, maxDepth? })` owns an
+  `@inixiative/transitions` `TransitionMap` (resource, then action, then `{ paths: { from, to }[] }`).
+  `predicateRoot(resource, action, i, side)` is each side's condition builder, over
+  `predicateLens(resource)` (the lens `validateTransition({ lens })` judges it in) or the raw
+  record; `permissionRoot` is the side's optional `ActionRule`, in permissions' lens; and
   `mergeOf` / `setMerge` the `to.merge` strategy (`spread`, `deepMerge`, `append`,
   `appendUnique`).
 
-A permission or transition gates the raw record, so `usePermissionBuilder` and
-`useTransitionBuilder` build each resource's surface from the maps over `rawView` (every
-relation on), not a narrowed lens. `useActionRuleBuilder` is the one that authors against
-a lens source. The pure helpers (`buildActionRoot`,
-`getActionNode` / `setActionNode` / `addActionChild` / `removeActionNode`,
-`setSchemaAction` / `removeSchemaAction`, `emptyAction`) are exported too.
-[`examples/ActionRuleTree.tsx`](./examples/ActionRuleTree.tsx) is the reference renderer.
+The pure helpers (`buildActionRoot`, `getActionNode` / `setActionNode` / `addActionChild` /
+`removeActionNode`, `setSchemaAction` / `removeSchemaAction`, `emptyAction`) are exported from the
+same entry. [`examples/ActionRuleTree.tsx`](./examples/ActionRuleTree.tsx) is the reference renderer.
 
 ## Serialization
 
@@ -506,14 +545,14 @@ with a registry stores its own by-name reference.
 - `useFilteredCollection({ ...opts, rows, checkOptions? })` → the same surface plus `data` (rows passing the current rule)
 - `buildRoot(condition, view, fields, maxDepth, commit)`: the pure tree builder behind the hook
 - `resolve(source, { sourceValues })` → `LensView`: the narrowed lens (`view.lens`, the gate) and `view.visit(at)`, the fields the lens shows at a dotted path from the anchor (`'User'`, `'User.orders'`)
-- `createView(lensOrNarrowing, { sourceValues })`: the same over a lens in hand. `rawView(source)`: a raw record, every relation on (permissions, transitions)
+- `createView(lensOrNarrowing, { sourceValues })`: the same over a lens in hand. `rawView(source)`: a raw record, every relation on (a transition predicate with no lens)
 - `composeNarrowed(source)`: the source's narrowed lens. `withAllRelations(source)`: every relation turned on in its first layer
 - `builderSource(lens, { sourceValues })`: a lens in hand as a serializable source (its model-keyed surface plus one layer spelling, path by path, exactly what the lens shows; no clamp, no bridge). This is what a server ships a builder
 - `describeScopeFields(viewAt(viewRoot(view), path), { labels, valueLabels, targets })`: the selectable fields + operator sets at one scope; `describeModelFields(lens, map, model, …)` reads a model-keyed Lens
 - `lensScopeSurface` / `useLensScopeSurface`: one scope's `{ values, loops }` (each value a `LensValueOption`, the field/path picker atom): leaves flattened through the to-one relations the lens turns on (the lens decides how deep), to-many relations emitted as loop portals instead of being walked; a loop's own scope is `{ at: loop.at }`
 - `parseSavedRule` / `stringifySavedRule`: validated rule serialization
 - Tree edits, pure and path-addressed (`RulePath` segments: child index, `if` / `then` / `else`, `condition`, `filter`): `getNode`, `setNode`, `addRule`, `removeNode`, `wrapInCompound`, `groupSiblings`, `unwrapCompound`, `normalizeGroups`, `asGroupRoot`; editor metadata: `withIds`, `stripMeta`, `trimEmptyGroups`, `switchGroupOperator`
-- `usePermissionBuilder`, `useActionRuleBuilder`, `useTransitionBuilder`: see [Permissions and transitions](#permissions-and-transitions)
+- `usePermissionBuilder`, `useActionRuleBuilder`, `useTransitionBuilder` (from `@inixiative/rules-builder/permissions`): see [Permissions and transitions](#permissions-and-transitions)
 
 See [PLAN.md](./PLAN.md) for the architecture.
 

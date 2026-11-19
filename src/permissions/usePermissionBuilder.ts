@@ -1,9 +1,6 @@
-import type { FieldMap } from '@inixiative/field-map';
-import type { Bridge } from '@inixiative/json-rules';
-import { describeScopeFields, viewRoot } from '../schema/surface';
+import type { SchemaMap } from '@inixiative/permissions';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
-import { declaredListRelations, rawResourceViews } from './rawResources';
 import { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
 import type { ActionRule, RebacSchema } from './types';
 
@@ -11,10 +8,9 @@ export type UsePermissionBuilderOptions = {
   /** The whole rebac schema ({ bridges, permissions }). Controlled — edits flow out via onChange. */
   value: RebacSchema;
   onChange: (schema: RebacSchema) => void;
-  /** The fieldMaps — each resource's RAW record surface (full fields + relations) is built from these. */
-  maps: Record<string, FieldMap>;
-  /** Bridges, so `rel` walks can reach cross-map relations. */
-  bridges?: Bridge[];
+  /** permissions' schema map, the one `createRebacCheck` takes; every rule is authored in the
+   *  lens permissions judges it in. Resources are its resource names. */
+  map: SchemaMap;
   maxDepth?: number;
 };
 
@@ -37,12 +33,13 @@ export type UsePermissionBuilder = {
   addAction: (resource: string, action: string) => void;
   removeAction: (resource: string, action: string) => void;
   setAction: (resource: string, action: string, rule: ActionRule) => void;
-  /** The descriptor tree for one resource.action's rule (null if unknown / not in the maps). */
+  /** The descriptor tree for one resource.action's rule (null when the action is not in the schema,
+   *  or the resource is neither in the map nor a bridge's far end). */
   actionRoot: (resource: string, action: string) => ActionRuleNode | null;
 };
 
 export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePermissionBuilder => {
-  const { maps, bridges, maxDepth } = opts;
+  const { map, maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
   const actionsByResource = actionNamesByResource(schema);
@@ -67,22 +64,21 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
     setSchema({ ...schema, permissions: rest });
   };
 
-  const resourceView = rawResourceViews(maps, bridges);
-  const listRelations = declaredListRelations(maps);
+  // As permissions' `validateSchema`: a resource is in the map, or a bridge's far end.
+  const resourceInMap = (resource: string) =>
+    resource in map.resources ||
+    (schema.bridges ?? []).some((bridge) =>
+      bridge.endpoints.some((end) => `${end.fieldMap}:${end.model}` === resource),
+    );
 
   const actionRoot = (resource: string, action: string): ActionRuleNode | null => {
     const rule = schema.permissions[resource]?.actions[action];
-    if (rule === undefined) return null;
-    const view = resourceView(resource);
-    if (!view) return null;
-    const fields = describeScopeFields(viewRoot(view));
+    if (rule === undefined || !resourceInMap(resource)) return null;
     return buildActionRoot(rule, {
-      view,
-      fields,
-      siblingActions: actionsOf(resource).filter((a) => a !== action),
-      actionsByResource,
-      resourceView,
-      listRelations,
+      map,
+      schema,
+      resource,
+      action,
       maxDepth,
       commit: (next) => setAction(resource, action, next),
     });

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.34.0 — editors for computation and evaluation; the permission builder reads permissions' lens
+
+Breaking, with no compatibility path (no users outside the example app).
+Plans: `docs/plans/0.34-computation-and-evaluation.md`, `docs/plans/0.34-permission-builder-on-permissions-lens.md`.
+
+- **Value expressions, categorizations, entitlement grants:** `buildValueExpressionRoot` /
+  `useValueExpressionBuilder`, `buildCategorizationRoot` / `useCategorizationBuilder`,
+  `cleanValue` / `cleanCategorization`, `buildEntitlementGrantRoot`. Why: Zealot's derived
+  enrichments are cases of a condition and a computed value (Aron 2026-11-18: "the categorized
+  builder, the value picker, and the evaluation picker"), and Kingdom's Signet issuing needs the
+  same pieces plus an entitlement editor.
+- **Conditions:** aggregate modes from json-rules, the full window (`orderBy`, `take`, `skip`), an
+  `IfNode`, and the `positive` gate.
+- **`@inixiative/rules-builder/permissions`** is a new entry holding the permission and transition
+  builders. They take permissions' `SchemaMap` (`map`), the object `createRebacCheck` takes, and
+  author every rule in the lens permissions judges it in (`lensesAtRow`, `lensesAtListItem`,
+  `relationHopsFrom`, `declaredListsOf`, `issuesForRuleReadsOutsideLens`; peer
+  `@inixiative/permissions` ^0.25.0). Why: the builder built its own views (every relation,
+  `__actor` on every model, its own `@permissions(down)` parse), which offered rules
+  `validateSchema` refuses. `rawResources.ts`, `resourceView` / `listRelations`, and
+  `useActionRuleBuilder`'s lens `source` mode are gone; `useTransitionBuilder` takes `map`,
+  `permissions` and an optional `predicateLens`.
+- **Permissions:** `self` gone (permissions 0.7 replaced it); the list arm (`kind: 'list'`);
+  `__actor` on a `{ rule }`'s own row; every node carries permissions' `issues` at its path.
+- **Removed:** `lensValuePicker` (it emitted paths through a to-many relation, which json-rules 4
+  refuses; the value editor reads `lensScopeSurface`).
+- **`docs/VERBS.md`** catalogs every exported function, with a test that fails when one is missing.
+
 ## 0.33.0 — json-rules 4.2 and @inixiative/field-map
 
 - **Peer `@inixiative/json-rules` ^4.2.0** (was ^3.17). 4.0's lens gate refuses a rule path past a

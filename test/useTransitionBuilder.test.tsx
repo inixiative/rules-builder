@@ -1,29 +1,18 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import type { FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { useState } from 'react';
 import { emptyAction } from '../src/transitions/transitionTree';
 import type { TransitionMap } from '../src/transitions/types';
 import { useTransitionBuilder } from '../src/transitions/useTransitionBuilder';
+import { permissionsMap as map, permissionsSchema as permissions } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
-const map: FieldMap = {
-  models: {
-    User: {
-      fields: {
-        tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
-        status: { kind: 'enum', type: 'Status' },
-      },
-    },
-  },
-  enums: { Status: ['draft', 'live'] },
-};
-const maps = { app: map };
+const on = { map, permissions };
 
 const useControlled = (initial: TransitionMap) => {
   const [value, setValue] = useState<TransitionMap>(initial);
-  return useTransitionBuilder({ value, onChange: setValue, maps });
+  return useTransitionBuilder({ value, onChange: setValue, ...on });
 };
 
 const withOneAction = (): TransitionMap => ({ 'app:User': { submit: emptyAction() } });
@@ -32,7 +21,7 @@ describe('useTransitionBuilder — controlled tracking', () => {
   test('reflects the value prop; onChange never fires on render', () => {
     const onChange = mock<(s: TransitionMap) => void>();
     const { result } = renderHook(() =>
-      useTransitionBuilder({ value: withOneAction(), onChange, maps }),
+      useTransitionBuilder({ value: withOneAction(), onChange, ...on }),
     );
     expect(result.current.resources).toEqual(['app:User']);
     expect(result.current.actionsOf('app:User')).toEqual(['submit']);
@@ -75,7 +64,7 @@ describe('useTransitionBuilder — predicate descriptors', () => {
     expect(predicate.all).toHaveLength(1);
   });
 
-  test('predicateRoot is null for a missing edge or a resource absent from the maps', () => {
+  test('predicateRoot is null for a missing edge or a resource absent from the map', () => {
     const { result } = renderHook(() =>
       useControlled({
         'app:User': { submit: emptyAction() },
@@ -83,7 +72,7 @@ describe('useTransitionBuilder — predicate descriptors', () => {
       }),
     );
     expect(result.current.predicateRoot('app:User', 'submit', 5, 'from')).toBeNull(); // no path index 5
-    expect(result.current.predicateRoot('app:Ghost', 'submit', 0, 'from')).toBeNull(); // not in the maps
+    expect(result.current.predicateRoot('app:Ghost', 'submit', 0, 'from')).toBeNull(); // not in the map
   });
 });
 
