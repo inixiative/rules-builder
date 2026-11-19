@@ -152,3 +152,34 @@ export type {
   UseTransitionBuilderOptions,
 } from './transitions';
 export { emptyAction, useTransitionBuilder } from './transitions';
+export type {
+  AggregateValueNode,
+  CategorizationBuilderOptions,
+  CategorizationNode,
+  CategoryNode,
+  IfValueNode,
+  ListValueNode,
+  LiteralValueNode,
+  SourceValueNode,
+  UseCategorizationBuilder,
+  UseCategorizationBuilderOptions,
+  UseValueExpressionBuilder,
+  UseValueExpressionBuilderOptions,
+  ValueBuilderOptions,
+  ValueNode,
+  ValuePath,
+  ValuePathSegment,
+  ValueShapeControl,
+} from './values';
+export {
+  buildCategorizationRoot,
+  buildValueExpressionRoot,
+  cleanCategorization,
+  cleanValue,
+  issuePathOf,
+  setValueAt,
+  useCategorizationBuilder,
+  useValueExpressionBuilder,
+  VALUE_SHAPES,
+  valueAt,
+} from './values';
