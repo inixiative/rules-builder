@@ -45,6 +45,13 @@ export {
   wrapInCompound,
 } from './core';
 export type {
+  EntitlementGrantNode,
+  EntitlementGrantOptions,
+  OperationChoiceNode,
+  OperationTreeNode,
+} from './entitlements';
+export { buildEntitlementGrantRoot } from './entitlements';
+export type {
   ActionGroupNode,
   ActionLeafNode,
   ActionPath,
@@ -139,7 +146,6 @@ export {
 } from './schema';
 export type { SavedRule } from './serialize';
 export { parseSavedRule, stringifySavedRule } from './serialize';
-
 export type {
   Action,
   MergeStrategy,
