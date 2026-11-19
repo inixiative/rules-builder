@@ -5,6 +5,7 @@ export type {
   FacetModeControl,
   FieldControl,
   GroupNode,
+  IfNode,
   LeafNode,
   OperatorControl,
   PickOption,
@@ -15,8 +16,19 @@ export type {
   UseRuleBuilderOptions,
   ValueControl,
   VariableControl,
+  WindowControl,
 } from './builder';
-export { asGroupRoot, asRoot, buildRoot, useFilteredCollection, useRuleBuilder } from './builder';
+export {
+  asGroupRoot,
+  asRoot,
+  buildRoot,
+  isAggregateNode,
+  isArrayNode,
+  isGroupNode,
+  isIfNode,
+  useFilteredCollection,
+  useRuleBuilder,
+} from './builder';
 export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,

@@ -4,6 +4,7 @@ import {
   type BuilderNode,
   type Decoration,
   type GroupNode,
+  type IfNode,
   type LeafNode,
   type RuleBuilderSource,
   type ScopeOption,
@@ -557,11 +558,52 @@ const Group = ({ node }: { node: GroupNode }) => {
   );
 };
 
+/** An implication: `then` must hold where `if` does, `else` where it doesn't. */
+const IfRule = ({ node }: { node: IfNode }) => (
+  <div
+    style={{
+      ...row,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      borderLeft: '2px solid #999',
+      paddingLeft: 8,
+    }}
+  >
+    <span>if</span>
+    <Node node={node.if} />
+    <span>then</span>
+    <Node node={node.then} />
+    {node.else && (
+      <>
+        <span>else</span>
+        <Node node={node.else} />
+      </>
+    )}
+    <div style={row}>
+      {node.addElse && (
+        <button type="button" style={sel} onClick={node.addElse}>
+          + else
+        </button>
+      )}
+      {node.removeElse && (
+        <button type="button" style={sel} onClick={node.removeElse}>
+          remove else
+        </button>
+      )}
+      <button type="button" style={sel} onClick={node.remove}>
+        remove
+      </button>
+    </div>
+  </div>
+);
+
 const Node = ({ node }: { node: BuilderNode }) =>
   node.kind === 'group' ? (
     <Group node={node} />
   ) : node.kind === 'array' ? (
     <ArrayRule node={node} />
+  ) : node.kind === 'if' ? (
+    <IfRule node={node} />
   ) : (
     <Leaf node={node} />
   );

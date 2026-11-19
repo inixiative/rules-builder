@@ -311,6 +311,10 @@ export type BuilderField = {
 
 export type SurfaceOptions = {
   targets?: RuleTarget[];
+  /** A `where` that may read positive conditions only (json-rules `validateRule({ positive })`,
+   *  e.g. an entitlement's narrowing): only operators that can't hold on a missing value, and no
+   *  array, aggregate or `if` rule. */
+  positive?: boolean;
   /** Field labels, keyed by `name` or `Model.name`. */
   labels?: Record<string, string>;
   /** Enum/sourced value labels, keyed by `name` or `Model.name` → (value → label). */
@@ -348,8 +352,9 @@ const supportedByAllTargets = (
 const fieldAndDateOperators = (
   kind: FieldKind,
   targets: RuleTarget[] | undefined,
+  positive = false,
 ): { field: Operator[]; date: DateOperator[] } => {
-  const base = getOperatorsForKind(kind);
+  const base = getOperatorsForKind(kind, undefined, { positive });
   const field = base.field.filter((op) =>
     supportedByAllTargets(op, targets, (t) => getOperatorsForKind(kind, t).field),
   );
@@ -359,10 +364,13 @@ const fieldAndDateOperators = (
   return { field, date };
 };
 
-const arrayOperators = (targets: RuleTarget[] | undefined): ArrayOperator[] =>
-  getArrayOperators().filter((op) =>
-    supportedByAllTargets(op, targets, (t) => getArrayOperators(t)),
-  );
+// Under `positive` an array rule is refused whole (json-rules: it can hold on a missing list).
+const arrayOperators = (targets: RuleTarget[] | undefined, positive = false): ArrayOperator[] =>
+  positive
+    ? []
+    : getArrayOperators().filter((op) =>
+        supportedByAllTargets(op, targets, (t) => getArrayOperators(t)),
+      );
 
 // Prefer labels from the surface's `options` (json-rules folds a sourced field's
 // value→label there); a caller-supplied `valueLabels` entry overrides (e.g. human
@@ -385,8 +393,9 @@ const mergeOptionLabels = (
 export const operatorsForKind = (
   kind: FieldKind,
   targets?: RuleTarget[],
+  positive = false,
 ): BuilderField['operators'] => ({
-  ...fieldAndDateOperators(kind, targets),
+  ...fieldAndDateOperators(kind, targets, positive),
   array: [] as ArrayOperator[],
 });
 
@@ -395,11 +404,14 @@ export const operatorsForKind = (
  *  boundary: json-rules resolves nothing under the column, so no kind-specific
  *  narrowing applies there and the kernel compares the traversed value untyped (a
  *  mismatch is an ordinary non-match, not an authoring error). */
-export const genericOperators = (targets?: RuleTarget[]): BuilderField['operators'] => {
+export const genericOperators = (
+  targets?: RuleTarget[],
+  positive = false,
+): BuilderField['operators'] => {
   const field = new Set<Operator>();
   const date = new Set<DateOperator>();
   for (const kind of ALL_KINDS) {
-    const ops = fieldAndDateOperators(kind, targets);
+    const ops = fieldAndDateOperators(kind, targets, positive);
     for (const op of ops.field) field.add(op);
     for (const op of ops.date) date.add(op);
   }
@@ -428,9 +440,12 @@ const describeFieldEntries = (
       ? {
           field: [] as Operator[],
           date: [] as DateOperator[],
-          array: isList ? arrayOperators(opts.targets) : [],
+          array: isList ? arrayOperators(opts.targets, opts.positive) : [],
         }
-      : { ...fieldAndDateOperators(kind, opts.targets), array: [] as ArrayOperator[] };
+      : {
+          ...fieldAndDateOperators(kind, opts.targets, opts.positive),
+          array: [] as ArrayOperator[],
+        };
 
     out.push({
       name,

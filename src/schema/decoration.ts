@@ -470,7 +470,11 @@ export const facetElementLeaf = (
   );
   if (!leaf) return undefined;
   return facet.kind
-    ? { ...leaf, kind: facet.kind, operators: operatorsForKind(facet.kind, opts.targets) }
+    ? {
+        ...leaf,
+        kind: facet.kind,
+        operators: operatorsForKind(facet.kind, opts.targets, opts.positive),
+      }
     : leaf;
 };
 
@@ -688,7 +692,7 @@ const leafRuleAt = (
   const leaf: BuilderField = {
     ...found,
     name: segments.join('.'),
-    ...(kind ? { kind, operators: operatorsForKind(kind, opts.targets) } : {}),
+    ...(kind ? { kind, operators: operatorsForKind(kind, opts.targets, opts.positive) } : {}),
   };
   return ruleForField(leaf);
 };
