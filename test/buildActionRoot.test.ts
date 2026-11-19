@@ -1,56 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '@inixiative/json-rules';
 import {
   type ActionGroupNode,
   type ActionLeafNode,
   buildActionRoot,
 } from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
-import { describeScopeFields, rawView, viewRoot } from '../src/schema/surface';
-
-const map: FieldMap = {
-  models: {
-    User: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        userId: { kind: 'scalar', type: 'String' },
-        role: { kind: 'enum', type: 'Role' },
-        organization: { kind: 'object', type: 'Organization' }, // to-one — walkable
-        posts: { kind: 'object', type: 'Post', isList: true }, // to-many — NOT walkable
-      },
-    },
-    Organization: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        name: { kind: 'scalar', type: 'String' },
-        parent: { kind: 'object', type: 'Organization' }, // to-one self-ref — for multi-hop
-      },
-    },
-    Post: { fields: { id: { kind: 'scalar', type: 'String' } } },
-  },
-  enums: { Role: ['owner', 'admin', 'member'] },
-};
-
-const view = rawView({ maps: { app: map }, mapName: 'app', model: 'User' });
-const fields = describeScopeFields(viewRoot(view));
-const actionsByResource = {
-  'app:User': ['own', 'manage', 'read'],
-  'app:Organization': ['own', 'manage', 'read'],
-};
-const resourceFields = (res: string) => {
-  const [m, mdl] = res.split(':');
-  return describeScopeFields(viewRoot(rawView({ maps: { app: map }, mapName: m, model: mdl })));
-};
+import { describeScopeFields, viewRoot } from '../src/schema/surface';
+import { permissionsMap, permissionsSchema } from './fixtures/permissionsMap';
 
 let committed: ActionRule | undefined;
-const build = (rule: ActionRule) => {
+const build = (rule: ActionRule, resource = 'app:User') => {
   committed = undefined;
   return buildActionRoot(rule, {
-    view,
-    fields,
-    siblingActions: ['manage', 'read'],
-    actionsByResource,
-    resourceFields,
+    map: permissionsMap,
+    schema: permissionsSchema,
+    resource,
+    action: 'own',
     maxDepth: 4,
     commit: (next) => {
       committed = next;
@@ -59,18 +24,73 @@ const build = (rule: ActionRule) => {
 };
 
 describe('buildActionRoot — model-aware leaves', () => {
-  test('delegate offers sibling actions', () => {
+  test("delegate offers the resource's other actions, never its own", () => {
     const n = build('manage') as ActionLeafNode;
     expect(n.kind.value).toBe('delegate');
     expect(n.delegate?.value).toBe('manage');
     expect(n.delegate?.options.map((o) => o.value)).toEqual(['manage', 'read']);
   });
 
-  test('self offers the model’s non-relation fields', () => {
-    const n = build({ self: 'userId' }) as ActionLeafNode;
-    expect(n.kind.value).toBe('self');
-    expect(n.self?.value).toBe('userId');
-    expect(n.self?.options.map((o) => o.value).sort()).toEqual(['id', 'role', 'userId']);
+  test('a list arm offers only declared `down` lists, and builds its condition on the item', () => {
+    const n = build({
+      rel: 'drafts',
+      arrayOperator: 'any',
+      condition: { rule: { field: 'title', operator: 'equals', value: 'x' } },
+    }) as ActionLeafNode;
+    expect(n.kind.value).toBe('list');
+    expect(n.list?.relation.options.map((o) => o.value)).toEqual(['drafts']); // not `posts`
+    expect(n.list?.target).toBe('app:Post');
+    expect(n.issues).toEqual([]);
+    const condition = n.list?.condition as ActionLeafNode;
+    expect(condition.kind.value).toBe('rule');
+    expect(condition.rule).toBeDefined();
+    condition.kind.set('delegate');
+    expect(committed).toEqual({ rel: 'drafts', arrayOperator: 'any', condition: '' });
+  });
+
+  test('editing a list arm keeps its condition; picking another list starts it over', () => {
+    const rule: ActionRule = { rel: 'drafts', arrayOperator: 'any', condition: 'read' };
+    const n = build(rule) as ActionLeafNode;
+    const condition = n.list?.condition as ActionLeafNode;
+    expect(condition.delegate?.options.map((o) => o.value)).toEqual(['read', 'edit']);
+    condition.delegate?.set('edit');
+    expect(committed).toEqual({ rel: 'drafts', arrayOperator: 'any', condition: 'edit' });
+    n.list?.relation.set('drafts');
+    expect(committed).toEqual({
+      rel: 'drafts',
+      arrayOperator: 'any',
+      condition: { rule: { all: [] } },
+    });
+  });
+
+  test('a rule leaf reads `__actor` on its own row only, as permissions injects it', () => {
+    const n = build({ rule: { all: [] } }) as ActionLeafNode;
+    expect(n.rule?.kind).toBe('group');
+    const ok = build({
+      rule: { field: '__actor.model', operator: 'equals', value: 'User' },
+    }) as ActionLeafNode;
+    expect(ok.issues).toEqual([]);
+    const related = build({
+      rule: { field: 'organization.__actor.model', operator: 'equals', value: 'User' },
+    }) as ActionLeafNode;
+    expect(related.issues.length).toBeGreaterThan(0);
+  });
+
+  test("a rule reading back to a model it passed shows permissions' issue", () => {
+    const n = build({
+      rule: { field: 'organization.users.role', operator: 'equals', value: 'admin' },
+    }) as ActionLeafNode;
+    expect(n.issues.length).toBeGreaterThan(0);
+  });
+
+  test("a list arm item offers only what the list's `down` paths load", () => {
+    const n = build({
+      rel: 'drafts',
+      arrayOperator: 'any',
+      condition: { rule: { all: [] } },
+    }) as ActionLeafNode;
+    const item = n.list?.condition as ActionLeafNode;
+    expect(item.kind.value).toBe('rule');
   });
 
   test('rel single hop offers only to-one relations (excludes the "many" side) + the target’s actions', () => {
@@ -81,36 +101,41 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']);
     expect(n.rel?.target).toBe('app:Organization');
     expect(n.rel?.action.options.map((o) => o.value)).toEqual(['own', 'manage', 'read']);
+    expect(n.rel?.addOptions.map((o) => o.value)).toEqual(['region']); // never back to a model passed
     expect(n.rel?.action.value).toBe('own');
   });
 
   test('rel multi-hop scopes each segment to the resource reached', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
-    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization', 'parent']);
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
+    expect(n.rel?.segments.map((s) => s.value)).toEqual(['organization', 'region']);
     expect(n.rel?.segments[0].options.map((o) => o.value)).toEqual(['organization']); // User's to-one
-    expect(n.rel?.segments[1].options.map((o) => o.value)).toEqual(['parent']); // Organization's to-one
+    expect(n.rel?.segments[1].options.map((o) => o.value)).toEqual(['region']); // not back to Organization
+    expect(n.rel?.target).toBe('app:Region');
+    expect(n.rel?.action.options.map((o) => o.value)).toEqual(['read']);
+  });
+
+  test('a one-hop self relation is offered from the row', () => {
+    const n = build({ rel: 'parent', action: 'own' }, 'app:Organization') as ActionLeafNode;
+    expect(n.rel?.segments[0].options.map((o) => o.value)).toContain('parent');
     expect(n.rel?.target).toBe('app:Organization');
-    // appending a hop extends the dotted path
-    n.rel?.addSegment('parent');
-    expect((committed as { rel: string }).rel).toBe('organization.parent.parent');
   });
 
   test('changing the relation path resets the action — a stale action would belong to the old target', () => {
     // organization → Organization; picking action 'manage' is valid there.
     const n = build({ rel: 'organization', action: 'manage' }) as ActionLeafNode;
     // appending a hop changes the target's actions; the prior pick must not survive stale.
-    n.rel?.addSegment('parent');
-    expect(committed).toEqual({ rel: 'organization.parent', action: '' });
+    n.rel?.addSegment('region');
+    expect(committed).toEqual({ rel: 'organization.region', action: '' });
   });
 
   test('editing a segment resets the action', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
     n.rel?.segments[0].set('organization');
     expect(committed).toEqual({ rel: 'organization', action: '' });
   });
 
   test('removing the last hop resets the action', () => {
-    const n = build({ rel: 'organization.parent', action: 'own' }) as ActionLeafNode;
+    const n = build({ rel: 'organization.region', action: 'read' }) as ActionLeafNode;
     n.rel?.removeLast?.();
     expect(committed).toEqual({ rel: 'organization', action: '' });
   });
@@ -139,15 +164,15 @@ describe('buildActionRoot — model-aware leaves', () => {
 
   test('kind.set swaps the variant with a sensible default', () => {
     const n = build('manage') as ActionLeafNode;
-    n.kind.set('self');
-    expect(committed).toEqual({ self: '' });
+    n.kind.set('list');
+    expect(committed).toEqual({ rel: '', arrayOperator: 'any', condition: { rule: { all: [] } } });
   });
 
   test('deny (null) builds a kind-only node — no variant controls, no crash', () => {
     const n = build(null) as ActionLeafNode;
     expect(n.kind.value).toBe('deny');
     expect(n.delegate).toBeUndefined();
-    expect(n.self).toBeUndefined();
+    expect(n.list).toBeUndefined();
     expect(n.rel).toBeUndefined();
     expect(n.rule).toBeUndefined();
   });
@@ -160,7 +185,7 @@ describe('buildActionRoot — model-aware leaves', () => {
 
 describe('buildActionRoot — any/all groups', () => {
   test('a group exposes children + addChild', () => {
-    const rule: ActionRule = { any: ['manage', { self: 'userId' }] };
+    const rule: ActionRule = { any: ['manage', { rel: 'organization', action: 'own' }] };
     const g = build(rule) as ActionGroupNode;
     expect(g.kind.value).toBe('any');
     expect(g.children).toHaveLength(2);

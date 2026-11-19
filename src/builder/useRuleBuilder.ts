@@ -35,6 +35,8 @@ export type UseRuleBuilderOptions = {
   /** Fetched option sets for the source's sourced fields → folded onto field.values. */
   sourceValues?: import('@inixiative/json-rules').SourceValues[];
   targets?: RuleTarget[];
+  /** Offer and accept positive conditions only (json-rules `validateRule({ positive })`). */
+  positive?: boolean;
   /** Uncontrolled seed — read once at mount. Re-mount (`key`) or `setCondition` to reseed. */
   defaultValue?: Condition;
   /** What an absent condition seeds to — the blank-builder scaffold. Defaults to `{ all: [] }`.
@@ -81,10 +83,11 @@ export const useRuleBuilder = (opts: UseRuleBuilderOptions): UseRuleBuilder => {
     const fromDecoration = decorationSurfaceOptions(opts.decoration);
     return {
       targets: opts.targets,
+      positive: opts.positive,
       labels: { ...fromDecoration.labels, ...opts.labels },
       valueLabels: { ...fromDecoration.valueLabels, ...opts.valueLabels },
     };
-  }, [opts.decoration, opts.targets, opts.labels, opts.valueLabels]);
+  }, [opts.decoration, opts.targets, opts.positive, opts.labels, opts.valueLabels]);
   const anchorFields = useMemo(() => {
     const all = relabelRelations(describeScopeFields(viewRoot(view), surfaceOpts), opts.decoration);
     const consumed = consumedTopFields(opts.decoration);

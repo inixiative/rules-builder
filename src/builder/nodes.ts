@@ -6,6 +6,11 @@ type Rec = Record<string, unknown>;
 export const isGroupNode = (n: Condition): boolean =>
   typeof n === 'object' && n !== null && ('all' in n || 'any' in n);
 
+/** An implication (`{ if, then, else? }`): `then` must hold where `if` does, `else` where it
+ *  doesn't. */
+export const isIfNode = (n: Condition): boolean =>
+  typeof n === 'object' && n !== null && 'if' in n && 'then' in n;
+
 export const isArrayNode = (n: Condition): boolean =>
   typeof n === 'object' && n !== null && 'arrayOperator' in n;
 

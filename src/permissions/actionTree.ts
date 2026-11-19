@@ -11,8 +11,8 @@ export const actionKind = (rule: ActionRule): ActionRuleKind => {
   if (typeof rule === 'string') return 'delegate';
   if ('any' in rule) return 'any';
   if ('all' in rule) return 'all';
+  if ('arrayOperator' in rule) return 'list';
   if ('rel' in rule) return 'rel';
-  if ('self' in rule) return 'self';
   return 'rule';
 };
 
@@ -21,17 +21,21 @@ export const isActionGroup = (rule: ActionRule): boolean => {
   return k === 'any' || k === 'all';
 };
 
+/** The child slots of a node: a group's members, or a list arm's one `condition`, judged on the
+ *  list item as its own resource. */
 export const childrenOfAction = (rule: ActionRule): ActionRule[] => {
   if (!isObj(rule)) return [];
   if ('any' in rule) return rule.any;
   if ('all' in rule) return rule.all;
+  if ('arrayOperator' in rule) return [rule.condition];
   return [];
 };
 
 const withChildren = (rule: ActionRule, next: ActionRule[]): ActionRule => {
   if (isObj(rule) && 'any' in rule) return { any: next };
   if (isObj(rule) && 'all' in rule) return { all: next };
-  throw new Error('withChildren: not an any/all group');
+  if (isObj(rule) && 'arrayOperator' in rule) return { ...rule, condition: next[0] ?? null };
+  throw new Error('withChildren: not a group or a list arm');
 };
 
 /** The default leaf when a slot is created — an empty ABAC predicate, ready to author. */

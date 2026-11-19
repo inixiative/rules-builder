@@ -1,7 +1,7 @@
 import { getLensRoot } from '@inixiative/json-rules';
 import { useMemo, useState } from 'react';
 import { composeNarrowed, withAllRelations } from '../../src';
-import { lensValuePicker } from '../../src/schema/lensValuePicker';
+import { lensScopeSurface } from '../../src/schema/lensScopeSurface';
 import { Badge, Code, Empty, Panel, Row, Select, tokens } from '../ui';
 import { type ParentRef, resolveRef } from '../workspace';
 import type { TabProps } from './types';
@@ -19,7 +19,7 @@ const parseRef = (v: string): ParentRef => {
 };
 
 /**
- * The lens value picker (`lensValuePicker`) — the shared atom behind a rule's `field`
+ * The lens value surface (`lensScopeSurface`'s values) — the shared atom behind a rule's `field`
  * (LHS) and `path` (RHS reference). A lens/narrowing starts at its anchor and offers only
  * what it shows — the relations it turns on included; raw maps start at the picked
  * fieldMap → model with every relation on. A `Json` column is flagged `acceptsSubPath`,
@@ -71,7 +71,9 @@ export const PathPickerTab = ({ ws }: TabProps) => {
         ? resolveRef(ws, ref)
         : composeNarrowed(withAllRelations({ maps: ws.maps, bridges: ws.bridges, mapName, model }));
       if (!surface) return [];
-      return lensValuePicker(surface, { maxDepth: 1 });
+      // The values a rule reads from this row: through to-one relations, never past a list
+      // (json-rules 4 refuses a path past a to-many relation).
+      return lensScopeSurface(surface).values;
     } catch {
       return [];
     }

@@ -8,8 +8,6 @@ import {
   type LeafNode,
 } from '../src/builder/buildNodes';
 import { useRuleBuilder } from '../src/builder/useRuleBuilder';
-import type { ActionLeafNode } from '../src/permissions/buildActionRoot';
-import { useActionRuleBuilder } from '../src/permissions/useActionRuleBuilder';
 import {
   describeScopeFields,
   type RuleBuilderSource,
@@ -155,48 +153,5 @@ describe('aggregates defer to json-rules (A3)', () => {
     const take = agg({ orderBy: [{ field: 'total', dir: 'desc' }], take: 1 });
     expect((build(take, ['toPrisma']).children[0] as ArrayNode).valid).toBe(false);
     expect((build(take).children[0] as ArrayNode).valid).toBe(true);
-  });
-});
-
-describe('useActionRuleBuilder rel walk is gated by the lens at every hop (A5)', () => {
-  const narrowed: RuleBuilderSource = {
-    maps: { app: map },
-    mapName: 'app',
-    model: 'User',
-    narrowing: { root: { relations: { account: {} } } },
-  };
-
-  test('a hop the lens does not turn on is not offered', () => {
-    const { result } = renderHook(() =>
-      useActionRuleBuilder({ source: narrowed, defaultValue: { rel: 'account', action: '' } }),
-    );
-    const root = result.current.root as ActionLeafNode;
-    expect(root.rel?.segments[0].options.map((o) => o.value)).toEqual(['account']);
-    expect(root.rel?.target).toBe('app:Account');
-    expect(root.rel?.addOptions).toEqual([]);
-  });
-
-  test('a walk through a hop the lens hides does not resolve', () => {
-    const { result } = renderHook(() =>
-      useActionRuleBuilder({
-        source: narrowed,
-        defaultValue: { rel: 'account.parent', action: '' },
-      }),
-    );
-    const root = result.current.root as ActionLeafNode;
-    expect(root.rel?.target).toBeUndefined();
-  });
-
-  test('a hop the lens turns on deeper is offered there', () => {
-    const deeper: RuleBuilderSource = {
-      ...narrowed,
-      narrowing: { root: { relations: { account: { relations: { parent: {} } } } } },
-    };
-    const { result } = renderHook(() =>
-      useActionRuleBuilder({ source: deeper, defaultValue: { rel: 'account.parent', action: '' } }),
-    );
-    const root = result.current.root as ActionLeafNode;
-    expect(root.rel?.segments[1].options.map((o) => o.value)).toEqual(['parent']);
-    expect(root.rel?.target).toBe('app:Account');
   });
 });

@@ -1,9 +1,12 @@
 import {
+  AGGREGATE_MODES,
+  type AggregateMode,
   type Condition,
   type FieldKind,
   getAggregateOperators,
   type RuleTarget,
   readScopeRef,
+  type SortDir,
   type ValidationIssue,
   type ValueShape,
   validateRule,
@@ -51,6 +54,7 @@ import {
   isAggregateNode,
   isArrayNode,
   isGroupNode,
+  isIfNode,
   ruleForField,
 } from './nodes';
 
@@ -226,9 +230,10 @@ export type FacetModeControl = {
  * shared `condition` sub-builder, and by `filter` where every target takes a window.
  */
 export type AggregateControl = {
-  /** `sum` or `avg`. Only these two — {@link AGGREGATE_MODES}. */
-  mode: 'sum' | 'avg';
-  setMode: (mode: 'sum' | 'avg') => void;
+  /** A mode an aggregate rule compares: json-rules' `AGGREGATE_MODES` (`sum`, `avg`). Element
+   *  *count* is not a mode: it is the {@link ArrayNode.count} facet on a `count` operator. */
+  mode: AggregateMode;
+  setMode: (mode: AggregateMode) => void;
   modeOptions: PickOption[];
   /** Picker over the RELATED model's aggregatable numeric scalars + `Json` columns.
    *  Each option carries `compilesToPrisma`; `compilesToPrisma` here reflects the
@@ -246,6 +251,17 @@ export type AggregateControl = {
   operator: OperatorControl;
   /** The threshold value: a number (single-value ops) or `[number, number]` (between). */
   value: { current?: number | [number, number]; shape: ValueShape; set: (v: unknown) => void };
+};
+
+/** An aggregate or array rule's ordered selection: order, then skip, then take. */
+export type WindowControl = {
+  orderBy: { field: string; dir: SortDir }[];
+  orderByOptions: PickOption[];
+  setOrderBy: (orderBy: { field: string; dir: SortDir }[]) => void;
+  take?: number;
+  setTake: (n: number | undefined) => void;
+  skip?: number;
+  setSkip: (n: number | undefined) => void;
 };
 
 export type ArrayNode = {
@@ -306,6 +322,9 @@ export type ArrayNode = {
   filter?: GroupNode;
   /** Drop the filter sub-condition entirely. */
   removeFilter?: () => void;
+  /** The rest of the window (json-rules `orderBy` → `skip` → `take`), offered where `filter`
+   *  is: the related model's columns to order by, and how many elements to skip and keep. */
+  window?: WindowControl;
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first —
    *  a prefixed list field iterates an ancestor's collection. Absent at the root. */
   scopes?: ScopeOption[];
@@ -315,7 +334,25 @@ export type ArrayNode = {
   remove: () => void;
 };
 
-export type BuilderNode = GroupNode | LeafNode | ArrayNode;
+/** An implication: `then` must hold where `if` does, and `else` (when present) where it doesn't.
+ *  Each slot is an ordinary node at the `if` / `then` / `else` path segment. */
+export type IfNode = {
+  kind: 'if';
+  id: string;
+  path: RulePath;
+  depth: number;
+  if: BuilderNode;
+  then: BuilderNode;
+  else?: BuilderNode;
+  /** Add an `else` (a blank group), or drop it. */
+  addElse?: () => void;
+  removeElse?: () => void;
+  /** Gated as the whole implication, in situ. */
+  valid: boolean;
+  remove: () => void;
+};
+
+export type BuilderNode = GroupNode | LeafNode | ArrayNode | IfNode;
 
 type Rec = Record<string, unknown>;
 type Ctx = {
@@ -372,7 +409,12 @@ const targetsOf = (ctx: Ctx): RuleTarget[] =>
 /** json-rules' own refusals of a node, as the engine meets it, on each of the builder's targets. */
 const targetIssues = (scope: Scope, node: Condition, ctx: Ctx): ValidationIssue[] =>
   targetsOf(ctx).flatMap(
-    (target) => validateRule(enclose(scope, node), { target, ...ctx.schema }).errors,
+    (target) =>
+      validateRule(enclose(scope, node), {
+        target,
+        ...ctx.schema,
+        ...(ctx.surfaceOpts.positive ? { positive: true } : {}),
+      }).errors,
   );
 
 const scopeLabel = (scope: Scope, ctx: Ctx): string => {
@@ -504,20 +546,21 @@ const arrayCat = (op: string | undefined): ArrayCat => {
   return shape === 'count' || shape === 'predicate' ? shape : 'presence';
 };
 
-/** The `sum`/`avg` modes the engine's `AggregateMode` supports. `min`/`max` could be
- *  added here if the engine adds them; element *count* is intentionally not a mode —
- *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
-const AGGREGATE_MODES = ['sum', 'avg'] as const;
+// One window key set, or dropped when undefined, leaving the rest of the rule as it is.
+const withWindowKey = (rec: Rec, key: 'orderBy' | 'take' | 'skip', value: unknown): Condition => {
+  const { [key]: _drop, ...rest } = rec;
+  return (value === undefined ? rest : { ...rest, [key]: value }) as Condition;
+};
 
 /** The built descriptor at a slot `path` (paths address the builder's own shape —
- *  {@link normalizeGroups}). `if`/`then`/`else` carry no nodes. */
+ *  {@link normalizeGroups}). */
 const descend = (built: BuilderNode, path: RulePath): BuilderNode | undefined => {
   let b: BuilderNode | undefined = built;
   for (const seg of path) {
     if (!b) return undefined;
     if (typeof seg === 'number') b = b.kind === 'group' ? b.children[seg] : undefined;
     else if (seg === 'condition' || seg === 'filter') b = b.kind === 'array' ? b[seg] : undefined;
-    else return undefined;
+    else b = b.kind === 'if' ? b[seg] : undefined;
   }
   return b;
 };
@@ -627,7 +670,9 @@ const buildLeaf = (
   // below the boundary resolves, and the kernel compares the traversed value untyped.
   const declared = subPath === undefined ? field : undefined;
   const operators =
-    subPath === undefined ? field?.operators : genericOperators(ctx.surfaceOpts.targets);
+    subPath === undefined
+      ? field?.operators
+      : genericOperators(ctx.surfaceOpts.targets, ctx.surfaceOpts.positive);
   const operator = (rec.dateOperator ?? rec.operator) as string | undefined;
   const family = rec.dateOperator !== undefined ? 'date' : 'field';
   const operatorOptions = operators
@@ -833,7 +878,9 @@ const buildArray = (
     field?.relation ?? (located ? listRelationAt(located.frame.at, located.name) : undefined);
   const isAggregate = isAggregateNode(node);
   const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
-  const aggMode: 'sum' | 'avg' = agg.mode === 'avg' ? 'avg' : 'sum';
+  const aggMode: AggregateMode = (AGGREGATE_MODES as readonly string[]).includes(agg.mode ?? '')
+    ? (agg.mode as AggregateMode)
+    : AGGREGATE_MODES[0];
 
   // A hoisted collection facet: recognize the node so it renders as its named
   // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
@@ -1140,6 +1187,27 @@ const buildArray = (
     condition: conditionNode,
     // `filter` is authored windowing — on an aggregate, only where the targets take it.
     filter: filterNode,
+    window:
+      filterNode !== undefined
+        ? {
+            orderBy: (rec.orderBy as { field: string; dir: SortDir }[] | undefined) ?? [],
+            orderByOptions: relScope.fields
+              .filter((f) => !f.relation && !f.isList)
+              .map((f) => ({ value: f.name, label: f.label })),
+            setOrderBy: (orderBy) =>
+              ctx.commit(
+                setNode(
+                  ctx.root,
+                  path,
+                  withWindowKey(rec, 'orderBy', orderBy.length ? orderBy : undefined),
+                ),
+              ),
+            take: rec.take as number | undefined,
+            setTake: (n) => ctx.commit(setNode(ctx.root, path, withWindowKey(rec, 'take', n))),
+            skip: rec.skip as number | undefined,
+            setSkip: (n) => ctx.commit(setNode(ctx.root, path, withWindowKey(rec, 'skip', n))),
+          }
+        : undefined,
     removeFilter:
       filterNode !== undefined
         ? () => {
@@ -1316,6 +1384,43 @@ const facetModeControl = (
   };
 };
 
+const buildIf = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): IfNode => {
+  const rec = node as Rec;
+  const slot = (key: 'if' | 'then' | 'else') =>
+    buildNode(asRoot(rec[key] as Condition | undefined), [...path, key], depth + 1, ctx, scope);
+  return {
+    kind: 'if',
+    id: path.length ? path.join('.') : 'root',
+    path,
+    depth,
+    if: slot('if'),
+    then: slot('then'),
+    else: rec.else !== undefined ? slot('else') : undefined,
+    addElse:
+      rec.else === undefined
+        ? () =>
+            ctx.commit(setNode(ctx.root, path, { ...rec, else: { all: [] } } as Rec as Condition))
+        : undefined,
+    removeElse:
+      rec.else !== undefined
+        ? () => {
+            const { else: _drop, ...rest } = rec;
+            ctx.commit(setNode(ctx.root, path, rest as Condition));
+          }
+        : undefined,
+    valid:
+      validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
+      targetIssues(scope, node, ctx).length === 0,
+    remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
+  };
+};
+
 const buildNode = (
   node: Condition,
   path: RulePath,
@@ -1325,9 +1430,11 @@ const buildNode = (
 ): BuilderNode =>
   isGroupNode(node)
     ? buildGroup(node, path, depth, ctx, scope)
-    : isArrayNode(node) || isAggregateNode(node)
-      ? buildArray(node, path, depth, ctx, scope)
-      : buildLeaf(node, path, depth, ctx, scope);
+    : isIfNode(node)
+      ? buildIf(node, path, depth, ctx, scope)
+      : isArrayNode(node) || isAggregateNode(node)
+        ? buildArray(node, path, depth, ctx, scope)
+        : buildLeaf(node, path, depth, ctx, scope);
 
 /** The root is the condition itself — never synthetically wrapped. Only an absent condition
  *  becomes `empty` — a blank group by default (a first-class, add-into-able container), or a

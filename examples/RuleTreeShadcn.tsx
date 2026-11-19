@@ -6,6 +6,7 @@ import {
   type Decoration,
   type FacetModeControl,
   type GroupNode,
+  type IfNode,
   type LeafNode,
   type RuleBuilderSource,
   type ScopeOption,
@@ -537,11 +538,44 @@ const Group = ({ node }: { node: GroupNode }) => {
   );
 };
 
+/** An implication: `then` must hold where `if` does, `else` where it doesn't. */
+const IfRule = ({ node }: { node: IfNode }) => (
+  <div className="grid gap-1.5 border-l-2 pl-2">
+    <Badge>if</Badge>
+    <Node node={node.if} />
+    <Badge>then</Badge>
+    <Node node={node.then} />
+    {node.else && (
+      <>
+        <Badge>else</Badge>
+        <Node node={node.else} />
+      </>
+    )}
+    <div className="flex gap-1.5">
+      {node.addElse && (
+        <Button variant="outline" size="sm" onClick={node.addElse}>
+          + else
+        </Button>
+      )}
+      {node.removeElse && (
+        <Button variant="outline" size="sm" onClick={node.removeElse}>
+          remove else
+        </Button>
+      )}
+      <Button variant="outline" size="sm" onClick={node.remove}>
+        remove
+      </Button>
+    </div>
+  </div>
+);
+
 const Node = ({ node }: { node: BuilderNode }) =>
   node.kind === 'group' ? (
     <Group node={node} />
   ) : node.kind === 'array' ? (
     <ArrayRule node={node} />
+  ) : node.kind === 'if' ? (
+    <IfRule node={node} />
   ) : (
     <Leaf node={node} />
   );
