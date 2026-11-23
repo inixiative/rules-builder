@@ -122,10 +122,32 @@ describe('an aggregate', () => {
       'min',
       'max',
       'distinct',
+      'pick',
     ]);
     expect(node.field?.options.map((o) => o.value).sort()).toEqual(['amount', 'stage']);
     expect(node.type?.kind).toBe('Float');
     expect(node.list.condition).toBeDefined();
+  });
+
+  test("a pick is the window's values: one for take 1, else a list, of any kind", () => {
+    const one = value({
+      field: 'deals',
+      aggregate: { mode: 'pick', field: 'stage' },
+      orderBy: [{ field: 'amount', dir: 'desc' }],
+      take: 1,
+    } as ValueExpression) as AggregateValueNode;
+    expect(one.issues).toEqual([]);
+    expect(one.mode.options.map((o) => o.value)).toContain('pick');
+    expect(one.type).toMatchObject({ kind: 'String', isList: false, nullable: true });
+
+    const top = value({
+      field: 'deals',
+      aggregate: { mode: 'pick', field: 'stage' },
+      orderBy: [{ field: 'amount', dir: 'desc' }],
+      take: 3,
+    } as ValueExpression) as AggregateValueNode;
+    expect(top.issues).toEqual([]);
+    expect(top.type).toMatchObject({ kind: 'String', isList: true });
   });
 
   test('a column that the mode cannot read resets it to count', () => {

@@ -1,5 +1,5 @@
 import type { FieldMap } from '@inixiative/field-map';
-import { type Bridge, type BridgeCardinality, stitchFieldMaps } from '@inixiative/json-rules';
+import { type BridgeCardinality, type JoinedBridge, stitchFieldMaps } from '@inixiative/json-rules';
 import { useState } from 'react';
 import { sampleBridges } from '../samples';
 import { Badge, Button, Empty, Panel, Row, tokens } from '../ui';
@@ -86,7 +86,7 @@ export const BridgesTab = ({ ws, patch }: TabProps) => {
       setError('Pick both endpoints (map, model, on field).');
       return;
     }
-    const bridge: Bridge = {
+    const bridge: JoinedBridge = {
       endpoints: [
         { fieldMap: a.map, model: a.model, on: a.on },
         { fieldMap: b.map, model: b.model, on: b.on },
@@ -107,7 +107,7 @@ export const BridgesTab = ({ ws, patch }: TabProps) => {
 
   const remove = (i: number) => patch({ bridges: ws.bridges.filter((_, idx) => idx !== i) });
 
-  const describe = (br: Bridge) => {
+  const describe = (br: JoinedBridge) => {
     const [x, y] = br.endpoints;
     return `${x.fieldMap}:${x.model}.${x.on}  ↔  ${y.fieldMap}:${y.model}.${y.on}`;
   };

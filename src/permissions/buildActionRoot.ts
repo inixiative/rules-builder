@@ -7,6 +7,7 @@ import {
   lensesAtRow,
   relationHopsFrom,
   type SchemaMap,
+  validateActionRule,
 } from '@inixiative/permissions';
 import { type BuilderNode, buildRoot, type PickOption } from '../builder/buildNodes';
 import { createView, describeScopeFields, viewRoot } from '../schema/surface';
@@ -66,8 +67,10 @@ type BaseNode = {
   depth: number;
   kind: KindControl;
   remove?: () => void;
-  /** permissions' issues at this node: a read outside the lens it is judged in, a hop it cannot
-   *  take (`issuesForRuleReadsOutsideLens`). */
+  /** permissions' issues at this node: what its gate refuses (`validateActionRule`: a negated
+   *  condition, a match with no `exists`, a bare null check, a rule that delegates to itself), a
+   *  read outside the lens it is judged in, a hop it cannot take
+   *  (`issuesForRuleReadsOutsideLens`). */
   issues: ValidationIssue[];
 };
 /** A `rel` walk as a path of hops: one segment per relation crossed, each offering the hops
@@ -124,6 +127,9 @@ const actionsOf = (schema: RebacSchema, resource: string): string[] =>
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
+// permissions judges every `{ rule }` under json-rules' positive gate.
+const POSITIVE = { positive: true };
+
 const build = (
   node: ActionRule,
   path: ActionPath,
@@ -142,7 +148,12 @@ const build = (
       set: (k) => ctx.commit(setActionNode(ctx.root, path, defaultForKind(k))),
     },
     remove: path.length ? () => ctx.commit(removeActionNode(ctx.root, path)) : undefined,
-    issues: ctx.issues.filter((issue) => issue.path === issuePath),
+    issues: ctx.issues.filter(
+      (issue) =>
+        issue.path === issuePath ||
+        (kind === 'rule' &&
+          (issue.path === `${issuePath}.rule` || issue.path.startsWith(`${issuePath}.rule.`))),
+    ),
   };
 
   if (kind === 'any' || kind === 'all') {
@@ -246,16 +257,31 @@ const build = (
   if (kind === 'allow' || kind === 'deny') return base; // terminal true/false — kind picker only, no operands
 
   // rule (abac) — embed the condition builder; its commits fold back as { rule }.
-  // A `{ rule }` is authored in the rule lens it is judged in: the row with `__actor`.
+  // A `{ rule }` is authored in the rule lens it is judged in: the row with the supplied maps.
   const cond = (node as { rule: Condition }).rule;
   if (!ctx.at.rule) return base;
   const view = createView(ctx.at.rule);
   return {
     ...base,
-    rule: buildRoot(cond, view, describeScopeFields(viewRoot(view)), ctx.maxDepth, (next) =>
-      ctx.commit(setActionNode(ctx.root, path, { rule: next })),
+    rule: buildRoot(
+      cond,
+      view,
+      describeScopeFields(viewRoot(view), POSITIVE),
+      ctx.maxDepth,
+      (next) => ctx.commit(setActionNode(ctx.root, path, { rule: next })),
+      { surfaceOpts: POSITIVE },
     ),
   };
+};
+
+const gateIssues = (rule: ActionRule, opts: BuildActionOptions): ValidationIssue[] => {
+  const result = validateActionRule(
+    rule,
+    opts.action === undefined
+      ? undefined
+      : { schema: opts.schema, resource: opts.resource, action: opts.action },
+  );
+  return result.ok ? [] : result.errors;
 };
 
 /**
@@ -273,5 +299,8 @@ export const buildActionRoot = (rule: ActionRule, opts: BuildActionOptions): Act
     root: rule,
     maxDepth: opts.maxDepth ?? 4,
     commit: opts.commit,
-    issues: issuesForRuleReadsOutsideLens(opts.map, opts.schema, opts.resource, rule),
+    issues: [
+      ...gateIssues(rule, opts),
+      ...issuesForRuleReadsOutsideLens(opts.map, opts.schema, opts.resource, rule),
+    ],
   });

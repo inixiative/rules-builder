@@ -502,14 +502,15 @@ const root = pb.actionRoot('db:user', 'read');
   names. It returns the resource and action lists, add/remove/set actions, and
   `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches between:
   - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(map, resource).rule`);
-    `__actor` is a Json field of this row only;
+    the map's supplied rows (`actor:User.id`) are read from this row only;
   - `rel`: a walk of hops from `relationHopsFrom` (followed to-one relations and bridges, never
     back to a model passed), then an action of the resource it lands on;
   - `list`: any item of a list from `declaredListsOf`, its condition built at the item in what the
     list's `down` paths load (`lensesAtListItem`);
   - `delegate` (the resource's other actions), `any`, `all`, `allow`, `deny`.
 
-  Each node carries permissions' `issues` at its path (`issuesForRuleReadsOutsideLens`).
+  Each node carries permissions' `issues` at its path: reads outside its lens
+  (`issuesForRuleReadsOutsideLens`) and what the gate refuses (`validateActionRule`).
 - `useActionRuleBuilder({ map, schema, resource, action?, defaultValue?, onChange?, maxDepth? })`
   edits one `ActionRule` on a resource.
 - `useTransitionBuilder({ value, onChange, map, permissions, predicateLens?, maxDepth? })` owns an

@@ -86,11 +86,11 @@ describe('usePermissionBuilder — resource + action edits', () => {
     );
     act(() =>
       result.current.setAction('app:User', 'read', {
-        rule: { field: 'ownerId', operator: 'equals', path: '__actor.record.id' },
+        rule: { field: 'ownerId', operator: 'equals', path: 'actor:User.id' },
       }),
     );
     expect(result.current.value.permissions['app:User'].actions.read).toEqual({
-      rule: { field: 'ownerId', operator: 'equals', path: '__actor.record.id' },
+      rule: { field: 'ownerId', operator: 'equals', path: 'actor:User.id' },
     });
   });
 });

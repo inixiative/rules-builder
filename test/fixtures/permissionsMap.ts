@@ -1,9 +1,23 @@
+import type { FieldMap } from '@inixiative/field-map';
 import type { SchemaMap } from '@inixiative/permissions';
 import type { RebacSchema } from '../../src/permissions/types';
+
+const column = { kind: 'scalar', type: 'String' } as const;
+
+/** Who is acting, as an app supplies it: `actor:Acting` names the kind, `actor:<kind>` its row. */
+const actorMap: FieldMap = {
+  models: {
+    Acting: { fields: { model: { kind: 'enum', type: 'ActingKind', isList: false } } },
+    User: { fields: { id: column } },
+    Token: { fields: { id: column, userId: column } },
+  },
+  enums: { ActingKind: ['User', 'Token', 'Internal'] },
+};
 
 /** permissions' schema map for the permission-builder tests: a user in an organization in a
  *  region, with a declared list of drafts and an undeclared list of posts. */
 export const permissionsMap: SchemaMap = {
+  supplied: { maps: { actor: actorMap } },
   resources: {
     'app:User': 'User',
     'app:Organization': 'Organization',

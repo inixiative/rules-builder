@@ -63,17 +63,76 @@ describe('buildActionRoot — model-aware leaves', () => {
     });
   });
 
-  test('a rule leaf reads `__actor` on its own row only, as permissions injects it', () => {
+  test('a rule leaf reads the supplied maps (`actor:User.id`) from its own row only', () => {
     const n = build({ rule: { all: [] } }) as ActionLeafNode;
     expect(n.rule?.kind).toBe('group');
     const ok = build({
-      rule: { field: '__actor.model', operator: 'equals', value: 'User' },
+      rule: { field: 'actor:Acting.model', operator: 'equals', value: 'User' },
     }) as ActionLeafNode;
     expect(ok.issues).toEqual([]);
     const related = build({
-      rule: { field: 'organization.__actor.model', operator: 'equals', value: 'User' },
+      rule: { field: 'organization.actor:Acting.model', operator: 'equals', value: 'User' },
     }) as ActionLeafNode;
     expect(related.issues.length).toBeGreaterThan(0);
+  });
+
+  test("a rule leaf carries what permissions' gate refuses, on the leaf that holds it", () => {
+    const match = { rule: { field: 'ownerId', operator: 'equals', path: 'actor:User.id' } };
+    const codes = (n: ActionLeafNode) => n.issues.map((issue) => issue.code);
+
+    expect(codes(build(match, 'app:Post') as ActionLeafNode)).toEqual(['matchWithoutExists']);
+    expect(
+      codes(
+        build(
+          {
+            rule: {
+              all: [
+                { field: 'ownerId', operator: 'exists' },
+                { field: 'ownerId', operator: 'equals', path: 'actor:User.id' },
+              ],
+            },
+          },
+          'app:Post',
+        ) as ActionLeafNode,
+      ),
+    ).toEqual([]);
+    expect(
+      codes(
+        build(
+          { rule: { field: 'title', operator: 'notEquals', value: 'x' } },
+          'app:Post',
+        ) as ActionLeafNode,
+      ),
+    ).toEqual(['notPositive']);
+    expect(
+      codes(
+        build(
+          { rule: { field: 'title', operator: 'equals', value: null } },
+          'app:Post',
+        ) as ActionLeafNode,
+      ),
+    ).toEqual(['nullCheckWithoutRowKey']);
+
+    const group = build({ any: ['read', match] }, 'app:Post') as ActionGroupNode;
+    expect(group.issues).toEqual([]);
+    expect(codes(group.children[0] as ActionLeafNode)).toEqual([]);
+    expect(codes(group.children[1] as ActionLeafNode)).toEqual(['matchWithoutExists']);
+
+    const arm = build({ rel: 'drafts', arrayOperator: 'any', condition: match }) as ActionLeafNode;
+    expect(arm.issues).toEqual([]);
+    expect(codes(arm.list?.condition as ActionLeafNode)).toEqual(['matchWithoutExists']);
+  });
+
+  test('a rule leaf offers positive operators only, as permissions judges it', () => {
+    const n = build(
+      { rule: { field: 'title', operator: 'equals', value: 'x' } },
+      'app:Post',
+    ) as ActionLeafNode;
+    const offered = (n.rule as { operator: { options: { value: string }[] } }).operator.options.map(
+      (o) => o.value,
+    );
+    expect(offered).toContain('equals');
+    expect(offered).not.toContain('notEquals');
   });
 
   test("a rule reading back to a model it passed shows permissions' issue", () => {

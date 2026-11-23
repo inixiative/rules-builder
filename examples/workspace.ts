@@ -1,8 +1,8 @@
 import type { FieldMap } from '@inixiative/field-map';
 import {
-  type Bridge,
   type Condition,
   createLens,
+  type JoinedBridge,
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
@@ -19,7 +19,7 @@ export type SavedLens = {
   mapName: string;
   model: string;
   maps?: string[];
-  bridges?: Bridge[];
+  bridges?: JoinedBridge[];
 };
 
 /** A narrowing: picks a parent (lens or narrowing) + a restriction chain (picks/omits/where/enum/sources/relations).
@@ -36,7 +36,7 @@ export const DEFAULT_MAX_DEPTH = 4;
 
 export type Workspace = {
   maps: Record<string, FieldMap>;
-  bridges: Bridge[];
+  bridges: JoinedBridge[];
   lenses: Record<string, SavedLens>;
   narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
@@ -156,7 +156,7 @@ export const importWorkspace = (json: string): Workspace => {
   if ('bridges' in parsed) {
     if (!Array.isArray(parsed.bridges))
       throw new Error('importWorkspace: bridges must be an array');
-    ws.bridges = parsed.bridges as Bridge[];
+    ws.bridges = parsed.bridges as JoinedBridge[];
   }
   if ('lenses' in parsed) {
     if (!isPlainObject(parsed.lenses)) throw new Error('importWorkspace: lenses must be an object');

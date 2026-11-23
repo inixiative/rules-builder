@@ -1,8 +1,9 @@
 import type { FieldMap } from '@inixiative/field-map';
 import {
-  type Bridge,
   getLensRoot,
   indexBridges,
+  isJoinedBridge,
+  type JoinedBridge,
   type Lens,
   type LensNarrowing,
   materializeSources,
@@ -80,7 +81,7 @@ export const sampleMaps: Record<string, FieldMap> = {
 };
 
 /** One Account (the "one") fans out to many app Users (the "many"). */
-export const sampleBridges: Bridge[] = [
+export const sampleBridges: JoinedBridge[] = [
   {
     endpoints: [
       { fieldMap: 'crm', model: 'Account', on: 'id' },
@@ -187,7 +188,7 @@ export const sampleRows: Record<string, Record<string, unknown>[]> = {
  */
 export const sampleSourceValues = (lens: Lens | LensNarrowing): SourceValues[] => {
   const root = getLensRoot(lens);
-  const bridges = root.bridges ?? [];
+  const bridges = (root.bridges ?? []).filter(isJoinedBridge);
   const raw = Object.fromEntries(
     bridges
       .flatMap((b) => b.endpoints)

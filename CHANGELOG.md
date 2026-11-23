@@ -16,14 +16,20 @@ Plans: `docs/plans/0.34-computation-and-evaluation.md`, `docs/plans/0.34-permiss
 - **`@inixiative/rules-builder/permissions`** is a new entry holding the permission and transition
   builders. They take permissions' `SchemaMap` (`map`), the object `createRebacCheck` takes, and
   author every rule in the lens permissions judges it in (`lensesAtRow`, `lensesAtListItem`,
-  `relationHopsFrom`, `declaredListsOf`, `issuesForRuleReadsOutsideLens`; peer
-  `@inixiative/permissions` ^0.25.0). Why: the builder built its own views (every relation,
+  `relationHopsFrom`, `declaredListsOf`, `issuesForRuleReadsOutsideLens`, `validateActionRule`;
+  peer `@inixiative/permissions` ^0.27.0). Why: the builder built its own views (every relation,
   `__actor` on every model, its own `@permissions(down)` parse), which offered rules
   `validateSchema` refuses. `rawResources.ts`, `resourceView` / `listRelations`, and
   `useActionRuleBuilder`'s lens `source` mode are gone; `useTransitionBuilder` takes `map`,
   `permissions` and an optional `predicateLens`.
-- **Permissions:** `self` gone (permissions 0.7 replaced it); the list arm (`kind: 'list'`);
-  `__actor` on a `{ rule }`'s own row; every node carries permissions' `issues` at its path.
+- **Permissions:** `self` gone (permissions 0.7 replaced it); the list arm (`kind: 'list'`); a
+  `{ rule }` reads the map's supplied rows (`actor:User.id`, permissions 0.26) from its own row
+  and offers positive operators only; every node carries permissions' `issues` at its path: a
+  read outside its lens, and what the gate refuses (a negated condition, a match with no
+  `exists`, a bare null check). Why the gate's issues: permissions refuses those rules when the
+  schema is installed, and the builder showed nothing until then.
+- **Peer `@inixiative/json-rules` ^4.6.0** (was ^4.2), `@inixiative/field-map` ^0.1.2. A value
+  expression offers `pick` (4.5: the window's values, one for `take: 1`, else a list).
 - **Removed:** `lensValuePicker` (it emitted paths through a to-many relation, which json-rules 4
   refuses; the value editor reads `lensScopeSurface`).
 - **`docs/VERBS.md`** catalogs every exported function, with a test that fails when one is missing.
