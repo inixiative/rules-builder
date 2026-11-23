@@ -13,6 +13,15 @@ Plans: `docs/plans/0.34-computation-and-evaluation.md`, `docs/plans/0.34-permiss
   same pieces plus an entitlement editor.
 - **Conditions:** aggregate modes from json-rules, the full window (`orderBy`, `take`, `skip`), an
   `IfNode`, and the `positive` gate.
+- **A `pick` in an aggregate rule** (json-rules 4.5). The aggregate control asks json-rules what
+  the mode takes: `modeOptions` are the modes every declared target runs (`pick` is `check()`
+  only), the column picker offers what `aggregateModesForKind` says the mode reads, the operators
+  are `getAggregateOperators(mode, { list })` (one picked value compares as its column does,
+  several take `contains` / `notContains`), and `value` carries the `kind` it compares as and the
+  column's `options`. Changing the mode, the column or `take` drops a column the mode does not
+  read and a comparison it no longer takes. `AggregateControl.value.current` is `unknown` (was a
+  number or a pair). Why: 4.5 added `pick` to `AGGREGATE_MODES`, and the control, written for
+  `sum` / `avg`, offered it with threshold operators over numeric columns.
 - **`@inixiative/rules-builder/permissions`** is a new entry holding the permission and transition
   builders. They take permissions' `SchemaMap` (`map`), the object `createRebacCheck` takes, and
   author every rule in the lens permissions judges it in (`lensesAtRow`, `lensesAtListItem`,

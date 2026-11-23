@@ -1,3 +1,4 @@
+import { type AggregateMode, type FieldKind, NUMERIC_KINDS } from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -11,6 +12,10 @@ import {
   useRuleBuilder,
   type ValueControl,
 } from '../src';
+
+// A number input where the aggregate compares a number (`sum` / `avg`, a pick of a numeric column).
+const comparesNumber = (kind: FieldKind | undefined): boolean =>
+  kind !== undefined && NUMERIC_KINDS.includes(kind);
 
 /** Fold a picker option's icon into its label so a native <select> renders it
  *  (an <option> can't hold arbitrary markup). Field options carry `icon` from a
@@ -335,7 +340,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             ariaLabel="aggregate mode"
             value={node.aggregate.mode}
             options={node.aggregate.modeOptions}
-            onChange={(m) => node.aggregate?.setMode(m as 'sum' | 'avg')}
+            onChange={(m) => node.aggregate?.setMode(m as AggregateMode)}
           />
           <Picker
             ariaLabel="aggregate field"
@@ -393,7 +398,18 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
                 }
               />
             </>
-          ) : (
+          ) : node.aggregate.value.options ? (
+            <Picker
+              ariaLabel="aggregate value"
+              value={
+                typeof node.aggregate.value.current === 'string'
+                  ? node.aggregate.value.current
+                  : undefined
+              }
+              options={node.aggregate.value.options}
+              onChange={(v) => node.aggregate?.value.set(v)}
+            />
+          ) : comparesNumber(node.aggregate.value.kind) ? (
             <input
               aria-label="aggregate value"
               type="number"
@@ -405,6 +421,17 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
                 node.aggregate?.value.set(
                   e.target.value === '' ? undefined : Number(e.target.value),
                 )
+              }
+            />
+          ) : (
+            <input
+              aria-label="aggregate value"
+              style={{ ...sel, width: 120 }}
+              value={
+                typeof node.aggregate.value.current === 'string' ? node.aggregate.value.current : ''
+              }
+              onChange={(e) =>
+                node.aggregate?.value.set(e.target.value === '' ? undefined : e.target.value)
               }
             />
           )}

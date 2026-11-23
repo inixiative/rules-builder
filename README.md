@@ -466,6 +466,10 @@ pure root builder taking one `commit` (so they compose) with a thin hook over it
   and literals. `positive: true` (in `useRuleBuilder` and `SurfaceOptions`) offers only operators
   that cannot hold on a missing value, and marks a negated rule, an array rule or an implication
   invalid.
+  An aggregate rule's control asks json-rules what its mode takes: the modes every target runs,
+  the columns the mode reads, its operators, and the kind its value compares as. A `pick` is the
+  values the window picks (`check()` only): one value (`take: 1`) compares as its column does,
+  several take `contains` / `notContains`.
 - **Value expressions** (`evaluateValue`): `useValueExpressionBuilder({ source, defaultValue?,
   onChange?, bindings?, shapes?, expectedKind?, acceptsType? })` / `buildValueExpressionRoot`. A
   node per value: a literal (stamped `{ value, coerceType }` from `expectedKind` when the target is

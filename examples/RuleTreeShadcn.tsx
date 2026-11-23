@@ -1,4 +1,10 @@
-import type { Condition, SourceValues } from '@inixiative/json-rules';
+import {
+  type AggregateMode,
+  type Condition,
+  type FieldKind,
+  NUMERIC_KINDS,
+  type SourceValues,
+} from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -17,6 +23,10 @@ import { Badge, Button, Input, MultiSelect, Select } from './shadcn';
 
 /** Fold a field option's icon into its label — the shadcn <Select> renders plain
  *  <option>s, so a {@link Decoration}'s icon rides along in the text. */
+// A number input where the aggregate compares a number (`sum` / `avg`, a pick of a numeric column).
+const comparesNumber = (kind: FieldKind | undefined): boolean =>
+  kind !== undefined && NUMERIC_KINDS.includes(kind);
+
 const iconize = (options: readonly { value: string; label: string; icon?: string }[]) =>
   options.map((o) => ({ value: o.value, label: o.icon ? `${o.icon}  ${o.label}` : o.label }));
 
@@ -236,12 +246,12 @@ const AggregateFacet = ({ node }: { node: ArrayNode }) => {
         aria-label="aggregate mode"
         options={agg.modeOptions}
         value={agg.mode}
-        onChange={(m) => agg.setMode(m as 'sum' | 'avg')}
+        onChange={(m) => agg.setMode(m as AggregateMode)}
       />
       <span className="text-xs text-muted-foreground">of</span>
       <Select
         aria-label="aggregate field"
-        placeholder="numeric field"
+        placeholder="field"
         options={iconize(agg.field.options)}
         value={agg.field.value ?? ''}
         onChange={agg.field.set}
@@ -280,7 +290,15 @@ const AggregateFacet = ({ node }: { node: ArrayNode }) => {
             }
           />
         </>
-      ) : (
+      ) : agg.value.options ? (
+        <Select
+          aria-label="aggregate value"
+          placeholder="value"
+          options={agg.value.options}
+          value={typeof value === 'string' ? value : ''}
+          onChange={(v) => agg.value.set(v)}
+        />
+      ) : comparesNumber(agg.value.kind) ? (
         <Input
           aria-label="aggregate value"
           type="number"
@@ -289,6 +307,13 @@ const AggregateFacet = ({ node }: { node: ArrayNode }) => {
           onChange={(e) =>
             agg.value.set(e.target.value === '' ? undefined : Number(e.target.value))
           }
+        />
+      ) : (
+        <Input
+          aria-label="aggregate value"
+          className="w-32"
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => agg.value.set(e.target.value === '' ? undefined : e.target.value)}
         />
       )}
     </div>

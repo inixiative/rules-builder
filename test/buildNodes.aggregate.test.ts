@@ -262,3 +262,133 @@ describe('buildRoot — aggregate nodes', () => {
     expect(a.aggregate?.field.value).toBe('total');
   });
 });
+
+describe('buildRoot — a pick: the values the window of an aggregate rule picks', () => {
+  const agg = (c: Condition, surfaceOpts: SurfaceOptions = {}) =>
+    (build(c, surfaceOpts).children[0] as ArrayNode).aggregate as NonNullable<
+      ArrayNode['aggregate']
+    >;
+  const node = (c: Condition, surfaceOpts: SurfaceOptions = {}) =>
+    build(c, surfaceOpts).children[0] as ArrayNode;
+  // The label of the largest order.
+  const pickRule = (over: Record<string, unknown> = {}): Condition =>
+    aggRule({
+      aggregate: { mode: 'pick', field: 'label' },
+      orderBy: [{ field: 'total', dir: 'desc' }],
+      take: 1,
+      operator: 'equals',
+      value: 'gold',
+      condition: undefined,
+      ...over,
+    });
+  const values = (options: { value: string }[] | undefined) => options?.map((o) => o.value);
+
+  test('is offered where every target runs it, and stays listed where it is authored', () => {
+    expect(values(agg(aggRule()).modeOptions)).toEqual(['sum', 'avg', 'pick']);
+    expect(values(agg(aggRule(), { targets: ['toPrisma'] as never }).modeOptions)).toEqual([
+      'sum',
+      'avg',
+    ]);
+    expect(values(agg(pickRule(), { targets: ['toPrisma'] as never }).modeOptions)).toContain(
+      'pick',
+    );
+    expect(node(pickRule(), { targets: ['toPrisma'] as never }).valid).toBe(false);
+  });
+
+  test('reads a column of any kind, never a relation', () => {
+    expect(values(agg(pickRule()).field.options)?.sort()).toEqual(
+      ['label', 'metadata', 'occurredAt', 'quantity', 'status', 'total', 'userId'].sort(),
+    );
+    expect(agg(pickRule()).field.valid).toBe(true);
+    expect(node(pickRule()).valid).toBe(true);
+    // `sum` still reads numbers and Json only.
+    expect(values(agg(aggRule()).field.options)?.sort()).toEqual(['metadata', 'quantity', 'total']);
+  });
+
+  test('one value (take 1) compares as its column does; several take membership only', () => {
+    const one = agg(pickRule());
+    expect(values(one.operator.options)).toEqual(
+      expect.arrayContaining(['equals', 'in', 'contains', 'greaterThan']),
+    );
+    expect(one.value.kind).toBe('String');
+    expect(values(agg(pickRule({ take: 3, operator: 'contains' })).operator.options)).toEqual([
+      'contains',
+      'notContains',
+    ]);
+    expect(
+      values(agg(pickRule({ take: undefined, operator: 'contains' })).operator.options),
+    ).toEqual(['contains', 'notContains']);
+    expect(node(pickRule({ take: 3, operator: 'contains' })).valid).toBe(true);
+  });
+
+  test("the value is picked from the column's enum", () => {
+    const status = agg(pickRule({ aggregate: { mode: 'pick', field: 'status' }, value: 'paid' }));
+    expect(status.value.kind).toBe('Enum');
+    expect(values(status.value.options)).toEqual(['pending', 'paid']);
+    expect(
+      node(pickRule({ aggregate: { mode: 'pick', field: 'status' }, value: 'refunded' })).valid,
+    ).toBe(false);
+    // `sum` compares a number, whatever the column.
+    expect(agg(aggRule()).value.kind).toBe('Float');
+    expect(agg(aggRule()).value.options).toBeUndefined();
+  });
+
+  test('sum → pick keeps the window and a comparison the pick still takes', () => {
+    agg(aggRule({ orderBy: [{ field: 'total', dir: 'desc' }], take: 1 })).setMode('pick');
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({
+      aggregate: { mode: 'pick', field: 'total' },
+      orderBy: [{ field: 'total', dir: 'desc' }],
+      take: 1,
+      operator: 'greaterThan',
+      value: 1000,
+    });
+  });
+
+  test('pick → sum drops a column sum cannot read, and a value compared as another kind', () => {
+    agg(pickRule()).setMode('sum');
+    const next = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(next.aggregate).toEqual({ mode: 'sum' });
+    expect(next.operator).toBe('equals');
+    expect(next).not.toHaveProperty('value');
+    expect(next.take).toBe(1);
+  });
+
+  test('a new column of another kind drops the value, of the same kind keeps it', () => {
+    agg(pickRule()).field.set('status');
+    const moved = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(moved.aggregate).toEqual({ mode: 'pick', field: 'status' });
+    expect(moved.operator).toBe('equals');
+    expect(moved).not.toHaveProperty('value');
+
+    agg(pickRule()).field.set('userId');
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({
+      aggregate: { mode: 'pick', field: 'userId' },
+      value: 'gold',
+    });
+  });
+
+  test('take 1 → 3 makes the pick a list: a comparison a list does not take is dropped', () => {
+    node(pickRule()).window?.setTake(3);
+    const next = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(next.take).toBe(3);
+    expect(next).not.toHaveProperty('operator');
+    expect(next).not.toHaveProperty('value');
+
+    node(pickRule({ take: 3, operator: 'contains' })).window?.setTake(1);
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({
+      take: 1,
+      operator: 'contains',
+      value: 'gold',
+    });
+  });
+
+  test('a pick round-trips through stringify/parse', () => {
+    const saved: SavedRule = {
+      source: { maps: { app: map }, mapName: 'app', model: 'User' },
+      rule: pickRule(),
+    };
+    const round = parseSavedRule(stringifySavedRule(saved));
+    expect(round.rule).toEqual(saved.rule);
+    expect(agg(round.rule).mode).toBe('pick');
+  });
+});
