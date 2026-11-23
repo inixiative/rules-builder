@@ -504,6 +504,52 @@ describe('buildRoot — a pick: the values the window of an aggregate rule picks
     }
   });
 
+  test('the kind compared follows json-rules for every numeric kind', () => {
+    const numbers = resolve(
+      withAllRelations({
+        maps: {
+          app: {
+            models: {
+              Account: { fields: { lines: { kind: 'object', type: 'Line', isList: true } } },
+              Line: {
+                fields: {
+                  whole: { kind: 'scalar', type: 'Int' },
+                  big: { kind: 'scalar', type: 'BigInt' },
+                  exact: { kind: 'scalar', type: 'Decimal' },
+                  real: { kind: 'scalar', type: 'Float' },
+                },
+              },
+            },
+          },
+        },
+        mapName: 'app',
+        model: 'Account',
+      }),
+    );
+    const shapes: Record<string, unknown>[] = ['sum', 'avg', 'pick'].flatMap((mode) => [
+      ...['whole', 'big', 'exact', 'real'].map((field) => ({
+        aggregate: { mode, field },
+        take: 1,
+      })),
+      { aggregate: { mode, field: 'whole' }, take: 1, coerceType: 'Decimal' },
+      { aggregate: { mode, field: 'real' }, take: 1, coerceType: 'Int' },
+    ]);
+    expect(shapes).toHaveLength(18);
+    for (const shape of shapes) {
+      const built = (
+        buildRoot(
+          { all: [{ ...shape, field: 'lines', operator: 'exists' }] } as never,
+          numbers,
+          describeScopeFields(viewRoot(numbers)),
+          4,
+          () => {},
+        ).children[0] as ArrayNode
+      ).aggregate;
+      const typed = inferValueType({ field: 'lines', ...shape } as never, numbers.lens);
+      expect([shape, built?.value.kind]).toEqual([shape, typed.kind]);
+    }
+  });
+
   test('a scalar list is read without a column', () => {
     const tagged = resolve(
       withAllRelations({

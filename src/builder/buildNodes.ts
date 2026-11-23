@@ -1,6 +1,7 @@
 import {
   AGGREGATE_MODES,
   type AggregateMode,
+  ALL_KINDS,
   aggregateModesForKind,
   type Condition,
   FieldKind,
@@ -377,6 +378,11 @@ type Ctx = {
   surfaceOpts: SurfaceOptions;
   /** The schema `validateRule` compiles each target against — the lens root. */
   schema: ReturnType<typeof schemaOf>;
+  /** Under `positive`: json-rules' refusals of the whole root, each at its path. A comparison
+   *  is positive by what is conjoined with it (an `exists` beside a match, a row key beside a
+   *  null check), so a leaf is judged in the rule, not alone. Absent inside an array rule's
+   *  sub-builder, whose leaves are judged alone. */
+  positiveIssues?: ValidationIssue[];
 };
 /** What a node sees: the visit it sits on + its selectable fields. On descent into an
  *  array node's elements, this swaps to the relation's own visit (the fields the lens
@@ -418,16 +424,47 @@ const targetsOf = (ctx: Ctx): RuleTarget[] =>
   ctx.surfaceOpts.targets?.length ? ctx.surfaceOpts.targets : ['check'];
 
 /** json-rules' own refusals of a node, as the engine meets it, on each of the builder's targets. */
-const targetIssues = (scope: Scope, node: Condition, ctx: Ctx): ValidationIssue[] =>
+const targetIssues = (
+  scope: Scope,
+  node: Condition,
+  ctx: Ctx,
+  positive = ctx.surfaceOpts.positive,
+): ValidationIssue[] =>
   targetsOf(ctx).flatMap(
     (target) =>
       validateRule(enclose(scope, node), {
         target,
         ...ctx.schema,
-        ...(ctx.surfaceOpts.positive ? { positive: true } : {}),
-        ...(ctx.surfaceOpts.rowKey ? { rowKey: ctx.surfaceOpts.rowKey } : {}),
+        ...(positive ? { positive: true } : {}),
+        ...(positive && ctx.surfaceOpts.rowKey ? { rowKey: ctx.surfaceOpts.rowKey } : {}),
       }).errors,
   );
+
+// The path json-rules reports a node's issues at: `$`, then `.all[i]` / `.any[i]` through groups
+// and the key through an implication or an array rule's sub-condition.
+const issuePathOf = (root: Condition, path: RulePath): string => {
+  let at = '$';
+  for (let d = 0; d < path.length; d++) {
+    const segment = path[d];
+    if (typeof segment !== 'number') {
+      at += `.${segment}`;
+      continue;
+    }
+    const parent = getNode(root, path.slice(0, d));
+    at += `.${parent !== undefined && isGroupNode(parent) ? groupOperatorOf(parent) : 'all'}[${segment}]`;
+  }
+  return at;
+};
+
+/** A leaf's refusals: on each target alone, and under `positive` the whole rule's at its path. */
+const leafIssues = (scope: Scope, node: Condition, path: RulePath, ctx: Ctx): ValidationIssue[] => {
+  if (ctx.positiveIssues === undefined) return targetIssues(scope, node, ctx);
+  const at = issuePathOf(ctx.root, path);
+  return [
+    ...targetIssues(scope, node, ctx, false),
+    ...ctx.positiveIssues.filter((issue) => issue.path === at || issue.path.startsWith(`${at}.`)),
+  ];
+};
 
 const scopeLabel = (scope: Scope, ctx: Ctx): string => {
   const visit = visitOf(scope.at);
@@ -520,23 +557,6 @@ const axisSiblings = (root: Condition, path: RulePath): Condition[] => {
       out.push(...groupChildrenOf(parent).filter((_, i) => i !== path[d]));
   }
   return out;
-};
-
-// json-rules judges a null check positive beside an `exists` on its row's key, anywhere the two
-// are conjoined, so under a row key a leaf is judged with the key checks conjoined with it.
-const besideRowKeys = (node: Condition, conjoined: Condition[], ctx: Ctx): Condition => {
-  const rowKey = ctx.surfaceOpts.rowKey;
-  if (!rowKey) return node;
-  const keyChecks = conjoined.filter((sibling) => {
-    if (typeof sibling !== 'object' || sibling === null) return false;
-    const { field, operator } = sibling as { field?: unknown; operator?: unknown };
-    return (
-      operator === 'exists' &&
-      typeof field === 'string' &&
-      (field === rowKey || field.endsWith(`.${rowKey}`))
-    );
-  });
-  return keyChecks.length ? ({ all: [...keyChecks, node] } as Condition) : node;
 };
 
 const pinField = (
@@ -670,17 +690,17 @@ const picksSeveral = (mode: AggregateMode, rec: Rec): boolean => mode === 'pick'
 
 // The kind an aggregate rule's value is compared as, as json-rules types the aggregate
 // (`inferValueType`; a test holds the two together): a pick is its elements' kind, a `sum` their
-// numeric kind, an `avg` a Float, and `coerceType` reads the elements as another kind.
+// numeric kind, an `avg` a Float (a Decimal of Decimals), and `coerceType` reads the elements as
+// another kind.
 const comparedKind = (
   mode: AggregateMode,
   elementKind: FieldKind | undefined,
   coerceType: unknown,
 ): FieldKind | undefined => {
-  const read = (typeof coerceType === 'string' ? coerceType : elementKind) as FieldKind | undefined;
+  const read = ALL_KINDS.find((kind) => kind === coerceType) ?? elementKind;
   if (mode === 'pick') return read;
-  return mode === 'sum' && read !== undefined && NUMERIC_KINDS.includes(read)
-    ? read
-    : FieldKind.Float;
+  if (mode === 'avg') return read === FieldKind.Decimal ? FieldKind.Decimal : FieldKind.Float;
+  return read !== undefined && NUMERIC_KINDS.includes(read) ? read : FieldKind.Float;
 };
 
 const aggregateModeOf = (mode: string | undefined): AggregateMode =>
@@ -722,10 +742,9 @@ const buildLeaf = (
   const located = fieldName === undefined ? undefined : locate(fieldName, scope);
   const frameFields = located?.frame.fields ?? [];
   const localName = located?.name;
-  const conjoined = axisSiblings(ctx.root, path);
   let field = pinField(
     frameFields.find((f) => f.name === localName),
-    conjoined,
+    axisSiblings(ctx.root, path),
   );
   let baseName = fieldName;
   let subPath: string | undefined;
@@ -901,7 +920,7 @@ const buildLeaf = (
     valid:
       valueValid &&
       validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
-      targetIssues(scope, besideRowKeys(node, conjoined, ctx), ctx).length === 0,
+      leafIssues(scope, node, path, ctx).length === 0,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -1005,6 +1024,7 @@ const buildArray = (
     const subCtx: Ctx = {
       ...ctx,
       root: subRoot,
+      positiveIssues: undefined,
       commit: (next) => ctx.commit(setNode(ctx.root, path, { ...rec, [key]: next } as Condition)),
     };
     // Canonical facet shape (identity leading + one trailing user-rows group): the
@@ -1612,6 +1632,12 @@ export const buildRoot = (
     surfaceOpts: opts.surfaceOpts ?? {},
     schema: schemaOf(view.lens),
   };
+  if (ctx.surfaceOpts.positive)
+    ctx.positiveIssues = validateRule(normalized, {
+      ...ctx.schema,
+      positive: true,
+      ...(ctx.surfaceOpts.rowKey ? { rowKey: ctx.surfaceOpts.rowKey } : {}),
+    }).errors;
   return buildNode(normalized, [], 0, ctx, {
     at: viewRoot(view),
     fields,

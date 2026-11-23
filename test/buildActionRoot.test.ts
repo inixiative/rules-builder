@@ -143,6 +143,82 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect((bare.rule as { valid: boolean }).valid).toBe(false);
   });
 
+  test('a leaf is valid where json-rules accepts the whole rule, and only the leaf at fault is not', () => {
+    const validity = (rule: unknown, resource = 'app:User') =>
+      (
+        (build({ rule } as never, resource) as ActionLeafNode).rule as {
+          children: { valid?: boolean; children?: { valid: boolean }[] }[];
+        }
+      ).children.map((child) => child.children?.map((inner) => inner.valid) ?? child.valid);
+
+    // A match beside the `exists` on its field.
+    expect(
+      validity({
+        all: [
+          { field: 'organizationId', operator: 'exists' },
+          { field: 'organizationId', operator: 'equals', path: 'actor:User.id' },
+        ],
+      }),
+    ).toEqual([true, true]);
+    // The key check conjoined from inside a sibling group.
+    expect(
+      validity({
+        all: [
+          { all: [{ field: 'id', operator: 'exists' }] },
+          { field: 'role', operator: 'equals', value: null },
+        ],
+      }),
+    ).toEqual([[true], true]);
+    // The two in one `any` are not conjoined.
+    expect(
+      validity({
+        any: [
+          { field: 'id', operator: 'exists' },
+          { field: 'role', operator: 'equals', value: null },
+        ],
+      }),
+    ).toEqual([true, false]);
+    // A fault in the key check is its own, not the null check's.
+    expect(
+      validity({
+        all: [
+          { field: 'id', operator: 'exists', value: 1 },
+          { field: 'role', operator: 'equals', value: null },
+        ],
+      }),
+    ).toEqual([false, true]);
+  });
+
+  test("across nestings, every leaf is valid exactly when permissions' gate accepts the rule", () => {
+    const key = { field: 'id', operator: 'exists' };
+    const nul = { field: 'role', operator: 'equals', value: null };
+    const has = { field: 'organizationId', operator: 'exists' };
+    const match = { field: 'organizationId', operator: 'equals', path: 'actor:User.id' };
+    const plain = { field: 'role', operator: 'equals', value: 'admin' };
+    const leaves = [key, nul, has, match, plain];
+    const pairs = leaves.flatMap((a) => leaves.map((b) => [a, b]));
+    const rules: unknown[] = pairs.flatMap(([a, b]) => [
+      { all: [a, b] },
+      { any: [a, b] },
+      { all: [a, { all: [b] }] },
+      { all: [a, { any: [b, plain] }] },
+      { any: [a, { all: [b, key] }] },
+      { all: [{ all: [a] }, { all: [b] }] },
+    ]);
+    const leafValidity = (node: { valid?: boolean; children?: unknown[] }): boolean[] =>
+      node.children
+        ? node.children.flatMap((child) => leafValidity(child as never))
+        : [node.valid === true];
+    expect(rules).toHaveLength(150);
+    for (const rule of rules) {
+      const built = build({ rule } as never) as ActionLeafNode;
+      expect([rule, leafValidity(built.rule as never).every(Boolean)]).toEqual([
+        rule,
+        built.issues.length === 0,
+      ]);
+    }
+  });
+
   test('an issue below a node that no child carries shows on that node', () => {
     const arm = build({
       rel: 'drafts',

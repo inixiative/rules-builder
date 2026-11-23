@@ -1,4 +1,4 @@
-import type { AggregateMode } from '@inixiative/json-rules';
+import { type AggregateMode, NUMERIC_KINDS } from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -93,7 +93,7 @@ const LiteralValue = ({
   if (value.shape === 'range' || value.shape === 'dateRange') {
     const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
     const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
-    const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+    const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
     const type = isDate ? 'date' : numeric ? 'number' : 'text';
     const toInput = (v: unknown) =>
       v == null ? '' : isDate && typeof v === 'string' ? v.slice(0, 10) : String(v);
@@ -170,7 +170,7 @@ const LiteralValue = ({
       />
     );
   }
-  const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+  const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
   return (
     <input
       aria-label="value"

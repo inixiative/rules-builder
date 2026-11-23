@@ -28,8 +28,11 @@ Plans: `docs/plans/0.34-computation-and-evaluation.md`, `docs/plans/0.34-permiss
   alone when the kind compared changed. Why: 4.5 added `pick` to `AGGREGATE_MODES`, and the
   control, written for `sum` / `avg`, offered it with threshold operators over numeric columns.
 - **`SurfaceOptions.rowKey`** (json-rules 4.6 `validateRule({ rowKey })`): with `positive`, a null
-  check is valid beside an `exists` on its row's key. A leaf is judged with the key checks
-  conjoined with it, as json-rules judges the whole rule.
+  check is valid beside an `exists` on its row's key.
+- **Under `positive` a leaf is judged in its rule, not alone:** it is invalid where json-rules
+  reports an issue for the whole rule at its path. Why: a comparison is positive by what is
+  conjoined with it (an `exists` beside a match, a row key beside a null check), so a leaf
+  judged alone was marked invalid in rules json-rules accepts.
 - **`@inixiative/rules-builder/permissions`** is a new entry holding the permission and transition
   builders. They take permissions' `SchemaMap` (`map`), the object `createRebacCheck` takes, and
   author every rule in the lens permissions judges it in (`lensesAtRow`, `lensesAtListItem`,
