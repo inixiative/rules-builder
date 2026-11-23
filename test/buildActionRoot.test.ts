@@ -123,6 +123,43 @@ describe('buildActionRoot — model-aware leaves', () => {
     expect(codes(arm.list?.condition as ActionLeafNode)).toEqual(['matchWithoutExists']);
   });
 
+  test("a null check beside an exists on its row's key is valid, as permissions accepts it", () => {
+    const beside = build({
+      rule: {
+        all: [
+          { field: 'id', operator: 'exists' },
+          { field: 'role', operator: 'equals', value: null },
+        ],
+      },
+    }) as ActionLeafNode;
+    expect(beside.issues).toEqual([]);
+    const children = (beside.rule as { children: { valid: boolean }[] }).children;
+    expect(children.map((child) => child.valid)).toEqual([true, true]);
+
+    const bare = build({
+      rule: { field: 'role', operator: 'equals', value: null },
+    }) as ActionLeafNode;
+    expect(bare.issues.map((issue) => issue.code)).toEqual(['nullCheckWithoutRowKey']);
+    expect((bare.rule as { valid: boolean }).valid).toBe(false);
+  });
+
+  test('an issue below a node that no child carries shows on that node', () => {
+    const arm = build({
+      rel: 'drafts',
+      arrayOperator: 'all',
+      condition: 'read',
+    } as never) as ActionLeafNode;
+    expect(arm.issues.map((issue) => issue.path)).toEqual(['$.arrayOperator']);
+    expect((arm.list?.condition as ActionLeafNode).issues).toEqual([]);
+  });
+
+  test('a list arm saved with no condition builds, with the gate saying what is missing', () => {
+    const arm = build({ rel: 'drafts', arrayOperator: 'any' } as never) as ActionLeafNode;
+    expect(arm.kind.value).toBe('list');
+    expect(arm.list?.condition).toBeUndefined();
+    expect(arm.issues.length).toBeGreaterThan(0);
+  });
+
   test('a rule leaf offers positive operators only, as permissions judges it', () => {
     const n = build(
       { rule: { field: 'title', operator: 'equals', value: 'x' } },

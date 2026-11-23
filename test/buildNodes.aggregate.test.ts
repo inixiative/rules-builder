@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { Condition, FieldMap } from '@inixiative/json-rules';
+import { type Condition, type FieldMap, inferValueType } from '@inixiative/json-rules';
 import { type ArrayNode, buildRoot, type LeafNode } from '../src/builder/buildNodes';
 import {
   describeScopeFields,
@@ -367,19 +367,188 @@ describe('buildRoot — a pick: the values the window of an aggregate rule picks
     });
   });
 
-  test('take 1 → 3 makes the pick a list: a comparison a list does not take is dropped', () => {
+  test('take decides one value or a list, and the comparison does not cross between them', () => {
     node(pickRule()).window?.setTake(3);
-    const next = (committed as { all: Record<string, unknown>[] }).all[0];
-    expect(next.take).toBe(3);
-    expect(next).not.toHaveProperty('operator');
-    expect(next).not.toHaveProperty('value');
+    const listed = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(listed.take).toBe(3);
+    expect(listed).not.toHaveProperty('operator');
+    expect(listed).not.toHaveProperty('value');
 
+    // `contains` is a substring of one value and a member of a list: it is not carried over.
     node(pickRule({ take: 3, operator: 'contains' })).window?.setTake(1);
+    const one = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(one.take).toBe(1);
+    expect(one).not.toHaveProperty('operator');
+    expect(one).not.toHaveProperty('value');
+
+    // A change that keeps it a list keeps the comparison.
+    node(pickRule({ take: 3, operator: 'contains' })).window?.setTake(5);
     expect((committed as { all: unknown[] }).all[0]).toMatchObject({
-      take: 1,
+      take: 5,
       operator: 'contains',
       value: 'gold',
     });
+  });
+
+  test('a list pick compares one member: a scalar of the column kind', () => {
+    const several = agg(
+      pickRule({
+        aggregate: { mode: 'pick', field: 'quantity' },
+        take: 3,
+        operator: 'contains',
+        value: 2,
+      }),
+    );
+    expect(several.value.shape).toBe('scalar');
+    expect(several.value.kind).toBe('Int');
+    expect(agg(pickRule({ take: 3, operator: undefined, value: undefined })).value.shape).toBe(
+      'none',
+    );
+  });
+
+  test('a path or a binding compared with goes as a value does', () => {
+    const withPath = pickRule({ value: undefined, path: 'tier' });
+    node(withPath).window?.setTake(3);
+    const listed = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(listed).not.toHaveProperty('operator');
+    expect(listed).not.toHaveProperty('path');
+
+    agg(withPath).setMode('sum');
+    const summed = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(summed.operator).toBe('equals');
+    expect(summed).not.toHaveProperty('path');
+
+    agg(pickRule({ value: undefined, bind: 'b' })).field.set('quantity');
+    expect((committed as { all: Record<string, unknown>[] }).all[0]).not.toHaveProperty('bind');
+
+    agg(withPath).field.set('userId');
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({ path: 'tier' });
+  });
+
+  test('a number stays across sum and pick over numeric columns', () => {
+    agg(aggRule({ aggregate: { mode: 'sum', field: 'quantity' }, value: 5, take: 1 })).setMode(
+      'pick',
+    );
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({
+      aggregate: { mode: 'pick', field: 'quantity' },
+      operator: 'greaterThan',
+      value: 5,
+    });
+    agg(
+      pickRule({
+        aggregate: { mode: 'pick', field: 'quantity' },
+        operator: 'greaterThan',
+        value: 5,
+      }),
+    ).setMode('sum');
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({
+      aggregate: { mode: 'sum', field: 'quantity' },
+      value: 5,
+    });
+  });
+
+  test('coerceType is the kind compared, and goes when the mode or column changes', () => {
+    const coerced = pickRule({ coerceType: 'Int', value: 3 });
+    expect(agg(coerced).value.kind).toBe('Int');
+    expect(
+      agg(pickRule({ aggregate: { mode: 'pick', field: 'status' }, coerceType: 'String' })).value
+        .options,
+    ).toBeUndefined();
+
+    agg(pickRule({ aggregate: { mode: 'pick', field: 'quantity' }, coerceType: 'String' })).setMode(
+      'sum',
+    );
+    expect((committed as { all: Record<string, unknown>[] }).all[0]).not.toHaveProperty(
+      'coerceType',
+    );
+    agg(coerced).field.set('userId');
+    expect((committed as { all: Record<string, unknown>[] }).all[0]).not.toHaveProperty(
+      'coerceType',
+    );
+    node(coerced).window?.setTake(1);
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({ coerceType: 'Int', value: 3 });
+  });
+
+  test('re-pointing the list drops the window, so a pick of one becomes a list', () => {
+    node(pickRule()).field.set('orders');
+    const next = (committed as { all: Record<string, unknown>[] }).all[0];
+    expect(next.aggregate).toEqual({ mode: 'pick' });
+    expect(next).not.toHaveProperty('take');
+    expect(next).not.toHaveProperty('operator');
+    expect(next).not.toHaveProperty('value');
+  });
+
+  test('an operator the catalog does not know is left alone', () => {
+    agg(pickRule({ operator: 'legacyOp' })).field.set('userId');
+    expect((committed as { all: unknown[] }).all[0]).toMatchObject({ operator: 'legacyOp' });
+  });
+
+  test('the kind compared is the type json-rules gives the aggregate', () => {
+    const columns = ['total', 'quantity', 'label', 'occurredAt', 'status'];
+    const shapes: Record<string, unknown>[] = [
+      ...columns.map((field) => ({ aggregate: { mode: 'pick', field }, take: 1 })),
+      ...columns.map((field) => ({ aggregate: { mode: 'pick', field }, take: 3 })),
+      { aggregate: { mode: 'sum', field: 'total' } },
+      { aggregate: { mode: 'sum', field: 'quantity' } },
+      { aggregate: { mode: 'avg', field: 'total' } },
+      { aggregate: { mode: 'avg', field: 'quantity' } },
+      { aggregate: { mode: 'pick', field: 'label' }, take: 1, coerceType: 'Int' },
+    ];
+    for (const shape of shapes) {
+      const expression = { field: 'orders', ...shape } as never;
+      const built = agg({ all: [{ ...shape, field: 'orders', operator: 'exists' }] } as never);
+      expect([shape, built.value.kind]).toEqual([
+        shape,
+        inferValueType(expression, lens.lens).kind,
+      ]);
+    }
+  });
+
+  test('a scalar list is read without a column', () => {
+    const tagged = resolve(
+      withAllRelations({
+        maps: {
+          app: {
+            models: {
+              Post: {
+                fields: {
+                  tags: { kind: 'scalar', type: 'String', isList: true },
+                  scores: { kind: 'scalar', type: 'Int', isList: true },
+                },
+              },
+            },
+          },
+        },
+        mapName: 'app',
+        model: 'Post',
+      }),
+    );
+    const over = (rule: Record<string, unknown>) =>
+      buildRoot(
+        { all: [rule] } as never,
+        tagged,
+        describeScopeFields(viewRoot(tagged)),
+        4,
+        () => {},
+      ).children[0] as ArrayNode;
+    const picked = over({
+      field: 'tags',
+      aggregate: { mode: 'pick' },
+      take: 1,
+      operator: 'equals',
+      value: 'a',
+    });
+    expect(picked.valid).toBe(true);
+    expect(picked.aggregate?.field.valid).toBe(true);
+    expect(picked.aggregate?.value.kind).toBe('String');
+    expect(
+      over({ field: 'scores', aggregate: { mode: 'sum' }, operator: 'greaterThan', value: 3 })
+        .valid,
+    ).toBe(true);
+    expect(
+      over({ field: 'tags', aggregate: { mode: 'sum' }, operator: 'greaterThan', value: 3 })
+        .aggregate?.field.valid,
+    ).toBe(false);
   });
 
   test('a pick round-trips through stringify/parse', () => {

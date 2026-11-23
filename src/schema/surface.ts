@@ -315,6 +315,9 @@ export type SurfaceOptions = {
    *  e.g. an entitlement's narrowing): only operators that can't hold on a missing value, and no
    *  array, aggregate or `if` rule. */
   positive?: boolean;
+  /** With `positive`: the key column of a row (json-rules `validateRule({ rowKey })`), beside
+   *  whose `exists` a null check on that row is positive (`id`, `org.id` for `org.deletedAt`). */
+  rowKey?: string;
   /** Field labels, keyed by `name` or `Model.name`. */
   labels?: Record<string, string>;
   /** Enum/sourced value labels, keyed by `name` or `Model.name` → (value → label). */

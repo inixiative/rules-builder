@@ -1,10 +1,4 @@
-import {
-  type AggregateMode,
-  type Condition,
-  type FieldKind,
-  NUMERIC_KINDS,
-  type SourceValues,
-} from '@inixiative/json-rules';
+import type { AggregateMode, Condition, SourceValues } from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -23,10 +17,6 @@ import { Badge, Button, Input, MultiSelect, Select } from './shadcn';
 
 /** Fold a field option's icon into its label — the shadcn <Select> renders plain
  *  <option>s, so a {@link Decoration}'s icon rides along in the text. */
-// A number input where the aggregate compares a number (`sum` / `avg`, a pick of a numeric column).
-const comparesNumber = (kind: FieldKind | undefined): boolean =>
-  kind !== undefined && NUMERIC_KINDS.includes(kind);
-
 const iconize = (options: readonly { value: string; label: string; icon?: string }[]) =>
   options.map((o) => ({ value: o.value, label: o.icon ? `${o.icon}  ${o.label}` : o.label }));
 
@@ -43,7 +33,11 @@ const scoped = (scopes?: ScopeOption[]) =>
  * @template/ui). Copy this, point the imports at your own `@/components/ui`, done.
  */
 
-const LiteralValue = ({ value }: { value: ValueControl }) => {
+const LiteralValue = ({
+  value,
+}: {
+  value: Pick<ValueControl, 'current' | 'shape' | 'kind' | 'options' | 'set'>;
+}) => {
   if (value.shape === 'range' || value.shape === 'dateRange') {
     const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
     const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
@@ -238,8 +232,6 @@ const Leaf = ({ node }: { node: LeafNode }) => (
 const AggregateFacet = ({ node }: { node: ArrayNode }) => {
   const agg = node.aggregate;
   if (!agg) return null;
-  const isRange = agg.value.shape === 'range';
-  const value = agg.value.current;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Select
@@ -269,53 +261,7 @@ const AggregateFacet = ({ node }: { node: ArrayNode }) => {
         value={agg.operator.value ?? ''}
         onChange={agg.operator.set}
       />
-      {isRange ? (
-        <>
-          <Input
-            aria-label="aggregate value min"
-            type="number"
-            className="w-20"
-            value={Array.isArray(value) ? (value[0] ?? '') : ''}
-            onChange={(e) =>
-              agg.value.set([Number(e.target.value), Array.isArray(value) ? value[1] : 0])
-            }
-          />
-          <Input
-            aria-label="aggregate value max"
-            type="number"
-            className="w-20"
-            value={Array.isArray(value) ? (value[1] ?? '') : ''}
-            onChange={(e) =>
-              agg.value.set([Array.isArray(value) ? value[0] : 0, Number(e.target.value)])
-            }
-          />
-        </>
-      ) : agg.value.options ? (
-        <Select
-          aria-label="aggregate value"
-          placeholder="value"
-          options={agg.value.options}
-          value={typeof value === 'string' ? value : ''}
-          onChange={(v) => agg.value.set(v)}
-        />
-      ) : comparesNumber(agg.value.kind) ? (
-        <Input
-          aria-label="aggregate value"
-          type="number"
-          className="w-24"
-          value={typeof value === 'number' ? value : ''}
-          onChange={(e) =>
-            agg.value.set(e.target.value === '' ? undefined : Number(e.target.value))
-          }
-        />
-      ) : (
-        <Input
-          aria-label="aggregate value"
-          className="w-32"
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => agg.value.set(e.target.value === '' ? undefined : e.target.value)}
-        />
-      )}
+      {agg.value.shape !== 'none' && <LiteralValue value={agg.value} />}
     </div>
   );
 };

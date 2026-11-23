@@ -1,4 +1,4 @@
-import type { Condition, ValidationIssue } from '@inixiative/json-rules';
+import { type Condition, engineGlobals, type ValidationIssue } from '@inixiative/json-rules';
 import {
   declaredListsOf,
   issuesForRuleReadsOutsideLens,
@@ -127,8 +127,9 @@ const actionsOf = (schema: RebacSchema, resource: string): string[] =>
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
-// permissions judges every `{ rule }` under json-rules' positive gate.
-const POSITIVE = { positive: true };
+// permissions judges every `{ rule }` under json-rules' positive gate, a null check allowed
+// beside an `exists` on its row's key (`permissions.idField`).
+const ruleSurface = () => ({ positive: true, rowKey: engineGlobals.get('permissions.idField') });
 
 const build = (
   node: ActionRule,
@@ -138,6 +139,24 @@ const build = (
   ctx: Ctx,
 ): ActionRuleNode => {
   const kind = actionKind(node);
+  // One list per walk: under an item no list arm is offered.
+  const lists = kind === 'list' && !ctx.at.under ? declaredListsOf(ctx.map, ctx.at.resource) : [];
+  const item =
+    kind === 'list' && lists.includes((node as ListCheck).rel)
+      ? lensesAtListItem(ctx.map, ctx.at.resource, (node as ListCheck).rel)
+      : null;
+  const condition =
+    item && depth < ctx.maxDepth && (node as ListCheck).condition !== undefined
+      ? `${issuePath}.condition`
+      : undefined;
+  // The paths a child node carries the issues of; everything else at or below this node is its own.
+  const childPaths =
+    kind === 'any' || kind === 'all'
+      ? childrenOfAction(node).map((_, i) => `${issuePath}.${kind}[${i}]`)
+      : condition
+        ? [condition]
+        : [];
+  const under = (path: string, parent: string) => path === parent || path.startsWith(`${parent}.`);
   const base: BaseNode = {
     id: path.length ? path.join('.') : 'root',
     path,
@@ -150,9 +169,7 @@ const build = (
     remove: path.length ? () => ctx.commit(removeActionNode(ctx.root, path)) : undefined,
     issues: ctx.issues.filter(
       (issue) =>
-        issue.path === issuePath ||
-        (kind === 'rule' &&
-          (issue.path === `${issuePath}.rule` || issue.path.startsWith(`${issuePath}.rule.`))),
+        under(issue.path, issuePath) && !childPaths.some((child) => under(issue.path, child)),
     ),
   };
 
@@ -181,17 +198,12 @@ const build = (
 
   if (kind === 'list') {
     const list = node as ListCheck;
-    // One list per walk: under an item no list arm is offered.
-    const relations = ctx.at.under ? [] : declaredListsOf(ctx.map, ctx.at.resource);
-    const item = relations.includes(list.rel)
-      ? lensesAtListItem(ctx.map, ctx.at.resource, list.rel)
-      : null;
     return {
       ...base,
       list: {
         relation: {
           value: list.rel,
-          options: relations.map(opt),
+          options: lists.map(opt),
           // A new list moves the item resource, so the condition starts over.
           set: (rel) =>
             ctx.commit(
@@ -203,12 +215,10 @@ const build = (
             ),
         },
         target: item?.resource,
+        // A list arm saved with no condition has none to build: the gate's issue says so.
         condition:
-          item && depth < ctx.maxDepth
-            ? build(list.condition, [...path, 0], `${issuePath}.condition`, depth + 1, {
-                ...ctx,
-                at: item,
-              })
+          item && condition
+            ? build(list.condition, [...path, 0], condition, depth + 1, { ...ctx, at: item })
             : undefined,
       },
     };
@@ -261,15 +271,16 @@ const build = (
   const cond = (node as { rule: Condition }).rule;
   if (!ctx.at.rule) return base;
   const view = createView(ctx.at.rule);
+  const surfaceOpts = ruleSurface();
   return {
     ...base,
     rule: buildRoot(
       cond,
       view,
-      describeScopeFields(viewRoot(view), POSITIVE),
+      describeScopeFields(viewRoot(view), surfaceOpts),
       ctx.maxDepth,
       (next) => ctx.commit(setActionNode(ctx.root, path, { rule: next })),
-      { surfaceOpts: POSITIVE },
+      { surfaceOpts },
     ),
   };
 };

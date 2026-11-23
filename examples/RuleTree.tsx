@@ -1,4 +1,4 @@
-import { type AggregateMode, type FieldKind, NUMERIC_KINDS } from '@inixiative/json-rules';
+import type { AggregateMode } from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -12,10 +12,6 @@ import {
   useRuleBuilder,
   type ValueControl,
 } from '../src';
-
-// A number input where the aggregate compares a number (`sum` / `avg`, a pick of a numeric column).
-const comparesNumber = (kind: FieldKind | undefined): boolean =>
-  kind !== undefined && NUMERIC_KINDS.includes(kind);
 
 /** Fold a picker option's icon into its label so a native <select> renders it
  *  (an <option> can't hold arbitrary markup). Field options carry `icon` from a
@@ -89,7 +85,11 @@ const Picker = ({
   </select>
 );
 
-const LiteralValue = ({ value }: { value: ValueControl }) => {
+const LiteralValue = ({
+  value,
+}: {
+  value: Pick<ValueControl, 'current' | 'shape' | 'kind' | 'options' | 'set'>;
+}) => {
   if (value.shape === 'range' || value.shape === 'dateRange') {
     const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
     const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
@@ -359,82 +359,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             options={node.aggregate.operator.options}
             onChange={node.aggregate.operator.set}
           />
-          {node.aggregate.value.shape === 'range' ? (
-            <>
-              <input
-                aria-label="aggregate value min"
-                type="number"
-                style={{ ...sel, width: 90 }}
-                value={
-                  Array.isArray(node.aggregate.value.current)
-                    ? (node.aggregate.value.current[0] ?? '')
-                    : ''
-                }
-                onChange={(e) =>
-                  node.aggregate?.value.set([
-                    Number(e.target.value),
-                    Array.isArray(node.aggregate?.value.current)
-                      ? node.aggregate.value.current[1]
-                      : 0,
-                  ])
-                }
-              />
-              <input
-                aria-label="aggregate value max"
-                type="number"
-                style={{ ...sel, width: 90 }}
-                value={
-                  Array.isArray(node.aggregate.value.current)
-                    ? (node.aggregate.value.current[1] ?? '')
-                    : ''
-                }
-                onChange={(e) =>
-                  node.aggregate?.value.set([
-                    Array.isArray(node.aggregate?.value.current)
-                      ? node.aggregate.value.current[0]
-                      : 0,
-                    Number(e.target.value),
-                  ])
-                }
-              />
-            </>
-          ) : node.aggregate.value.options ? (
-            <Picker
-              ariaLabel="aggregate value"
-              value={
-                typeof node.aggregate.value.current === 'string'
-                  ? node.aggregate.value.current
-                  : undefined
-              }
-              options={node.aggregate.value.options}
-              onChange={(v) => node.aggregate?.value.set(v)}
-            />
-          ) : comparesNumber(node.aggregate.value.kind) ? (
-            <input
-              aria-label="aggregate value"
-              type="number"
-              style={{ ...sel, width: 90 }}
-              value={
-                typeof node.aggregate.value.current === 'number' ? node.aggregate.value.current : ''
-              }
-              onChange={(e) =>
-                node.aggregate?.value.set(
-                  e.target.value === '' ? undefined : Number(e.target.value),
-                )
-              }
-            />
-          ) : (
-            <input
-              aria-label="aggregate value"
-              style={{ ...sel, width: 120 }}
-              value={
-                typeof node.aggregate.value.current === 'string' ? node.aggregate.value.current : ''
-              }
-              onChange={(e) =>
-                node.aggregate?.value.set(e.target.value === '' ? undefined : e.target.value)
-              }
-            />
-          )}
+          {node.aggregate.value.shape !== 'none' && <LiteralValue value={node.aggregate.value} />}
         </>
       )}
       {node.count && (

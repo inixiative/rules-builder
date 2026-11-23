@@ -467,9 +467,11 @@ pure root builder taking one `commit` (so they compose) with a thin hook over it
   that cannot hold on a missing value, and marks a negated rule, an array rule or an implication
   invalid.
   An aggregate rule's control asks json-rules what its mode takes: the modes every target runs,
-  the columns the mode reads, its operators, and the kind its value compares as. A `pick` is the
-  values the window picks (`check()` only): one value (`take: 1`) compares as its column does,
-  several take `contains` / `notContains`.
+  the columns the mode reads (a scalar list is read without one), and its operators; its `value`
+  is a leaf's value control, typed as json-rules types the aggregate. A `pick` is the values the
+  window picks (`check()` only): one value (`take: 1`) compares as its column does, a list takes
+  `contains` / `notContains` of one member. With `positive`, `rowKey` (json-rules 4.6) makes a
+  null check valid beside an `exists` on its row's key.
 - **Value expressions** (`evaluateValue`): `useValueExpressionBuilder({ source, defaultValue?,
   onChange?, bindings?, shapes?, expectedKind?, acceptsType? })` / `buildValueExpressionRoot`. A
   node per value: a literal (stamped `{ value, coerceType }` from `expectedKind` when the target is
