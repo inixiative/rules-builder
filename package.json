@@ -22,7 +22,7 @@
     "example:build": "tsc --noEmit -p tsconfig.examples.json && vite build",
     "prepublishOnly": "bun run check && bun run build",
     "lint": "biome check .",
-    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi"
+    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then root=\"$(dirname \"$(git rev-parse --path-format=absolute --git-common-dir)\")\"; if [ -x \"$root/node_modules/.bin/lefthook\" ]; then (cd \"$root\" && ./node_modules/.bin/lefthook install); fi; fi"
   },
   "keywords": [
     "json-rules",
@@ -45,7 +45,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
     "@happy-dom/global-registrator": "^20.10.3",
-    "@inixiative/config": "^0.5.237",
+    "@inixiative/config": "^0.5.246",
     "@inixiative/json-rules": "^4.6.0",
     "@inixiative/permissions": "^0.27.0",
     "@tailwindcss/vite": "^4.3.1",
