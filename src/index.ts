@@ -5,6 +5,7 @@ export type {
   FacetModeControl,
   FieldControl,
   GroupNode,
+  IfNode,
   LeafNode,
   OperatorControl,
   PickOption,
@@ -15,8 +16,19 @@ export type {
   UseRuleBuilderOptions,
   ValueControl,
   VariableControl,
+  WindowControl,
 } from './builder';
-export { asGroupRoot, asRoot, buildRoot, useFilteredCollection, useRuleBuilder } from './builder';
+export {
+  asGroupRoot,
+  asRoot,
+  buildRoot,
+  isAggregateNode,
+  isArrayNode,
+  isGroupNode,
+  isIfNode,
+  useFilteredCollection,
+  useRuleBuilder,
+} from './builder';
 export type { RulePath, RulePathSegment } from './core';
 export {
   addRule,
@@ -33,36 +45,12 @@ export {
   wrapInCompound,
 } from './core';
 export type {
-  ActionGroupNode,
-  ActionLeafNode,
-  ActionPath,
-  ActionRule,
-  ActionRuleKind,
-  ActionRuleNode,
-  BuildActionOptions,
-  RebacSchema,
-  ResourcePermission,
-  UseActionRuleBuilder,
-  UseActionRuleBuilderOptions,
-  UsePermissionBuilder,
-  UsePermissionBuilderOptions,
-} from './permissions';
-export {
-  actionKind,
-  actionNamesByResource,
-  addActionChild,
-  buildActionRoot,
-  childrenOfAction,
-  defaultActionRule,
-  getActionNode,
-  isActionGroup,
-  removeActionNode,
-  removeSchemaAction,
-  setActionNode,
-  setSchemaAction,
-  useActionRuleBuilder,
-  usePermissionBuilder,
-} from './permissions';
+  EntitlementGrantNode,
+  EntitlementGrantOptions,
+  OperationChoiceNode,
+  OperationTreeNode,
+} from './entitlements';
+export { buildEntitlementGrantRoot } from './entitlements';
 export type {
   BuilderField,
   Decor,
@@ -74,7 +62,6 @@ export type {
   LensScope,
   LensScopeSurfaceOptions,
   LensValueOption,
-  LensValuePickerOptions,
   LensView,
   NarrowingLayer,
   ResolveOptions,
@@ -103,7 +90,6 @@ export {
   leadingIdentityCount,
   leadingWhereCount,
   lensScopeSurface,
-  lensValuePicker,
   matchFacet,
   modelDecor,
   modelFacets,
@@ -117,7 +103,6 @@ export {
   stampFacetIds,
   useFacetFields,
   useLensScopeSurface,
-  useLensValuePicker,
   validateDecoration,
   valueShapeForOperator,
   variableSlots,
@@ -130,16 +115,34 @@ export {
 } from './schema';
 export type { SavedRule } from './serialize';
 export { parseSavedRule, stringifySavedRule } from './serialize';
-
 export type {
-  Action,
-  MergeStrategy,
-  Side,
-  SideKey,
-  ToSide,
-  Transition,
-  TransitionMap,
-  UseTransitionBuilder,
-  UseTransitionBuilderOptions,
-} from './transitions';
-export { emptyAction, useTransitionBuilder } from './transitions';
+  AggregateValueNode,
+  CategorizationBuilderOptions,
+  CategorizationNode,
+  CategoryNode,
+  IfValueNode,
+  ListValueNode,
+  LiteralValueNode,
+  SourceValueNode,
+  UseCategorizationBuilder,
+  UseCategorizationBuilderOptions,
+  UseValueExpressionBuilder,
+  UseValueExpressionBuilderOptions,
+  ValueBuilderOptions,
+  ValueNode,
+  ValuePath,
+  ValuePathSegment,
+  ValueShapeControl,
+} from './values';
+export {
+  buildCategorizationRoot,
+  buildValueExpressionRoot,
+  cleanCategorization,
+  cleanValue,
+  issuePathOf,
+  setValueAt,
+  useCategorizationBuilder,
+  useValueExpressionBuilder,
+  VALUE_SHAPES,
+  valueAt,
+} from './values';

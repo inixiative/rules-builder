@@ -1,7 +1,7 @@
 import type {
-  Bridge,
   Condition,
   FieldMapEntry,
+  JoinedBridge,
   LensFieldMap,
   ModelNarrowing,
   SourceValues,
@@ -15,7 +15,7 @@ import { Badge, Button, Row, Select, tokens } from '../ui';
 // A grant reads any relation on its menu (`maps`), so its editor turns every one of them on.
 export type NodeCtx = {
   maps: Record<string, LensFieldMap>;
-  bridges: Bridge[];
+  bridges: JoinedBridge[];
   sourceValues: SourceValues[];
   maxDepth: number;
 };

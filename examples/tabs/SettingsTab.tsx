@@ -1,5 +1,5 @@
 import type { FieldMap } from '@inixiative/field-map';
-import { assertValidFieldMaps, type Bridge } from '@inixiative/json-rules';
+import { assertValidFieldMaps, type JoinedBridge } from '@inixiative/json-rules';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { defaultWorkspace } from '../samples';
 import { Badge, Button, Empty, Panel, Row, Select, tokens } from '../ui';
@@ -77,7 +77,7 @@ export const SettingsTab = ({
           break;
         case 'bridges':
           if (!Array.isArray(parsed)) throw new Error('Bridges must be a JSON array');
-          patch({ bridges: parsed as Bridge[] });
+          patch({ bridges: parsed as JoinedBridge[] });
           break;
       }
       setError(null);

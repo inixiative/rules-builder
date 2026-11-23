@@ -1,19 +1,14 @@
 import type { FieldMap } from '@inixiative/field-map';
 import {
-  type Bridge,
   type Condition,
   createLens,
+  type JoinedBridge,
   type Lens,
   type LensNarrowing,
 } from '@inixiative/json-rules';
-import type {
-  Decoration,
-  NarrowingLayer,
-  ResourcePermission,
-  RuleBuilderSource,
-  SavedRule,
-  TransitionMap,
-} from '../src';
+import type { SchemaMap } from '@inixiative/permissions';
+import type { Decoration, NarrowingLayer, RuleBuilderSource, SavedRule } from '../src';
+import type { RebacSchema, TransitionMap } from '../src/permissions';
 
 /** A narrowing's parent — a lens or another narrowing, by name. */
 export type ParentRef = { kind: 'lens' | 'narrowing'; name: string };
@@ -24,7 +19,7 @@ export type SavedLens = {
   mapName: string;
   model: string;
   maps?: string[];
-  bridges?: Bridge[];
+  bridges?: JoinedBridge[];
 };
 
 /** A narrowing: picks a parent (lens or narrowing) + a restriction chain (picks/omits/where/enum/sources/relations).
@@ -41,13 +36,13 @@ export const DEFAULT_MAX_DEPTH = 4;
 
 export type Workspace = {
   maps: Record<string, FieldMap>;
-  bridges: Bridge[];
+  bridges: JoinedBridge[];
   lenses: Record<string, SavedLens>;
   narrowings: Record<string, SavedNarrowing>;
   rule: Condition; // the working draft in the builder
   rules: Record<string, SavedWsRule>; // saved, named rules (ref-bound + captured values)
   decorations: Record<string, Decoration>; // saved, named display decorations
-  permissions: Record<string, ResourcePermission>; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
+  permissions: RebacSchema['permissions']; // resource (`map:model`) → { actions } — emitted schema's `permissions`; bridges come from `bridges` above
   transitions: TransitionMap; // resource (`map:model`) → action → Action (from/to edges)
   maxDepth: number; // builder nesting depth — applies to every rule field
 };
@@ -161,7 +156,7 @@ export const importWorkspace = (json: string): Workspace => {
   if ('bridges' in parsed) {
     if (!Array.isArray(parsed.bridges))
       throw new Error('importWorkspace: bridges must be an array');
-    ws.bridges = parsed.bridges as Bridge[];
+    ws.bridges = parsed.bridges as JoinedBridge[];
   }
   if ('lenses' in parsed) {
     if (!isPlainObject(parsed.lenses)) throw new Error('importWorkspace: lenses must be an object');
@@ -182,7 +177,7 @@ export const importWorkspace = (json: string): Workspace => {
     ws.decorations = parsed.decorations as Record<string, Decoration>;
   }
   if ('permissions' in parsed && isPlainObject(parsed.permissions)) {
-    ws.permissions = parsed.permissions as Record<string, ResourcePermission>;
+    ws.permissions = parsed.permissions as RebacSchema['permissions'];
   }
   if ('transitions' in parsed && isPlainObject(parsed.transitions)) {
     ws.transitions = parsed.transitions as TransitionMap;
@@ -191,4 +186,17 @@ export const importWorkspace = (json: string): Workspace => {
     ws.maxDepth = parsed.maxDepth;
   }
   return ws;
+};
+
+/** permissions' schema map over one of the workspace's fieldMaps (the first by default): its
+ *  models are the resources (`map:Model`); the other maps are reached through bridges, as
+ *  permissions walks them. */
+export const schemaMapOf = (ws: Workspace, mapName = Object.keys(ws.maps)[0] ?? ''): SchemaMap => {
+  const fieldMap = ws.maps[mapName] ?? { models: {} };
+  return {
+    resources: Object.fromEntries(
+      Object.keys(fieldMap.models).map((model) => [`${mapName}:${model}`, model]),
+    ),
+    fieldMap,
+  };
 };

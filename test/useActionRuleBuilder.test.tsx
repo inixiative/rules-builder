@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import type { FieldMap } from '@inixiative/json-rules';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ActionGroupNode, ActionLeafNode } from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
@@ -7,27 +6,15 @@ import {
   type UseActionRuleBuilderOptions,
   useActionRuleBuilder,
 } from '../src/permissions/useActionRuleBuilder';
-import { withAllRelations } from '../src/schema/surface';
+import { permissionsMap, permissionsSchema } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
-const map: FieldMap = {
-  models: {
-    User: {
-      fields: {
-        tier: { kind: 'scalar', type: 'String', values: ['gold', 'silver'] },
-        ownerId: { kind: 'scalar', type: 'String' },
-        account: { kind: 'object', type: 'Account' },
-      },
-    },
-    Account: { fields: { industry: { kind: 'scalar', type: 'String' } } },
-  },
-};
-const source = withAllRelations({ maps: { app: map }, mapName: 'app', model: 'User' });
+const on = { map: permissionsMap, schema: permissionsSchema, resource: 'app:User' };
 
 describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
   test('with no defaultValue, seeds the default ABAC leaf { rule: { all: [] } }', () => {
-    const { result } = renderHook(() => useActionRuleBuilder({ source }));
+    const { result } = renderHook(() => useActionRuleBuilder({ ...on }));
     expect(result.current.value).toEqual({ rule: { all: [] } });
     expect(result.current.root.kind.value).toBe('rule');
   });
@@ -36,11 +23,11 @@ describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
     const { result, rerender } = renderHook(
       (p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p),
       {
-        initialProps: { source, defaultValue: true as ActionRule },
+        initialProps: { ...on, defaultValue: true as ActionRule },
       },
     );
     expect(result.current.value).toBe(true);
-    rerender({ source, defaultValue: false as ActionRule });
+    rerender({ ...on, defaultValue: false as ActionRule });
     expect(result.current.value).toBe(true);
   });
 });
@@ -48,7 +35,7 @@ describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
 describe('useActionRuleBuilder — onChange lifecycle', () => {
   test('suppressed on first render, fires on an edit, emits the raw ActionRule', () => {
     const onChange = mock<(r: ActionRule) => void>();
-    const { result } = renderHook(() => useActionRuleBuilder({ source, onChange }));
+    const { result } = renderHook(() => useActionRuleBuilder({ ...on, onChange }));
     expect(onChange).not.toHaveBeenCalled();
 
     act(() => result.current.root.kind.set('allow'));
@@ -60,7 +47,7 @@ describe('useActionRuleBuilder — onChange lifecycle', () => {
 
 describe('useActionRuleBuilder — descriptor-tree actions', () => {
   test('kind.set switches the leaf to each terminal / composite shape', () => {
-    const { result } = renderHook(() => useActionRuleBuilder({ source }));
+    const { result } = renderHook(() => useActionRuleBuilder({ ...on }));
     act(() => result.current.root.kind.set('deny'));
     expect(result.current.value).toBe(false);
     act(() => result.current.root.kind.set('all'));
@@ -68,9 +55,7 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
   });
 
   test('a group node adds children; addChild is gated on depth', () => {
-    const { result } = renderHook(() =>
-      useActionRuleBuilder({ source, defaultValue: { all: [] } }),
-    );
+    const { result } = renderHook(() => useActionRuleBuilder({ ...on, defaultValue: { all: [] } }));
     const root = result.current.root as ActionGroupNode;
     expect(root.children).toHaveLength(0);
     act(() => root.addChild?.());
@@ -80,35 +65,38 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
     expect(grown.children[0].kind.value).toBe('rule');
   });
 
-  test('self leaf offers non-relation fields and commits { self: field }', () => {
+  test('a list arm offers the declared lists and builds its condition at the item', () => {
     const { result } = renderHook(() =>
-      useActionRuleBuilder({ source, defaultValue: { self: '' } }),
+      useActionRuleBuilder({
+        ...on,
+        defaultValue: { rel: 'drafts', arrayOperator: 'any', condition: 'read' },
+      }),
     );
     const root = result.current.root as ActionLeafNode;
-    expect(root.self?.options.map((o) => o.value)).toEqual(['tier', 'ownerId']);
-    act(() => root.self?.set('ownerId'));
-    expect(result.current.value).toEqual({ self: 'ownerId' });
+    expect(root.kind.value).toBe('list');
+    expect(root.list?.relation.options.map((o) => o.value)).toEqual(['drafts']);
+    expect(root.list?.target).toBe('app:Post');
+    expect((root.list?.condition as ActionLeafNode).delegate?.options.map((o) => o.value)).toEqual([
+      'read',
+      'edit',
+    ]);
   });
 
   test('rel leaf resolves the hop target and offers that resource’s actions', () => {
     const { result } = renderHook(() =>
-      useActionRuleBuilder({
-        source,
-        defaultValue: { rel: 'account', action: '' },
-        actionsByResource: { 'app:Account': ['read', 'write'] },
-      }),
+      useActionRuleBuilder({ ...on, defaultValue: { rel: 'organization', action: '' } }),
     );
     const root = result.current.root as ActionLeafNode;
-    expect(root.rel?.segments[0]?.value).toBe('account');
-    expect(root.rel?.target).toBe('app:Account');
-    expect(root.rel?.action.options.map((o) => o.value)).toEqual(['read', 'write']);
+    expect(root.rel?.segments[0]?.value).toBe('organization');
+    expect(root.rel?.target).toBe('app:Organization');
+    expect(root.rel?.action.options.map((o) => o.value)).toEqual(['own', 'manage', 'read']);
     act(() => root.rel?.action.set('read'));
-    expect(result.current.value).toEqual({ rel: 'account', action: 'read' });
+    expect(result.current.value).toEqual({ rel: 'organization', action: 'read' });
   });
 
   test('the ABAC rule leaf embeds a json-rules builder whose edits fold back under { rule }', () => {
     const { result } = renderHook(() =>
-      useActionRuleBuilder({ source, defaultValue: { rule: { all: [] } } }),
+      useActionRuleBuilder({ ...on, defaultValue: { rule: { all: [] } } }),
     );
     const root = result.current.root as ActionLeafNode;
     expect(root.rule?.kind).toBe('group');
@@ -120,7 +108,7 @@ describe('useActionRuleBuilder — descriptor-tree actions', () => {
 
 describe('useActionRuleBuilder — memoization', () => {
   test('root is referentially stable across a no-op re-render', () => {
-    const props: UseActionRuleBuilderOptions = { source, defaultValue: { all: [] } };
+    const props: UseActionRuleBuilderOptions = { ...on, defaultValue: { all: [] } };
     const { result, rerender } = renderHook(
       (p: UseActionRuleBuilderOptions) => useActionRuleBuilder(p),
       {

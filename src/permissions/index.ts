@@ -1,3 +1,18 @@
+// `@inixiative/rules-builder/permissions`: the permission and transition builders, which read
+// `@inixiative/permissions` at runtime (install it to use this entry). The main entry never does.
+
+export type {
+  Action,
+  MergeStrategy,
+  Side,
+  SideKey,
+  ToSide,
+  Transition,
+  TransitionMap,
+  UseTransitionBuilder,
+  UseTransitionBuilderOptions,
+} from '../transitions';
+export { emptyAction, useTransitionBuilder } from '../transitions';
 export {
   type ActionPath,
   actionKind,

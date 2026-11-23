@@ -1,9 +1,15 @@
 import {
+  AGGREGATE_MODES,
+  type AggregateMode,
+  ALL_KINDS,
+  aggregateModesForKind,
   type Condition,
-  type FieldKind,
+  FieldKind,
   getAggregateOperators,
+  NUMERIC_KINDS,
   type RuleTarget,
   readScopeRef,
+  type SortDir,
   type ValidationIssue,
   type ValueShape,
   validateRule,
@@ -51,6 +57,7 @@ import {
   isAggregateNode,
   isArrayNode,
   isGroupNode,
+  isIfNode,
   ruleForField,
 } from './nodes';
 
@@ -220,32 +227,53 @@ export type FacetModeControl = {
  * surface — author them like any other group.
  */
 /**
- * The numeric-aggregate facet of an {@link ArrayNode} — present instead of
- * `arrayOperator` when the node is an `AggregateRule` (`sum`/`avg` over the list
- * elements compared to a threshold). The elements it reduces are narrowed by the
- * shared `condition` sub-builder, and by `filter` where every target takes a window.
+ * The aggregate facet of an {@link ArrayNode} — present instead of `arrayOperator` when the node
+ * is an `AggregateRule`: a reduction of the list's elements (`sum`, `avg`) or the values its
+ * window picks (`pick`), compared. The elements are narrowed by the shared `condition`
+ * sub-builder, and ordered and cut by the window where every target takes one.
  */
 export type AggregateControl = {
-  /** `sum` or `avg`. Only these two — {@link AGGREGATE_MODES}. */
-  mode: 'sum' | 'avg';
-  setMode: (mode: 'sum' | 'avg') => void;
+  /** A mode an aggregate rule compares, of json-rules' `AGGREGATE_MODES`. Element *count* is not
+   *  a mode: it is the {@link ArrayNode.count} facet on a `count` operator. */
+  mode: AggregateMode;
+  /** Switch the mode. A column the new mode does not read, and a comparison it does not take,
+   *  are dropped with it. */
+  setMode: (mode: AggregateMode) => void;
+  /** The modes every declared target runs (json-rules `validateRule`: `pick` is `check()` only),
+   *  and the authored one. */
   modeOptions: PickOption[];
-  /** Picker over the RELATED model's aggregatable numeric scalars + `Json` columns.
-   *  Each option carries `compilesToPrisma`; `compilesToPrisma` here reflects the
-   *  currently-selected target (`false` = a `Json` target, check()-only). */
+  /** Picker over the RELATED model's columns the mode reads (json-rules
+   *  `aggregateModesForKind`), and for `sum` / `avg` its `Json` columns. Each option carries
+   *  `compilesToPrisma`; `compilesToPrisma` here reflects the currently-selected target
+   *  (`false` = a `Json` target, check()-only). */
   field: {
     value?: string;
     options: PickOption[];
     set: (name: string) => void;
-    /** False when the selected target is missing or not aggregatable. */
+    /** False when the selected target is missing or the mode does not read it. */
     valid: boolean;
     /** False when the selected target is a `Json` column (check()-only). */
     compilesToPrisma?: boolean;
   };
-  /** The threshold comparison — restricted to what the declared targets compile. */
+  /** The comparison, of json-rules `getAggregateOperators` for the mode: a pick of one value
+   *  (`take: 1`) compares as a field does, a pick of several takes membership only. */
   operator: OperatorControl;
-  /** The threshold value: a number (single-value ops) or `[number, number]` (between). */
-  value: { current?: number | [number, number]; shape: ValueShape; set: (v: unknown) => void };
+  /** What the aggregate is compared with, as a leaf's value control carries it. `kind` is what it
+   *  compares as (json-rules types the aggregate: a `sum` its column's numeric kind, an `avg` a
+   *  Float, a `pick` its column's kind or `coerceType`); `options` are a picked column's allowed
+   *  values; a list pick's `shape` is one member (`scalar`). */
+  value: Pick<ValueControl, 'current' | 'shape' | 'kind' | 'options' | 'set'>;
+};
+
+/** An aggregate or array rule's ordered selection: order, then skip, then take. */
+export type WindowControl = {
+  orderBy: { field: string; dir: SortDir }[];
+  orderByOptions: PickOption[];
+  setOrderBy: (orderBy: { field: string; dir: SortDir }[]) => void;
+  take?: number;
+  setTake: (n: number | undefined) => void;
+  skip?: number;
+  setSkip: (n: number | undefined) => void;
 };
 
 export type ArrayNode = {
@@ -306,6 +334,9 @@ export type ArrayNode = {
   filter?: GroupNode;
   /** Drop the filter sub-condition entirely. */
   removeFilter?: () => void;
+  /** The rest of the window (json-rules `orderBy` → `skip` → `take`), offered where `filter`
+   *  is: the related model's columns to order by, and how many elements to skip and keep. */
+  window?: WindowControl;
   /** Enclosing array-element scopes a `$`-prefixed `field` may name, nearest first —
    *  a prefixed list field iterates an ancestor's collection. Absent at the root. */
   scopes?: ScopeOption[];
@@ -315,7 +346,25 @@ export type ArrayNode = {
   remove: () => void;
 };
 
-export type BuilderNode = GroupNode | LeafNode | ArrayNode;
+/** An implication: `then` must hold where `if` does, and `else` (when present) where it doesn't.
+ *  Each slot is an ordinary node at the `if` / `then` / `else` path segment. */
+export type IfNode = {
+  kind: 'if';
+  id: string;
+  path: RulePath;
+  depth: number;
+  if: BuilderNode;
+  then: BuilderNode;
+  else?: BuilderNode;
+  /** Add an `else` (a blank group), or drop it. */
+  addElse?: () => void;
+  removeElse?: () => void;
+  /** Gated as the whole implication, in situ. */
+  valid: boolean;
+  remove: () => void;
+};
+
+export type BuilderNode = GroupNode | LeafNode | ArrayNode | IfNode;
 
 type Rec = Record<string, unknown>;
 type Ctx = {
@@ -329,6 +378,11 @@ type Ctx = {
   surfaceOpts: SurfaceOptions;
   /** The schema `validateRule` compiles each target against — the lens root. */
   schema: ReturnType<typeof schemaOf>;
+  /** Under `positive`: json-rules' refusals of the whole root, each at its path. A comparison
+   *  is positive by what is conjoined with it (an `exists` beside a match, a row key beside a
+   *  null check), so a leaf is judged in the rule, not alone. Absent inside an array rule's
+   *  sub-builder, whose leaves are judged alone. */
+  positiveIssues?: ValidationIssue[];
 };
 /** What a node sees: the visit it sits on + its selectable fields. On descent into an
  *  array node's elements, this swaps to the relation's own visit (the fields the lens
@@ -370,10 +424,47 @@ const targetsOf = (ctx: Ctx): RuleTarget[] =>
   ctx.surfaceOpts.targets?.length ? ctx.surfaceOpts.targets : ['check'];
 
 /** json-rules' own refusals of a node, as the engine meets it, on each of the builder's targets. */
-const targetIssues = (scope: Scope, node: Condition, ctx: Ctx): ValidationIssue[] =>
+const targetIssues = (
+  scope: Scope,
+  node: Condition,
+  ctx: Ctx,
+  positive = ctx.surfaceOpts.positive,
+): ValidationIssue[] =>
   targetsOf(ctx).flatMap(
-    (target) => validateRule(enclose(scope, node), { target, ...ctx.schema }).errors,
+    (target) =>
+      validateRule(enclose(scope, node), {
+        target,
+        ...ctx.schema,
+        ...(positive ? { positive: true } : {}),
+        ...(positive && ctx.surfaceOpts.rowKey ? { rowKey: ctx.surfaceOpts.rowKey } : {}),
+      }).errors,
   );
+
+// The path json-rules reports a node's issues at: `$`, then `.all[i]` / `.any[i]` through groups
+// and the key through an implication or an array rule's sub-condition.
+const issuePathOf = (root: Condition, path: RulePath): string => {
+  let at = '$';
+  for (let d = 0; d < path.length; d++) {
+    const segment = path[d];
+    if (typeof segment !== 'number') {
+      at += `.${segment}`;
+      continue;
+    }
+    const parent = getNode(root, path.slice(0, d));
+    at += `.${parent !== undefined && isGroupNode(parent) ? groupOperatorOf(parent) : 'all'}[${segment}]`;
+  }
+  return at;
+};
+
+/** A leaf's refusals: on each target alone, and under `positive` the whole rule's at its path. */
+const leafIssues = (scope: Scope, node: Condition, path: RulePath, ctx: Ctx): ValidationIssue[] => {
+  if (ctx.positiveIssues === undefined) return targetIssues(scope, node, ctx);
+  const at = issuePathOf(ctx.root, path);
+  return [
+    ...targetIssues(scope, node, ctx, false),
+    ...ctx.positiveIssues.filter((issue) => issue.path === at || issue.path.startsWith(`${at}.`)),
+  ];
+};
 
 const scopeLabel = (scope: Scope, ctx: Ctx): string => {
   const visit = visitOf(scope.at);
@@ -504,20 +595,21 @@ const arrayCat = (op: string | undefined): ArrayCat => {
   return shape === 'count' || shape === 'predicate' ? shape : 'presence';
 };
 
-/** The `sum`/`avg` modes the engine's `AggregateMode` supports. `min`/`max` could be
- *  added here if the engine adds them; element *count* is intentionally not a mode —
- *  it is the existing {@link ArrayNode.count} facet on a `count` array operator. */
-const AGGREGATE_MODES = ['sum', 'avg'] as const;
+// One window key set, or dropped when undefined, leaving the rest of the rule as it is.
+const withWindowKey = (rec: Rec, key: 'orderBy' | 'take' | 'skip', value: unknown): Condition => {
+  const { [key]: _drop, ...rest } = rec;
+  return (value === undefined ? rest : { ...rest, [key]: value }) as Condition;
+};
 
 /** The built descriptor at a slot `path` (paths address the builder's own shape —
- *  {@link normalizeGroups}). `if`/`then`/`else` carry no nodes. */
+ *  {@link normalizeGroups}). */
 const descend = (built: BuilderNode, path: RulePath): BuilderNode | undefined => {
   let b: BuilderNode | undefined = built;
   for (const seg of path) {
     if (!b) return undefined;
     if (typeof seg === 'number') b = b.kind === 'group' ? b.children[seg] : undefined;
     else if (seg === 'condition' || seg === 'filter') b = b.kind === 'array' ? b[seg] : undefined;
-    else return undefined;
+    else b = b.kind === 'if' ? b[seg] : undefined;
   }
   return b;
 };
@@ -570,6 +662,51 @@ const idOf = (n: Condition, index: number): string => {
   const r = n as Rec;
   return (r.__groupId as string) ?? (r.__id as string) ?? String(index);
 };
+
+// The constrained set a field's value is picked from: its sourced options, else its enum.
+const valueOptionsOf = (field: BuilderField | undefined): PickOption[] | undefined =>
+  field?.options
+    ? field.options.map((o) => ({
+        value: o.value,
+        label: field.enumLabels?.[o.value] ?? o.label ?? o.value,
+        groups: o.groups,
+      }))
+    : field?.enumValues?.map((v) => ({ value: v, label: field.enumLabels?.[v] ?? v }));
+
+// What an aggregate mode reads of a kind: what json-rules says the mode takes of it.
+const modeReadsKind = (kind: FieldKind | undefined, mode: AggregateMode): boolean =>
+  kind !== undefined && aggregateModesForKind(kind).includes(mode);
+
+// A column an aggregate mode reads: one of a kind the mode takes, and the `Json` columns the
+// surface marks aggregatable (`sum` / `avg` read those under check() only).
+const modeReadsColumn = (field: BuilderField, mode: AggregateMode): boolean =>
+  !field.relation &&
+  !field.isList &&
+  (field.aggregatable === true || modeReadsKind(field.kind, mode));
+
+// json-rules (`picksOne`): a pick of one value (`take: 1`) compares as a field holding it does;
+// any other pick is the list of what its window picks.
+const picksSeveral = (mode: AggregateMode, rec: Rec): boolean => mode === 'pick' && rec.take !== 1;
+
+// The kind an aggregate rule's value is compared as, as json-rules types the aggregate
+// (`inferValueType`; a test holds the two together): a pick is its elements' kind, a `sum` their
+// numeric kind, an `avg` a Float (a Decimal of Decimals), and `coerceType` reads the elements as
+// another kind.
+const comparedKind = (
+  mode: AggregateMode,
+  elementKind: FieldKind | undefined,
+  coerceType: unknown,
+): FieldKind | undefined => {
+  const read = ALL_KINDS.find((kind) => kind === coerceType) ?? elementKind;
+  if (mode === 'pick') return read;
+  if (mode === 'avg') return read === FieldKind.Decimal ? FieldKind.Decimal : FieldKind.Float;
+  return read !== undefined && NUMERIC_KINDS.includes(read) ? read : FieldKind.Float;
+};
+
+const aggregateModeOf = (mode: string | undefined): AggregateMode =>
+  (AGGREGATE_MODES as readonly string[]).includes(mode ?? '')
+    ? (mode as AggregateMode)
+    : (AGGREGATE_MODES[0] as AggregateMode);
 
 const buildLeaf = (
   node: Condition,
@@ -627,7 +764,9 @@ const buildLeaf = (
   // below the boundary resolves, and the kernel compares the traversed value untyped.
   const declared = subPath === undefined ? field : undefined;
   const operators =
-    subPath === undefined ? field?.operators : genericOperators(ctx.surfaceOpts.targets);
+    subPath === undefined
+      ? field?.operators
+      : genericOperators(ctx.surfaceOpts.targets, ctx.surfaceOpts.positive);
   const operator = (rec.dateOperator ?? rec.operator) as string | undefined;
   const family = rec.dateOperator !== undefined ? 'date' : 'field';
   const operatorOptions = operators
@@ -637,16 +776,7 @@ const buildLeaf = (
       }))
     : [];
   const shape: ValueShape = (operator ? knownValueShape(operator, family) : undefined) ?? 'none';
-  const valueOptions = declared?.options
-    ? declared.options.map((o) => ({
-        value: o.value,
-        label: declared.enumLabels?.[o.value] ?? o.label ?? o.value,
-        groups: o.groups,
-      }))
-    : declared?.enumValues?.map((v) => ({
-        value: v,
-        label: declared.enumLabels?.[v] ?? v,
-      }));
+  const valueOptions = valueOptionsOf(declared);
   const fieldValid = field !== undefined;
   const valueValid = ((): boolean => {
     const allowed = declared?.enumValues;
@@ -790,7 +920,7 @@ const buildLeaf = (
     valid:
       valueValid &&
       validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
-      targetIssues(scope, node, ctx).length === 0,
+      leafIssues(scope, node, path, ctx).length === 0,
     remove,
   };
   return leaf.atomic && leafMatch ? { ...leaf, variables: presetVariables(leafMatch, leaf) } : leaf;
@@ -833,7 +963,7 @@ const buildArray = (
     field?.relation ?? (located ? listRelationAt(located.frame.at, located.name) : undefined);
   const isAggregate = isAggregateNode(node);
   const agg = (rec.aggregate ?? {}) as { mode?: string; field?: string };
-  const aggMode: 'sum' | 'avg' = agg.mode === 'avg' ? 'avg' : 'sum';
+  const aggMode = aggregateModeOf(agg.mode);
 
   // A hoisted collection facet: recognize the node so it renders as its named
   // entry (fixed leading `where` hidden, operator hidden-editable, leaf retyped).
@@ -894,6 +1024,7 @@ const buildArray = (
     const subCtx: Ctx = {
       ...ctx,
       root: subRoot,
+      positiveIssues: undefined,
       commit: (next) => ctx.commit(setNode(ctx.root, path, { ...rec, [key]: next } as Condition)),
     };
     // Canonical facet shape (identity leading + one trailing user-rows group): the
@@ -953,11 +1084,71 @@ const buildArray = (
     return buildGroup(subRoot, [], depth + 1, subCtx, subScope);
   };
 
-  // Aggregate target: the numeric scalar (or check()-only Json) on the RELATED model
-  // that `sum`/`avg` reduces. Offered only when the element relation resolves.
-  const aggTargetFields = rel ? relScope.fields.filter((f) => f.aggregatable) : [];
+  // Aggregate target: a column of the RELATED model the mode reads, offered when the element
+  // relation resolves. A scalar list has no columns: the mode reads its elements.
+  const aggTargetFields = rel ? relScope.fields.filter((f) => modeReadsColumn(f, aggMode)) : [];
   const aggTargetField = rel ? relScope.fields.find((f) => f.name === agg.field) : undefined;
-  const aggOperators = getAggregateOperators();
+  const aggTargetReadable = rel
+    ? aggTargetField !== undefined && modeReadsColumn(aggTargetField, aggMode)
+    : agg.field === undefined && modeReadsKind(field?.kind, aggMode);
+  const elementKindOf = (column: BuilderField | undefined): FieldKind | undefined =>
+    rel ? column?.kind : field?.kind;
+  const aggSeveral = picksSeveral(aggMode, rec);
+  const aggComparedKind = comparedKind(aggMode, elementKindOf(aggTargetField), rec.coerceType);
+  // json-rules gives a mode's comparisons.
+  const aggOperators = getAggregateOperators(aggMode, { list: aggSeveral });
+  // The modes every declared target runs — json-rules decides (`pick` is check() only).
+  const aggModes = AGGREGATE_MODES.filter(
+    (m) =>
+      m === agg.mode ||
+      !targetIssues(
+        scope,
+        { ...rec, aggregate: { ...agg, mode: m } } as Rec as Condition,
+        ctx,
+      ).some((issue) => issue.code.endsWith('_aggregate_mode')),
+  );
+  // A changed mode, column, list or `take` can leave what json-rules refuses there. A column the
+  // mode does not read goes. `coerceType` stays only while the mode reads the same column. The
+  // operator goes, with what it is compared with (a value, a path or a binding), when the mode no
+  // longer offers it or the pick turned from one value into a list or back (`contains` is a
+  // substring of one value and a member of a list). What it is compared with goes alone when the
+  // kind compared changed. An operator the catalog does not know (a persisted legacy rule) stays.
+  const fitAggregate = (next: Rec, columns: BuilderField[] = relScope.fields): Condition => {
+    const nextAgg = (next.aggregate ?? {}) as { mode?: string; field?: string };
+    const mode = aggregateModeOf(nextAgg.mode);
+    const named = columns.find((f) => f.name === nextAgg.field);
+    const column = named && modeReadsColumn(named, mode) ? named : undefined;
+    const sameRead =
+      columns === relScope.fields && mode === aggMode && column?.name === aggTargetField?.name;
+    const { operator, value, path: comparedPath, bind, coerceType, ...rest } = next;
+    const several = picksSeveral(mode, next);
+    const keepsOperator =
+      operator === undefined ||
+      operandClass(String(operator), 'field') === undefined ||
+      (several === aggSeveral &&
+        getAggregateOperators(mode, { list: several }).includes(operator as never));
+    const kind = comparedKind(
+      mode,
+      columns === relScope.fields ? elementKindOf(column) : undefined,
+      sameRead ? coerceType : undefined,
+    );
+    const keepsCompared =
+      keepsOperator &&
+      (kind === aggComparedKind ||
+        (kind !== undefined &&
+          aggComparedKind !== undefined &&
+          NUMERIC_KINDS.includes(kind) &&
+          NUMERIC_KINDS.includes(aggComparedKind)));
+    return {
+      ...rest,
+      aggregate: { mode, ...(column ? { field: column.name } : {}) },
+      ...(sameRead && coerceType !== undefined ? { coerceType } : {}),
+      ...(keepsOperator && operator !== undefined ? { operator } : {}),
+      ...(keepsCompared && value !== undefined ? { value } : {}),
+      ...(keepsCompared && comparedPath !== undefined ? { path: comparedPath } : {}),
+      ...(keepsCompared && bind !== undefined ? { bind } : {}),
+    } as Condition;
+  };
   // A window (`filter`) on an aggregate, where every target takes one — json-rules decides.
   const aggregateFilter =
     isAggregate &&
@@ -1010,14 +1201,22 @@ const buildArray = (
         // (mode/operator/value preserved) but clears the target field — its related
         // model changed. A non-list target falls back to the ordinary rule shape.
         if (isAggregate && next.isList && next.relation) {
+          // The window went with the old list, so a pick is now a list: what no longer fits goes.
           ctx.commit(
-            setNode(ctx.root, path, {
-              field: name,
-              aggregate: { mode: aggMode },
-              operator: (rec.operator as string) ?? 'greaterThan',
-              ...(rec.value !== undefined ? { value: rec.value } : {}),
-              ...id,
-            } as Condition),
+            setNode(
+              ctx.root,
+              path,
+              fitAggregate(
+                {
+                  field: name,
+                  aggregate: { mode: aggMode },
+                  ...(rec.operator !== undefined ? { operator: rec.operator } : {}),
+                  ...(rec.value !== undefined ? { value: rec.value } : {}),
+                  ...id,
+                },
+                [],
+              ),
+            ),
           );
           return;
         }
@@ -1074,10 +1273,10 @@ const buildArray = (
     aggregate: isAggregate
       ? {
           mode: aggMode,
-          modeOptions: AGGREGATE_MODES.map((m) => ({ value: m, label: m })),
+          modeOptions: aggModes.map((m) => ({ value: m, label: m })),
           setMode: (m) =>
             ctx.commit(
-              setNode(ctx.root, path, { ...rec, aggregate: { ...agg, mode: m } } as Condition),
+              setNode(ctx.root, path, fitAggregate({ ...rec, aggregate: { ...agg, mode: m } })),
             ),
           field: {
             value: agg.field,
@@ -1089,12 +1288,13 @@ const buildArray = (
             })),
             set: (name) =>
               ctx.commit(
-                setNode(ctx.root, path, {
-                  ...rec,
-                  aggregate: { ...agg, field: name },
-                } as Condition),
+                setNode(
+                  ctx.root,
+                  path,
+                  fitAggregate({ ...rec, aggregate: { ...agg, field: name } }),
+                ),
               ),
-            valid: aggTargetField?.aggregatable === true,
+            valid: aggTargetReadable,
             compilesToPrisma: aggTargetField?.compilesToPrisma,
           },
           operator: {
@@ -1121,9 +1321,18 @@ const buildArray = (
             },
           },
           value: {
-            current: rec.value as number | [number, number] | undefined,
-            shape:
-              (rec.operator ? knownValueShape(String(rec.operator), 'field') : undefined) ?? 'none',
+            current: rec.value,
+            // A list pick's `contains` takes one member of the list, not a substring.
+            shape: !rec.operator
+              ? 'none'
+              : aggSeveral
+                ? 'scalar'
+                : (knownValueShape(String(rec.operator), 'field') ?? 'none'),
+            kind: aggComparedKind,
+            options:
+              aggMode === 'pick' && rec.coerceType === undefined
+                ? valueOptionsOf(rel ? aggTargetField : field)
+                : undefined,
             set: (v) => ctx.commit(setNode(ctx.root, path, { ...rec, value: v } as Condition)),
           },
         }
@@ -1140,6 +1349,31 @@ const buildArray = (
     condition: conditionNode,
     // `filter` is authored windowing — on an aggregate, only where the targets take it.
     filter: filterNode,
+    window:
+      filterNode !== undefined
+        ? {
+            orderBy: (rec.orderBy as { field: string; dir: SortDir }[] | undefined) ?? [],
+            orderByOptions: relScope.fields
+              .filter((f) => !f.relation && !f.isList)
+              .map((f) => ({ value: f.name, label: f.label })),
+            setOrderBy: (orderBy) =>
+              ctx.commit(
+                setNode(
+                  ctx.root,
+                  path,
+                  withWindowKey(rec, 'orderBy', orderBy.length ? orderBy : undefined),
+                ),
+              ),
+            take: rec.take as number | undefined,
+            // On an aggregate `take` decides whether a pick is one value or a list.
+            setTake: (n) => {
+              const next = withWindowKey(rec, 'take', n);
+              ctx.commit(setNode(ctx.root, path, isAggregate ? fitAggregate(next as Rec) : next));
+            },
+            skip: rec.skip as number | undefined,
+            setSkip: (n) => ctx.commit(setNode(ctx.root, path, withWindowKey(rec, 'skip', n))),
+          }
+        : undefined,
     removeFilter:
       filterNode !== undefined
         ? () => {
@@ -1148,12 +1382,12 @@ const buildArray = (
           }
         : undefined,
     scopes: enclosingScopes(scope, ctx),
-    // The engine's gates, plus the aggregate target picker's own validity (sum/avg reads a
-    // number, or a check()-only Json column).
+    // The engine's gates, plus the aggregate target picker's own validity (a column the mode
+    // reads).
     valid:
       validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
       targetIssues(scope, node, ctx).length === 0 &&
-      (!isAggregate || aggTargetField?.aggregatable === true),
+      (!isAggregate || aggTargetReadable),
     // A root array rule has no parent to splice out of — deleting it clears to a
     // blank group, mirroring the leaf-root behavior.
     remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
@@ -1316,6 +1550,43 @@ const facetModeControl = (
   };
 };
 
+const buildIf = (
+  node: Condition,
+  path: RulePath,
+  depth: number,
+  ctx: Ctx,
+  scope: Scope,
+): IfNode => {
+  const rec = node as Rec;
+  const slot = (key: 'if' | 'then' | 'else') =>
+    buildNode(asRoot(rec[key] as Condition | undefined), [...path, key], depth + 1, ctx, scope);
+  return {
+    kind: 'if',
+    id: path.length ? path.join('.') : 'root',
+    path,
+    depth,
+    if: slot('if'),
+    then: slot('then'),
+    else: rec.else !== undefined ? slot('else') : undefined,
+    addElse:
+      rec.else === undefined
+        ? () =>
+            ctx.commit(setNode(ctx.root, path, { ...rec, else: { all: [] } } as Rec as Condition))
+        : undefined,
+    removeElse:
+      rec.else !== undefined
+        ? () => {
+            const { else: _drop, ...rest } = rec;
+            ctx.commit(setNode(ctx.root, path, rest as Condition));
+          }
+        : undefined,
+    valid:
+      validateRuleInLens(enclose(scope, node), ctx.view.lens).ok &&
+      targetIssues(scope, node, ctx).length === 0,
+    remove: () => ctx.commit(path.length ? removeNode(ctx.root, path) : { all: [] }),
+  };
+};
+
 const buildNode = (
   node: Condition,
   path: RulePath,
@@ -1325,9 +1596,11 @@ const buildNode = (
 ): BuilderNode =>
   isGroupNode(node)
     ? buildGroup(node, path, depth, ctx, scope)
-    : isArrayNode(node) || isAggregateNode(node)
-      ? buildArray(node, path, depth, ctx, scope)
-      : buildLeaf(node, path, depth, ctx, scope);
+    : isIfNode(node)
+      ? buildIf(node, path, depth, ctx, scope)
+      : isArrayNode(node) || isAggregateNode(node)
+        ? buildArray(node, path, depth, ctx, scope)
+        : buildLeaf(node, path, depth, ctx, scope);
 
 /** The root is the condition itself — never synthetically wrapped. Only an absent condition
  *  becomes `empty` — a blank group by default (a first-class, add-into-able container), or a
@@ -1359,6 +1632,12 @@ export const buildRoot = (
     surfaceOpts: opts.surfaceOpts ?? {},
     schema: schemaOf(view.lens),
   };
+  if (ctx.surfaceOpts.positive)
+    ctx.positiveIssues = validateRule(normalized, {
+      ...ctx.schema,
+      positive: true,
+      ...(ctx.surfaceOpts.rowKey ? { rowKey: ctx.surfaceOpts.rowKey } : {}),
+    }).errors;
   return buildNode(normalized, [], 0, ctx, {
     at: viewRoot(view),
     fields,

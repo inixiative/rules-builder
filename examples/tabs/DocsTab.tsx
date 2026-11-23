@@ -68,13 +68,13 @@ const SAVE = `import { stringifySavedRule, parseSavedRule } from '@inixiative/ru
 const json = stringifySavedRule({ source: ref, rule, sourceValues });
 const back = parseSavedRule(json); // validated; throws on malformed input`;
 
-const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder';
+const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
 
-const pb = usePermissionBuilder({ value: schema, onChange: setSchema, maps, bridges });
-pb.addResource('db:User');                       // resources are map-qualified
-pb.addAction('db:User', 'read');                 // open action names — yours
-const root = pb.actionRoot('db:User', 'read');   // the ActionRule editor for one action
-// pb.value = { bridges, permissions: { 'db:User': { actions: { name → ActionRule } } } }`;
+const pb = usePermissionBuilder({ value: schema, onChange: setSchema, map }); // permissions' SchemaMap
+pb.addResource('db:user');                       // the map's resource names
+pb.addAction('db:user', 'read');                 // open action names — yours
+const root = pb.actionRoot('db:user', 'read');   // the ActionRule editor, in permissions' own lens
+// pb.value = { bridges, permissions: { 'db:user': { actions: { name → ActionRule } } } }`;
 
 export const DocsTab = () => (
   <div style={{ display: 'grid', gap: 16 }}>
@@ -169,11 +169,13 @@ export const DocsTab = () => (
         <Mono>{'{ bridges, permissions: resource → { actions } }'}</Mono>) over the RAW model
         records (resources are map-qualified, e.g. <Mono>db:User</Mono>). An <Mono>ActionRule</Mono>{' '}
         is a recursive algebra: <Mono>{'{ rule }'}</Mono> (abac predicate — embeds the json-rules
-        builder), <Mono>{'{ self }'}</Mono> (owner field), <Mono>{'{ rel, action }'}</Mono> (walk a
-        relation, check an action on the target), a <Mono>string</Mono> (delegate to another
-        action), <Mono>{'{ any }'}</Mono>/<Mono>{'{ all }'}</Mono>, or <Mono>null</Mono> (deny). The
-        leaves are model-aware: <Mono>self</Mono> picks the model's fields, <Mono>delegate</Mono>{' '}
-        its other actions, <Mono>rel</Mono> a relation + the target model's actions.
+        builder; the actor reads as <Mono>__actor</Mono>), <Mono>{'{ rel, action }'}</Mono> (walk a
+        relation, check an action on the target),{' '}
+        <Mono>{"{ rel, arrayOperator: 'any', condition }"}</Mono> (any item of a declared list), a{' '}
+        <Mono>string</Mono> (delegate to another action), <Mono>{'{ any }'}</Mono>/
+        <Mono>{'{ all }'}</Mono>, or <Mono>null</Mono> (deny). The leaves are model-aware:{' '}
+        <Mono>delegate</Mono> its other actions, <Mono>rel</Mono> a relation + the target model's
+        actions.
       </P>
       <Code>{PERMS}</Code>
     </Panel>

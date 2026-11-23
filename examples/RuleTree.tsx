@@ -1,9 +1,11 @@
+import { type AggregateMode, NUMERIC_KINDS } from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
   type BuilderNode,
   type Decoration,
   type GroupNode,
+  type IfNode,
   type LeafNode,
   type RuleBuilderSource,
   type ScopeOption,
@@ -83,11 +85,15 @@ const Picker = ({
   </select>
 );
 
-const LiteralValue = ({ value }: { value: ValueControl }) => {
+const LiteralValue = ({
+  value,
+}: {
+  value: Pick<ValueControl, 'current' | 'shape' | 'kind' | 'options' | 'set'>;
+}) => {
   if (value.shape === 'range' || value.shape === 'dateRange') {
     const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
     const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
-    const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+    const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
     const type = isDate ? 'date' : numeric ? 'number' : 'text';
     const toInput = (v: unknown) =>
       v == null ? '' : isDate && typeof v === 'string' ? v.slice(0, 10) : String(v);
@@ -164,7 +170,7 @@ const LiteralValue = ({ value }: { value: ValueControl }) => {
       />
     );
   }
-  const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+  const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
   return (
     <input
       aria-label="value"
@@ -334,7 +340,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             ariaLabel="aggregate mode"
             value={node.aggregate.mode}
             options={node.aggregate.modeOptions}
-            onChange={(m) => node.aggregate?.setMode(m as 'sum' | 'avg')}
+            onChange={(m) => node.aggregate?.setMode(m as AggregateMode)}
           />
           <Picker
             ariaLabel="aggregate field"
@@ -353,60 +359,7 @@ const ArrayRule = ({ node }: { node: ArrayNode }) => (
             options={node.aggregate.operator.options}
             onChange={node.aggregate.operator.set}
           />
-          {node.aggregate.value.shape === 'range' ? (
-            <>
-              <input
-                aria-label="aggregate value min"
-                type="number"
-                style={{ ...sel, width: 90 }}
-                value={
-                  Array.isArray(node.aggregate.value.current)
-                    ? (node.aggregate.value.current[0] ?? '')
-                    : ''
-                }
-                onChange={(e) =>
-                  node.aggregate?.value.set([
-                    Number(e.target.value),
-                    Array.isArray(node.aggregate?.value.current)
-                      ? node.aggregate.value.current[1]
-                      : 0,
-                  ])
-                }
-              />
-              <input
-                aria-label="aggregate value max"
-                type="number"
-                style={{ ...sel, width: 90 }}
-                value={
-                  Array.isArray(node.aggregate.value.current)
-                    ? (node.aggregate.value.current[1] ?? '')
-                    : ''
-                }
-                onChange={(e) =>
-                  node.aggregate?.value.set([
-                    Array.isArray(node.aggregate?.value.current)
-                      ? node.aggregate.value.current[0]
-                      : 0,
-                    Number(e.target.value),
-                  ])
-                }
-              />
-            </>
-          ) : (
-            <input
-              aria-label="aggregate value"
-              type="number"
-              style={{ ...sel, width: 90 }}
-              value={
-                typeof node.aggregate.value.current === 'number' ? node.aggregate.value.current : ''
-              }
-              onChange={(e) =>
-                node.aggregate?.value.set(
-                  e.target.value === '' ? undefined : Number(e.target.value),
-                )
-              }
-            />
-          )}
+          {node.aggregate.value.shape !== 'none' && <LiteralValue value={node.aggregate.value} />}
         </>
       )}
       {node.count && (
@@ -557,11 +510,52 @@ const Group = ({ node }: { node: GroupNode }) => {
   );
 };
 
+/** An implication: `then` must hold where `if` does, `else` where it doesn't. */
+const IfRule = ({ node }: { node: IfNode }) => (
+  <div
+    style={{
+      ...row,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      borderLeft: '2px solid #999',
+      paddingLeft: 8,
+    }}
+  >
+    <span>if</span>
+    <Node node={node.if} />
+    <span>then</span>
+    <Node node={node.then} />
+    {node.else && (
+      <>
+        <span>else</span>
+        <Node node={node.else} />
+      </>
+    )}
+    <div style={row}>
+      {node.addElse && (
+        <button type="button" style={sel} onClick={node.addElse}>
+          + else
+        </button>
+      )}
+      {node.removeElse && (
+        <button type="button" style={sel} onClick={node.removeElse}>
+          remove else
+        </button>
+      )}
+      <button type="button" style={sel} onClick={node.remove}>
+        remove
+      </button>
+    </div>
+  </div>
+);
+
 const Node = ({ node }: { node: BuilderNode }) =>
   node.kind === 'group' ? (
     <Group node={node} />
   ) : node.kind === 'array' ? (
     <ArrayRule node={node} />
+  ) : node.kind === 'if' ? (
+    <IfRule node={node} />
   ) : (
     <Leaf node={node} />
   );

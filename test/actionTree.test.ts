@@ -16,7 +16,7 @@ describe('actionKind', () => {
     expect(actionKind('own')).toBe('delegate');
     expect(actionKind(null)).toBe('deny');
     expect(actionKind({ rel: 'organization', action: 'own' })).toBe('rel');
-    expect(actionKind({ self: 'userId' })).toBe('self');
+    expect(actionKind({ rel: 'posts', arrayOperator: 'any', condition: 'read' })).toBe('list');
     expect(actionKind({ rule: { all: [] } })).toBe('rule');
     expect(actionKind({ any: [] })).toBe('any');
     expect(actionKind({ all: [] })).toBe('all');
@@ -35,10 +35,10 @@ describe('childrenOfAction / isActionGroup', () => {
 
 describe('getActionNode', () => {
   test('navigates any/all by index', () => {
-    const r: ActionRule = { any: ['own', { all: [{ self: 'userId' }] }] };
+    const r: ActionRule = { any: ['own', { all: [{ rel: 'user', action: 'own' }] }] };
     expect(getActionNode(r, [])).toBe(r);
     expect(getActionNode(r, [0])).toBe('own');
-    expect(getActionNode(r, [1, 0])).toEqual({ self: 'userId' });
+    expect(getActionNode(r, [1, 0])).toEqual({ rel: 'user', action: 'own' });
     expect(getActionNode(r, [9])).toBeUndefined();
   });
 });
@@ -46,8 +46,8 @@ describe('getActionNode', () => {
 describe('setActionNode', () => {
   test('replaces a node immutably', () => {
     const r: ActionRule = { all: ['own', 'manage'] };
-    const next = setActionNode(r, [1], { self: 'id' });
-    expect(next).toEqual({ all: ['own', { self: 'id' }] });
+    const next = setActionNode(r, [1], { rel: 'owner', action: 'own' });
+    expect(next).toEqual({ all: ['own', { rel: 'owner', action: 'own' }] });
     expect(r).toEqual({ all: ['own', 'manage'] });
   });
 
@@ -57,8 +57,8 @@ describe('setActionNode', () => {
 
   test('replaces a deeply nested node', () => {
     const r: ActionRule = { any: [{ all: ['own', 'manage'] }] };
-    expect(setActionNode(r, [0, 1], { self: 'x' })).toEqual({
-      any: [{ all: ['own', { self: 'x' }] }],
+    expect(setActionNode(r, [0, 1], { rel: 'x', action: 'own' })).toEqual({
+      any: [{ all: ['own', { rel: 'x', action: 'own' }] }],
     });
   });
 });

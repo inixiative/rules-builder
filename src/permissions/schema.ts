@@ -1,13 +1,12 @@
-import type { ActionRule, RebacSchema } from './types';
+import type { ActionRule, RebacSchema, ResourcePermission } from './types';
 
 /** Every resource's action names, keyed by resource (`map:model`) — the awareness
  *  `useActionRuleBuilder` needs for `delegate` (same-resource) and `rel` (a target's actions). */
 export const actionNamesByResource = (schema: RebacSchema): Record<string, string[]> =>
   Object.fromEntries(
-    Object.entries(schema.permissions).map(([resource, mp]) => [
-      resource,
-      Object.keys(mp?.actions ?? {}),
-    ]),
+    (Object.entries(schema.permissions) as [string, ResourcePermission | undefined][]).map(
+      ([resource, mp]) => [resource, Object.keys(mp?.actions ?? {})],
+    ),
   );
 
 /** Immutably set one resource.action's rule, creating the resource entry if absent. */

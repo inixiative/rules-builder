@@ -1,4 +1,9 @@
-import type { Condition, SourceValues } from '@inixiative/json-rules';
+import {
+  type AggregateMode,
+  type Condition,
+  NUMERIC_KINDS,
+  type SourceValues,
+} from '@inixiative/json-rules';
 import { useState } from 'react';
 import {
   type ArrayNode,
@@ -6,6 +11,7 @@ import {
   type Decoration,
   type FacetModeControl,
   type GroupNode,
+  type IfNode,
   type LeafNode,
   type RuleBuilderSource,
   type ScopeOption,
@@ -32,11 +38,15 @@ const scoped = (scopes?: ScopeOption[]) =>
  * @template/ui). Copy this, point the imports at your own `@/components/ui`, done.
  */
 
-const LiteralValue = ({ value }: { value: ValueControl }) => {
+const LiteralValue = ({
+  value,
+}: {
+  value: Pick<ValueControl, 'current' | 'shape' | 'kind' | 'options' | 'set'>;
+}) => {
   if (value.shape === 'range' || value.shape === 'dateRange') {
     const [min, max] = Array.isArray(value.current) ? value.current : [undefined, undefined];
     const isDate = value.shape === 'dateRange' || value.kind === 'DateTime';
-    const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+    const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
     const type = isDate ? 'date' : numeric ? 'number' : 'text';
     const toInput = (v: unknown) =>
       v == null ? '' : isDate && typeof v === 'string' ? v.slice(0, 10) : String(v);
@@ -104,7 +114,7 @@ const LiteralValue = ({ value }: { value: ValueControl }) => {
       />
     );
   }
-  const numeric = value.kind === 'Int' || value.kind === 'Float' || value.kind === 'Decimal';
+  const numeric = value.kind !== undefined && NUMERIC_KINDS.includes(value.kind);
   return (
     <Input
       aria-label="value"
@@ -227,20 +237,18 @@ const Leaf = ({ node }: { node: LeafNode }) => (
 const AggregateFacet = ({ node }: { node: ArrayNode }) => {
   const agg = node.aggregate;
   if (!agg) return null;
-  const isRange = agg.value.shape === 'range';
-  const value = agg.value.current;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Select
         aria-label="aggregate mode"
         options={agg.modeOptions}
         value={agg.mode}
-        onChange={(m) => agg.setMode(m as 'sum' | 'avg')}
+        onChange={(m) => agg.setMode(m as AggregateMode)}
       />
       <span className="text-xs text-muted-foreground">of</span>
       <Select
         aria-label="aggregate field"
-        placeholder="numeric field"
+        placeholder="field"
         options={iconize(agg.field.options)}
         value={agg.field.value ?? ''}
         onChange={agg.field.set}
@@ -258,38 +266,7 @@ const AggregateFacet = ({ node }: { node: ArrayNode }) => {
         value={agg.operator.value ?? ''}
         onChange={agg.operator.set}
       />
-      {isRange ? (
-        <>
-          <Input
-            aria-label="aggregate value min"
-            type="number"
-            className="w-20"
-            value={Array.isArray(value) ? (value[0] ?? '') : ''}
-            onChange={(e) =>
-              agg.value.set([Number(e.target.value), Array.isArray(value) ? value[1] : 0])
-            }
-          />
-          <Input
-            aria-label="aggregate value max"
-            type="number"
-            className="w-20"
-            value={Array.isArray(value) ? (value[1] ?? '') : ''}
-            onChange={(e) =>
-              agg.value.set([Array.isArray(value) ? value[0] : 0, Number(e.target.value)])
-            }
-          />
-        </>
-      ) : (
-        <Input
-          aria-label="aggregate value"
-          type="number"
-          className="w-24"
-          value={typeof value === 'number' ? value : ''}
-          onChange={(e) =>
-            agg.value.set(e.target.value === '' ? undefined : Number(e.target.value))
-          }
-        />
-      )}
+      {agg.value.shape !== 'none' && <LiteralValue value={agg.value} />}
     </div>
   );
 };
@@ -537,11 +514,44 @@ const Group = ({ node }: { node: GroupNode }) => {
   );
 };
 
+/** An implication: `then` must hold where `if` does, `else` where it doesn't. */
+const IfRule = ({ node }: { node: IfNode }) => (
+  <div className="grid gap-1.5 border-l-2 pl-2">
+    <Badge>if</Badge>
+    <Node node={node.if} />
+    <Badge>then</Badge>
+    <Node node={node.then} />
+    {node.else && (
+      <>
+        <Badge>else</Badge>
+        <Node node={node.else} />
+      </>
+    )}
+    <div className="flex gap-1.5">
+      {node.addElse && (
+        <Button variant="outline" size="sm" onClick={node.addElse}>
+          + else
+        </Button>
+      )}
+      {node.removeElse && (
+        <Button variant="outline" size="sm" onClick={node.removeElse}>
+          remove else
+        </Button>
+      )}
+      <Button variant="outline" size="sm" onClick={node.remove}>
+        remove
+      </Button>
+    </div>
+  </div>
+);
+
 const Node = ({ node }: { node: BuilderNode }) =>
   node.kind === 'group' ? (
     <Group node={node} />
   ) : node.kind === 'array' ? (
     <ArrayRule node={node} />
+  ) : node.kind === 'if' ? (
+    <IfRule node={node} />
   ) : (
     <Leaf node={node} />
   );
