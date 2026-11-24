@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import type { SchemaMap } from '@inixiative/permissions';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { useState } from 'react';
-import type { RebacSchema } from '../src/permissions/types';
 import {
   type UsePermissionBuilderOptions,
   usePermissionBuilder,
@@ -11,48 +11,54 @@ import { permissionsMap as map } from './fixtures/permissionsMap';
 afterEach(cleanup);
 
 // A stateful harness so the controlled value/onChange round-trips through React state.
-const useControlled = (initial: RebacSchema) => {
-  const [value, setValue] = useState<RebacSchema>(initial);
-  return usePermissionBuilder({ value, onChange: setValue, map });
+const useControlled = (initial: SchemaMap) => {
+  const [value, setValue] = useState<SchemaMap>(initial);
+  return usePermissionBuilder({ value, onChange: setValue });
 };
 
-const empty: RebacSchema = { permissions: {} };
+const empty: SchemaMap = { ...map, permissions: {} };
 
 describe('usePermissionBuilder — controlled tracking', () => {
   test('reflects the value prop and re-tracks it when the prop changes', () => {
-    const a: RebacSchema = { permissions: { 'app:User': { actions: {} } } };
-    const b: RebacSchema = { permissions: { 'app:Organization': { actions: { read: true } } } };
+    const a: SchemaMap = { ...map, permissions: { 'app:User': { actions: {} } } };
+    const b: SchemaMap = {
+      ...map,
+      permissions: { 'app:Organization': { actions: { read: true } } },
+    };
     const { result, rerender } = renderHook(
       (p: UsePermissionBuilderOptions) => usePermissionBuilder(p),
       {
-        initialProps: { value: a, onChange: () => {}, map },
+        initialProps: { value: a, onChange: () => {} },
       },
     );
     expect(result.current.resources).toEqual(['app:User']);
-    rerender({ value: b, onChange: () => {}, map });
+    rerender({ value: b, onChange: () => {} });
     expect(result.current.resources).toEqual(['app:Organization']);
     expect(result.current.actionsOf('app:Organization')).toEqual(['read']);
   });
 
   test('onChange never fires on render (fully controlled — no seed effect)', () => {
-    const onChange = mock<(s: RebacSchema) => void>();
-    renderHook(() => usePermissionBuilder({ value: empty, onChange, map }));
+    const onChange = mock<(s: SchemaMap) => void>();
+    renderHook(() => usePermissionBuilder({ value: empty, onChange }));
     expect(onChange).not.toHaveBeenCalled();
   });
 });
 
 describe('usePermissionBuilder — resource + action edits', () => {
   test('addResource emits a new schema with the empty resource', () => {
-    const onChange = mock<(s: RebacSchema) => void>();
-    const { result } = renderHook(() => usePermissionBuilder({ value: empty, onChange, map }));
+    const onChange = mock<(s: SchemaMap) => void>();
+    const { result } = renderHook(() => usePermissionBuilder({ value: empty, onChange }));
     act(() => result.current.addResource('app:User'));
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0][0]).toEqual({ permissions: { 'app:User': { actions: {} } } });
+    expect(onChange.mock.calls[0][0]).toEqual({
+      ...map,
+      permissions: { 'app:User': { actions: {} } },
+    });
   });
 
   test('addAction seeds the default ABAC leaf; round-trips into actionsOf', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: {} } } }),
+      useControlled({ ...map, permissions: { 'app:User': { actions: {} } } }),
     );
     act(() => result.current.addAction('app:User', 'read'));
     expect(result.current.actionsOf('app:User')).toEqual(['read']);
@@ -62,9 +68,9 @@ describe('usePermissionBuilder — resource + action edits', () => {
   });
 
   test('addAction is a no-op for an empty name or an existing action', () => {
-    const onChange = mock<(s: RebacSchema) => void>();
-    const seeded: RebacSchema = { permissions: { 'app:User': { actions: { read: true } } } };
-    const { result } = renderHook(() => usePermissionBuilder({ value: seeded, onChange, map }));
+    const onChange = mock<(s: SchemaMap) => void>();
+    const seeded: SchemaMap = { ...map, permissions: { 'app:User': { actions: { read: true } } } };
+    const { result } = renderHook(() => usePermissionBuilder({ value: seeded, onChange }));
     act(() => result.current.addAction('app:User', ''));
     act(() => result.current.addAction('app:User', 'read'));
     expect(onChange).not.toHaveBeenCalled();
@@ -72,7 +78,10 @@ describe('usePermissionBuilder — resource + action edits', () => {
 
   test('removeAction and removeResource round-trip through the schema', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: { read: true, write: false } } } }),
+      useControlled({
+        ...map,
+        permissions: { 'app:User': { actions: { read: true, write: false } } },
+      }),
     );
     act(() => result.current.removeAction('app:User', 'write'));
     expect(result.current.actionsOf('app:User')).toEqual(['read']);
@@ -82,7 +91,7 @@ describe('usePermissionBuilder — resource + action edits', () => {
 
   test('setAction replaces the whole rule and round-trips', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: { read: true } } } }),
+      useControlled({ ...map, permissions: { 'app:User': { actions: { read: true } } } }),
     );
     act(() =>
       result.current.setAction('app:User', 'read', {
@@ -98,7 +107,10 @@ describe('usePermissionBuilder — resource + action edits', () => {
 describe('usePermissionBuilder — actionRoot descriptors', () => {
   test('returns a descriptor for a known resource.action', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: { read: { rule: { all: [] } } } } } }),
+      useControlled({
+        ...map,
+        permissions: { 'app:User': { actions: { read: { rule: { all: [] } } } } },
+      }),
     );
     const node = result.current.actionRoot('app:User', 'read');
     expect(node).not.toBeNull();
@@ -120,7 +132,10 @@ describe('usePermissionBuilder — actionRoot descriptors', () => {
 
   test('actionsByResource enumerates every resource’s action names (delegate/rel awareness)', () => {
     const { result } = renderHook(() =>
-      useControlled({ permissions: { 'app:User': { actions: { read: true, write: false } } } }),
+      useControlled({
+        ...map,
+        permissions: { 'app:User': { actions: { read: true, write: false } } },
+      }),
     );
     expect(result.current.actionsByResource).toEqual({ 'app:User': ['read', 'write'] });
   });

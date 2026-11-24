@@ -1,28 +1,29 @@
+import { endpointKey } from '@inixiative/json-rules';
 import type { SchemaMap } from '@inixiative/permissions';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
+import { modelOfResource } from './modelOfResource';
 import { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
-import type { ActionRule, RebacSchema } from './types';
+import type { ActionRule } from './types';
 
 export type UsePermissionBuilderOptions = {
-  /** The whole rebac schema ({ bridges, permissions }). Controlled — edits flow out via onChange. */
-  value: RebacSchema;
-  onChange: (schema: RebacSchema) => void;
-  /** permissions' schema map, the one `createRebacCheck` takes; every rule is authored in the
-   *  lens permissions judges it in. Resources are its resource names. */
-  map: SchemaMap;
+  /** permissions' schema map, the one `createRebacCheck` takes; its rules (`permissions`) are
+   *  what is edited, and every rule is authored in the lens permissions judges it in.
+   *  Controlled: edits flow out via onChange. */
+  value: SchemaMap;
+  onChange: (map: SchemaMap) => void;
   maxDepth?: number;
 };
 
 /**
- * Schema-level permission builder: owns the entire rebac schema (in/out via value/onChange +
+ * Schema-level permission builder: owns the rules of a schema map (in/out via value/onChange +
  * setSchema) across every resource (`map:model`). A permission gates the RAW record, so each
  * resource's editing surface is built straight from the fieldMaps. Hands each resource.action's
  * recursive ActionRule editor as a descriptor (`actionRoot`).
  */
 export type UsePermissionBuilder = {
-  value: RebacSchema;
-  setSchema: (schema: RebacSchema) => void;
+  value: SchemaMap;
+  setSchema: (map: SchemaMap) => void;
   /** Resources (`map:model`) with a permission entry. */
   resources: string[];
   /** Every resource's action names — `delegate` / `rel` awareness. */
@@ -39,7 +40,7 @@ export type UsePermissionBuilder = {
 };
 
 export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePermissionBuilder => {
-  const { map, maxDepth } = opts;
+  const { maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
   const actionsByResource = actionNamesByResource(schema);
@@ -66,17 +67,16 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
 
   // As permissions' `validateSchema`: a resource is in the map, or a bridge's far end.
   const resourceInMap = (resource: string) =>
-    resource in map.resources ||
+    modelOfResource(schema, resource) !== null ||
     (schema.bridges ?? []).some((bridge) =>
-      bridge.endpoints.some((end) => `${end.fieldMap}:${end.model}` === resource),
+      bridge.endpoints.some((end) => endpointKey(end) === resource),
     );
 
   const actionRoot = (resource: string, action: string): ActionRuleNode | null => {
     const rule = schema.permissions[resource]?.actions[action];
     if (rule === undefined || !resourceInMap(resource)) return null;
     return buildActionRoot(rule, {
-      map,
-      schema,
+      map: schema,
       resource,
       action,
       maxDepth,

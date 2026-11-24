@@ -499,13 +499,13 @@ what `validateSchema` accepts and nothing else.
 ```ts
 import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
 
-const pb = usePermissionBuilder({ value: schema, onChange: setSchema, map }); // map: the SchemaMap createRebacCheck takes
-const root = pb.actionRoot('db:user', 'read');
+const pb = usePermissionBuilder({ value: map, onChange: setMap }); // map: the SchemaMap createRebacCheck takes
+const root = pb.actionRoot('db:User', 'read');
 ```
 
-- `usePermissionBuilder({ value, onChange, map, maxDepth? })` owns a whole `RebacSchema`
-  (`{ bridges?, permissions }`) over permissions' `SchemaMap`. Resources are the map's resource
-  names. It returns the resource and action lists, add/remove/set actions, and
+- `usePermissionBuilder({ value, onChange, maxDepth? })` owns the rules (`permissions`) of
+  permissions' `SchemaMap`, the one object `createRebacCheck` takes: `value` is the map, and each
+  edit hands back the map with its rules changed. A resource is `map:Model`. It returns the resource and action lists, add/remove/set actions, and
   `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches between:
   - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(map, resource).rule`);
     the map's supplied rows (`actor:User.id`) are read from this row only;
@@ -515,11 +515,12 @@ const root = pb.actionRoot('db:user', 'read');
     list's `down` paths load (`lensesAtListItem`);
   - `delegate` (the resource's other actions), `any`, `all`, `allow`, `deny`.
 
-  Each node carries permissions' `issues` at its path: reads outside its lens
-  (`issuesForRuleReadsOutsideLens`) and what the gate refuses (`validateActionRule`).
-- `useActionRuleBuilder({ map, schema, resource, action?, defaultValue?, onChange?, maxDepth? })`
+  Each node carries permissions' `issues` at its path, from the one call that answers what a
+  check refuses (`validateActionRule`): its shape, a delegation back to itself, and reads outside
+  its lens.
+- `useActionRuleBuilder({ map, resource, action?, defaultValue?, onChange?, maxDepth? })`
   edits one `ActionRule` on a resource.
-- `useTransitionBuilder({ value, onChange, map, permissions, predicateLens?, maxDepth? })` owns an
+- `useTransitionBuilder({ value, onChange, map, predicateLens?, maxDepth? })` owns an
   `@inixiative/transitions` `TransitionMap` (resource, then action, then `{ paths: { from, to }[] }`).
   `predicateRoot(resource, action, i, side)` is each side's condition builder, over
   `predicateLens(resource)` (the lens `validateTransition({ lens })` judges it in) or the raw

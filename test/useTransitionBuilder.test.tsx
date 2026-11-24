@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { emptyAction } from '../src/transitions/transitionTree';
 import type { TransitionMap } from '../src/transitions/types';
 import { useTransitionBuilder } from '../src/transitions/useTransitionBuilder';
-import { permissionsMap as map, permissionsSchema as permissions } from './fixtures/permissionsMap';
+import { permissionsMap as map } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
-const on = { map, permissions };
+const on = { map };
 
 const useControlled = (initial: TransitionMap) => {
   const [value, setValue] = useState<TransitionMap>(initial);

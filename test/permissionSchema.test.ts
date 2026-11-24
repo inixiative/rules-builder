@@ -1,12 +1,13 @@
 import { describe, expect, test } from 'bun:test';
+import type { SchemaMap } from '@inixiative/permissions';
 import {
   actionNamesByResource,
   removeSchemaAction,
   setSchemaAction,
 } from '../src/permissions/schema';
-import type { RebacSchema } from '../src/permissions/types';
 
-const base = (): RebacSchema => ({
+const base = (): SchemaMap => ({
+  maps: {},
   permissions: {
     'db:User': { actions: { own: null, read: 'own' } },
     'db:Organization': { actions: { manage: 'own' } },

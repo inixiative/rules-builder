@@ -6,14 +6,13 @@ import {
 } from '../src/permissions/buildActionRoot';
 import type { ActionRule } from '../src/permissions/types';
 import { describeScopeFields, viewRoot } from '../src/schema/surface';
-import { permissionsMap, permissionsSchema } from './fixtures/permissionsMap';
+import { permissionsMap } from './fixtures/permissionsMap';
 
 let committed: ActionRule | undefined;
 const build = (rule: ActionRule, resource = 'app:User') => {
   committed = undefined;
   return buildActionRoot(rule, {
     map: permissionsMap,
-    schema: permissionsSchema,
     resource,
     action: 'own',
     maxDepth: 4,

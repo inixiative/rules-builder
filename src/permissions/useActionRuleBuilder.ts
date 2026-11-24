@@ -2,13 +2,11 @@ import type { SchemaMap } from '@inixiative/permissions';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
-import type { ActionRule, RebacSchema } from './types';
+import type { ActionRule } from './types';
 
 export type UseActionRuleBuilderOptions = {
   /** permissions' schema map; the rule is authored in the lens permissions judges it in. */
   map: SchemaMap;
-  /** The schema the rule belongs to: its bridges and each resource's actions. */
-  schema: RebacSchema;
   /** The resource the rule is on. */
   resource: string;
   /** The action the rule defines, never offered as its own delegate. */
@@ -48,13 +46,12 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
     () =>
       buildActionRoot(tree, {
         map: opts.map,
-        schema: opts.schema,
         resource: opts.resource,
         action: opts.action,
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, opts.map, opts.schema, opts.resource, opts.action, opts.maxDepth, commit],
+    [tree, opts.map, opts.resource, opts.action, opts.maxDepth, commit],
   );
 
   return { value: tree, root, setRule: setTree };

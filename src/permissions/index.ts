@@ -32,7 +32,7 @@ export type {
 } from './buildActionRoot';
 export { buildActionRoot } from './buildActionRoot';
 export { actionNamesByResource, removeSchemaAction, setSchemaAction } from './schema';
-export type { ActionRule, ActionRuleKind, RebacSchema, ResourcePermission } from './types';
+export type { ActionRule, ActionRuleKind, ResourcePermission } from './types';
 export type { UseActionRuleBuilder, UseActionRuleBuilderOptions } from './useActionRuleBuilder';
 export { useActionRuleBuilder } from './useActionRuleBuilder';
 export type { UsePermissionBuilder, UsePermissionBuilderOptions } from './usePermissionBuilder';

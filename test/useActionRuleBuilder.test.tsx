@@ -6,11 +6,11 @@ import {
   type UseActionRuleBuilderOptions,
   useActionRuleBuilder,
 } from '../src/permissions/useActionRuleBuilder';
-import { permissionsMap, permissionsSchema } from './fixtures/permissionsMap';
+import { permissionsMap } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
-const on = { map: permissionsMap, schema: permissionsSchema, resource: 'app:User' };
+const on = { map: permissionsMap, resource: 'app:User' };
 
 describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
   test('with no defaultValue, seeds the default ABAC leaf { rule: { all: [] } }', () => {

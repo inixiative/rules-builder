@@ -3,7 +3,6 @@
 export type {
   ActionRule,
   ListCheck,
-  RebacSchema,
   RelationCheck,
   ResourcePermission,
   RuleCheck,

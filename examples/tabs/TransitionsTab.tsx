@@ -157,7 +157,6 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
     value: ws.transitions,
     onChange: (transitions) => patch({ transitions }),
     map: schemaMapOf(ws),
-    permissions: { bridges: ws.bridges, permissions: ws.permissions },
     maxDepth: ws.maxDepth,
   });
 

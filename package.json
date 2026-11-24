@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/rules-builder",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "description": "Headless rule builder for @inixiative/json-rules that offers only what a lens exposes and the engine can run",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -39,7 +39,7 @@
   },
   "peerDependencies": {
     "@inixiative/json-rules": "^4.6.0",
-    "@inixiative/permissions": "^0.27.0",
+    "@inixiative/permissions": "^0.28.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
@@ -47,7 +47,7 @@
     "@happy-dom/global-registrator": "^20.10.3",
     "@inixiative/config": "^0.5.246",
     "@inixiative/json-rules": "^4.6.0",
-    "@inixiative/permissions": "^0.27.0",
+    "@inixiative/permissions": "^0.28.0",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
