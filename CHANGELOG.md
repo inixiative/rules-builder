@@ -16,6 +16,9 @@ all just be part of the schema map"), so the builder no longer takes the two sid
 - `useTransitionBuilder({ value, onChange, schemaMap })`: `permissions` is gone, the rules are the
   schema map's.
 - `RebacSchema` is no longer exported (permissions dropped it).
+- A model of a supplied map (`actor:User`) is not a resource: the builder does not add one, and
+  hands back no rule to edit for it. Which maps are supplied comes from permissions'
+  `suppliedMapNamesOf`.
 - A resource is `map:Model` among the schema map's `fieldMaps` (`db:User`), read with json-rules'
   `parseEndpointKey`; a bridge's far end is matched with `endpointKey`.
 - A node's issues come from one `validateActionRule` call; `issuesForRuleReadsOutsideLens` is no

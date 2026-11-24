@@ -143,3 +143,14 @@ describe('usePermissionBuilder — actionRoot descriptors', () => {
     expect(result.current.actionsByResource).toEqual({ 'app:User': ['read', 'write'] });
   });
 });
+
+describe('usePermissionBuilder — a supplied map is not a resource', () => {
+  test('a model of a supplied map cannot be added, and has no rule to edit', () => {
+    const { result } = renderHook(() => useControlled({ ...schemaMap, permissions: {} }));
+    act(() => result.current.addResource('actor:User'));
+    expect(result.current.resources).toEqual([]);
+    expect(result.current.actionRoot('actor:User', 'read')).toBeNull();
+    act(() => result.current.addResource('app:User'));
+    expect(result.current.resources).toEqual(['app:User']);
+  });
+});

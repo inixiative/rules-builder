@@ -1,5 +1,5 @@
-import { endpointKey } from '@inixiative/json-rules';
-import type { SchemaMap } from '@inixiative/permissions';
+import { endpointKey, parseEndpointKey } from '@inixiative/json-rules';
+import { type SchemaMap, suppliedMapNamesOf } from '@inixiative/permissions';
 import { defaultActionRule } from './actionTree';
 import { type ActionRuleNode, buildActionRoot } from './buildActionRoot';
 import { modelOfResource } from './modelOfResource';
@@ -58,6 +58,8 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
 
   const addResource = (resource: string) => {
     if (schema.permissions[resource] !== undefined) return;
+    // why: a rule on a supplied model would make its map one of records, and every supplied bridge into it a refusal
+    if (suppliedMapNamesOf(schema).has(parseEndpointKey(resource, '').mapName)) return;
     setSchema({ ...schema, permissions: { ...schema.permissions, [resource]: { actions: {} } } });
   };
   const removeResource = (resource: string) => {

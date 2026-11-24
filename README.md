@@ -494,7 +494,7 @@ pure root builder taking one `commit` (so they compose) with a thin hook over it
 `@inixiative/rules-builder/permissions` holds the permission and transition builders. They read
 `@inixiative/permissions` at runtime, so install it to use this entry (the main entry never
 imports it). Every rule is authored in the lens permissions judges it in, so the builder offers
-what `validateSchema` accepts and nothing else.
+what `validateSchemaMap` accepts and nothing else.
 
 ```ts
 import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
@@ -507,7 +507,7 @@ const root = pb.actionRoot('db:User', 'read');
   permissions' `SchemaMap`, the one object `makeRebacCheck` takes: `value` is the schema map, and each
   edit hands back the map with its rules changed. A resource is `map:Model`. It returns the resource and action lists, add/remove/set actions, and
   `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches between:
-  - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(map, resource).rule`);
+  - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(schemaMap, resource).rule`);
     the map's supplied rows (`actor:User.id`) are read from this row only;
   - `rel`: a walk of hops from `relationHopsFrom` (followed to-one relations and bridges, never
     back to a model passed), then an action of the resource it lands on;
