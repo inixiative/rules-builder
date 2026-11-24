@@ -43,9 +43,8 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const includedBridges = ws.bridges.filter((b) => !excludedBridges.has(bridgeKey(b)));
 
   const pb = usePermissionBuilder({
-    value: { bridges: includedBridges, permissions: ws.permissions },
-    onChange: (schema) => patch({ permissions: schema.permissions }),
-    map: schemaMapOf(ws),
+    value: schemaMapOf(ws, includedBridges),
+    onChange: (schemaMap) => patch({ permissions: schemaMap.permissions }),
     maxDepth: ws.maxDepth,
   });
 

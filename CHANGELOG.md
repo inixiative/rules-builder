@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.35.0 — the permission builder takes permissions' one schema map
+
+Breaking, with no compatibility path. Requires `@inixiative/permissions` ^0.29.0 and
+`@inixiative/json-rules` ^4.7.0.
+
+Why: permissions 0.28 folded the rebac schema into the schema map (Aron 2026-11-23: "They should
+all just be part of the schema map"), so the builder no longer takes the two side by side.
+
+- Nothing is called bare `map`: the option is `schemaMap`, as in permissions 0.29.
+- `usePermissionBuilder({ value, onChange })`: `value` is the `SchemaMap` being edited; the `map`
+  option is gone, and `onChange` hands back the schema map with its `permissions` changed.
+- `useActionRuleBuilder` and `buildActionRoot` take `{ schemaMap, resource, action? }`; `schema` is
+  gone.
+- `useTransitionBuilder({ value, onChange, schemaMap })`: `permissions` is gone, the rules are the
+  schema map's.
+- `RebacSchema` is no longer exported (permissions dropped it).
+- A model of a supplied map (`actor:User`) is not a resource: the builder does not add one, and
+  hands back no rule to edit for it. Which maps are supplied comes from permissions'
+  `suppliedMapNamesOf`.
+- A resource is `map:Model` among the schema map's `fieldMaps` (`db:User`), read with json-rules'
+  `parseEndpointKey`; a bridge's far end is matched with `endpointKey`.
+- A node's issues come from one `validateActionRule` call; `issuesForRuleReadsOutsideLens` is no
+  longer called (permissions no longer exports it).
+
 ## 0.34.0 — editors for computation and evaluation; the permission builder reads permissions' lens
 
 Breaking, with no compatibility path (no users outside the example app).

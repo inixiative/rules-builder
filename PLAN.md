@@ -51,7 +51,7 @@ operator catalog directly, so it can only offer what the engine can run.
   `useFilteredCollection` adds the in-memory half: options from the rows in hand, and
   `data` filtered by `check`.
 - **`src/permissions/`, `src/transitions/`**: schema-level builders for
-  `@inixiative/permissions` (`ActionRule`, `RebacSchema`) and `@inixiative/transitions`
+  `@inixiative/permissions` (`ActionRule`, `SchemaMap`) and `@inixiative/transitions`
   (`TransitionMap`). Their types are re-declared here, so the package depends only on
   json-rules. The `rule` leaves and transition predicates embed the condition builder over
   `rawView`.

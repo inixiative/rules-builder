@@ -156,8 +156,7 @@ export const TransitionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
   const tb = useTransitionBuilder({
     value: ws.transitions,
     onChange: (transitions) => patch({ transitions }),
-    map: schemaMapOf(ws),
-    permissions: { bridges: ws.bridges, permissions: ws.permissions },
+    schemaMap: schemaMapOf(ws),
     maxDepth: ws.maxDepth,
   });
 

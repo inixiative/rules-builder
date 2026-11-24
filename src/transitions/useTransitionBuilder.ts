@@ -3,7 +3,7 @@ import type { SchemaMap } from '@inixiative/permissions';
 import { type BuilderNode, buildRoot } from '../builder/buildNodes';
 import { defaultActionRule } from '../permissions/actionTree';
 import { type ActionRuleNode, buildActionRoot } from '../permissions/buildActionRoot';
-import type { RebacSchema } from '../permissions/types';
+import { modelOfResource } from '../permissions/modelOfResource';
 import { createView, describeScopeFields, rawView, viewRoot } from '../schema/surface';
 import {
   addPath as addPathOp,
@@ -20,10 +20,8 @@ export type UseTransitionBuilderOptions = {
   value: TransitionMap;
   onChange: (schema: TransitionMap) => void;
   /** permissions' schema map: a side's `permission` is authored in the lens permissions judges it
-   *  in, and a predicate on the record's model. */
-  map: SchemaMap;
-  /** The permission schema a side's `permission` delegates and walks into. */
-  permissions: RebacSchema;
+   *  in and delegates into its rules, and a predicate is on the record's model. */
+  schemaMap: SchemaMap;
   /** The lens a resource's predicates are judged in, as transitions' `validateTransition({ lens })`
    *  takes; absent, the raw record (every column and relation). */
   predicateLens?: (resource: string) => Lens | LensNarrowing | undefined;
@@ -64,7 +62,7 @@ export type UseTransitionBuilder = {
 };
 
 export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTransitionBuilder => {
-  const { map, maxDepth } = opts;
+  const { schemaMap, maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
 
@@ -73,12 +71,12 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     schema[resource]?.[action]?.paths[i]?.[side];
 
   const surface = (resource: string) => {
-    const model = map.resources[resource];
-    if (!model) return null;
+    const named = modelOfResource(schemaMap, resource);
+    if (!named) return null;
     const lens = opts.predicateLens?.(resource);
     const view = lens
       ? createView(lens)
-      : rawView({ maps: { app: map.fieldMap }, mapName: 'app', model });
+      : rawView({ maps: schemaMap.fieldMaps, mapName: named.mapName, model: named.modelName });
     return { view, fields: describeScopeFields(viewRoot(view)) };
   };
 
@@ -122,8 +120,7 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     const sideObj = sideOf(resource, action, i, side);
     if (!sideObj || sideObj.permission === undefined) return null;
     return buildActionRoot(sideObj.permission, {
-      map,
-      schema: opts.permissions,
+      schemaMap,
       resource,
       maxDepth,
       commit: (next) =>
