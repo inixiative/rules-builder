@@ -6,7 +6,7 @@ import type { ActionRule } from './types';
 
 export type UseActionRuleBuilderOptions = {
   /** permissions' schema map; the rule is authored in the lens permissions judges it in. */
-  map: SchemaMap;
+  schemaMap: SchemaMap;
   /** The resource the rule is on. */
   resource: string;
   /** The action the rule defines, never offered as its own delegate. */
@@ -45,13 +45,13 @@ export const useActionRuleBuilder = (opts: UseActionRuleBuilderOptions): UseActi
   const root = useMemo(
     () =>
       buildActionRoot(tree, {
-        map: opts.map,
+        schemaMap: opts.schemaMap,
         resource: opts.resource,
         action: opts.action,
         maxDepth: opts.maxDepth,
         commit,
       }),
-    [tree, opts.map, opts.resource, opts.action, opts.maxDepth, commit],
+    [tree, opts.schemaMap, opts.resource, opts.action, opts.maxDepth, commit],
   );
 
   return { value: tree, root, setRule: setTree };

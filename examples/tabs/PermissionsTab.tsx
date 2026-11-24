@@ -44,7 +44,7 @@ export const PermissionsTab = ({ ws, patch, selected }: TabProps & { selected?: 
 
   const pb = usePermissionBuilder({
     value: schemaMapOf(ws, includedBridges),
-    onChange: (map) => patch({ permissions: map.permissions }),
+    onChange: (schemaMap) => patch({ permissions: schemaMap.permissions }),
     maxDepth: ws.maxDepth,
   });
 

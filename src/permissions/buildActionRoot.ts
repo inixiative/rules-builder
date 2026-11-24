@@ -98,7 +98,7 @@ export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
 
 export type BuildActionOptions = {
   /** permissions' schema map, the one `makeRebacCheck` takes: its field maps, bridges and rules. */
-  map: SchemaMap;
+  schemaMap: SchemaMap;
   /** The resource the rule is on (`map:Model`, or a bridge's far end). */
   resource: string;
   /** The action the rule defines, never offered as its own delegate. */
@@ -108,7 +108,7 @@ export type BuildActionOptions = {
 };
 
 type Ctx = {
-  map: SchemaMap;
+  schemaMap: SchemaMap;
   /** Where the node is judged: a row, or an item of a declared list. */
   at: LensesAtRow;
   action?: string;
@@ -118,8 +118,8 @@ type Ctx = {
   issues: ValidationIssue[];
 };
 
-const actionsOf = (map: SchemaMap, resource: string): string[] =>
-  Object.keys(map.permissions[resource]?.actions ?? {});
+const actionsOf = (schemaMap: SchemaMap, resource: string): string[] =>
+  Object.keys(schemaMap.permissions[resource]?.actions ?? {});
 
 const opt = (v: string): PickOption => ({ value: v, label: v });
 
@@ -136,10 +136,11 @@ const build = (
 ): ActionRuleNode => {
   const kind = actionKind(node);
   // One list per walk: under an item no list arm is offered.
-  const lists = kind === 'list' && !ctx.at.under ? declaredListsOf(ctx.map, ctx.at.resource) : [];
+  const lists =
+    kind === 'list' && !ctx.at.under ? declaredListsOf(ctx.schemaMap, ctx.at.resource) : [];
   const item =
     kind === 'list' && lists.includes((node as ListCheck).rel)
-      ? lensesAtListItem(ctx.map, ctx.at.resource, (node as ListCheck).rel)
+      ? lensesAtListItem(ctx.schemaMap, ctx.at.resource, (node as ListCheck).rel)
       : null;
   const condition =
     item && depth < ctx.maxDepth && (node as ListCheck).condition !== undefined
@@ -184,7 +185,7 @@ const build = (
       ...base,
       delegate: {
         value: node as string,
-        options: actionsOf(ctx.map, ctx.at.resource)
+        options: actionsOf(ctx.schemaMap, ctx.at.resource)
           .filter((a) => ctx.at.under || a !== ctx.action)
           .map(opt),
         set: (a) => ctx.commit(setActionNode(ctx.root, path, a)),
@@ -222,7 +223,8 @@ const build = (
 
   if (kind === 'rel') {
     const rel = node as { rel: string; action: string };
-    const hopsAfter = (walked: string[]) => relationHopsFrom(ctx.map, ctx.at, walked.join('.'));
+    const hopsAfter = (walked: string[]) =>
+      relationHopsFrom(ctx.schemaMap, ctx.at, walked.join('.'));
     // Editing the relation path can move the target resource, so the previously-picked action
     // (an action on the OLD target) no longer applies — reset it. Only `action.set` keeps it.
     const setRel = (next: string) =>
@@ -251,7 +253,7 @@ const build = (
         removeLast: segs.length ? () => setRel(segs.slice(0, -1).join('.')) : undefined,
         action: {
           value: rel.action,
-          options: (target ? actionsOf(ctx.map, target) : []).map(opt),
+          options: (target ? actionsOf(ctx.schemaMap, target) : []).map(opt),
           set: (a) => ctx.commit(setActionNode(ctx.root, path, { rel: rel.rel, action: a })),
         },
         target,
@@ -282,7 +284,7 @@ const build = (
 
 const gateIssues = (rule: ActionRule, opts: BuildActionOptions): ValidationIssue[] => {
   const result = validateActionRule(rule, {
-    map: opts.map,
+    schemaMap: opts.schemaMap,
     resource: opts.resource,
     action: opts.action,
   });
@@ -297,8 +299,8 @@ const gateIssues = (rule: ActionRule, opts: BuildActionOptions): ValidationIssue
  */
 export const buildActionRoot = (rule: ActionRule, opts: BuildActionOptions): ActionRuleNode =>
   build(rule, [], '$', 0, {
-    map: opts.map,
-    at: lensesAtRow(opts.map, opts.resource),
+    schemaMap: opts.schemaMap,
+    at: lensesAtRow(opts.schemaMap, opts.resource),
     action: opts.action,
     root: rule,
     maxDepth: opts.maxDepth ?? 4,

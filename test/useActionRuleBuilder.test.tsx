@@ -10,7 +10,7 @@ import { permissionsMap } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
-const on = { map: permissionsMap, resource: 'app:User' };
+const on = { schemaMap: permissionsMap, resource: 'app:User' };
 
 describe('useActionRuleBuilder — seed / defaultValue semantics', () => {
   test('with no defaultValue, seeds the default ABAC leaf { rule: { all: [] } }', () => {

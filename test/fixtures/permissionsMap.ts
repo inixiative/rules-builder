@@ -16,14 +16,19 @@ const actorMap: FieldMap = {
 /** permissions' schema map for the permission-builder tests: a user in an organization in a
  *  region, with a declared list of drafts and an undeclared list of posts. */
 export const permissionsMap: SchemaMap = {
-  supplied: { actor: actorMap },
+  // who is acting is supplied: a bridge with no join from every model of `app` to each actor model
+  bridges: Object.keys(actorMap.models).map((model) => ({
+    endpoints: [{ fieldMap: 'app' }, { fieldMap: 'actor', model }],
+    cardinality: 'oneToOne',
+  })),
   permissions: {
     'app:User': { actions: { own: true, manage: 'own', read: 'manage' } },
     'app:Organization': { actions: { own: true, manage: 'own', read: 'manage' } },
     'app:Region': { actions: { read: true } },
     'app:Post': { actions: { read: true, edit: 'read' } },
   },
-  maps: {
+  fieldMaps: {
+    actor: actorMap,
     app: {
       models: {
         User: {

@@ -21,7 +21,7 @@ export type UseTransitionBuilderOptions = {
   onChange: (schema: TransitionMap) => void;
   /** permissions' schema map: a side's `permission` is authored in the lens permissions judges it
    *  in and delegates into its rules, and a predicate is on the record's model. */
-  map: SchemaMap;
+  schemaMap: SchemaMap;
   /** The lens a resource's predicates are judged in, as transitions' `validateTransition({ lens })`
    *  takes; absent, the raw record (every column and relation). */
   predicateLens?: (resource: string) => Lens | LensNarrowing | undefined;
@@ -62,7 +62,7 @@ export type UseTransitionBuilder = {
 };
 
 export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTransitionBuilder => {
-  const { map, maxDepth } = opts;
+  const { schemaMap, maxDepth } = opts;
   const schema = opts.value;
   const setSchema = opts.onChange;
 
@@ -71,12 +71,12 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     schema[resource]?.[action]?.paths[i]?.[side];
 
   const surface = (resource: string) => {
-    const named = modelOfResource(map, resource);
+    const named = modelOfResource(schemaMap, resource);
     if (!named) return null;
     const lens = opts.predicateLens?.(resource);
     const view = lens
       ? createView(lens)
-      : rawView({ maps: map.maps, mapName: named.mapName, model: named.modelName });
+      : rawView({ maps: schemaMap.fieldMaps, mapName: named.mapName, model: named.modelName });
     return { view, fields: describeScopeFields(viewRoot(view)) };
   };
 
@@ -120,7 +120,7 @@ export const useTransitionBuilder = (opts: UseTransitionBuilderOptions): UseTran
     const sideObj = sideOf(resource, action, i, side);
     if (!sideObj || sideObj.permission === undefined) return null;
     return buildActionRoot(sideObj.permission, {
-      map,
+      schemaMap,
       resource,
       maxDepth,
       commit: (next) =>

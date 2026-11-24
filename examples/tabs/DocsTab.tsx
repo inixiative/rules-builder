@@ -70,8 +70,8 @@ const back = parseSavedRule(json); // validated; throws on malformed input`;
 
 const PERMS = `import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
 
-const pb = usePermissionBuilder({ value: map, onChange: setMap }); // permissions' SchemaMap
-pb.addResource('db:user');                       // the map's resource names
+const pb = usePermissionBuilder({ value: schemaMap, onChange: setSchemaMap }); // permissions' SchemaMap
+pb.addResource('db:User');                       // a resource is map:Model
 pb.addAction('db:user', 'read');                 // open action names — yours
 const root = pb.actionRoot('db:user', 'read');   // the ActionRule editor, in permissions' own lens
 // pb.value = { bridges, permissions: { 'db:user': { actions: { name → ActionRule } } } }`;

@@ -12,7 +12,7 @@ let committed: ActionRule | undefined;
 const build = (rule: ActionRule, resource = 'app:User') => {
   committed = undefined;
   return buildActionRoot(rule, {
-    map: permissionsMap,
+    schemaMap: permissionsMap,
     resource,
     action: 'own',
     maxDepth: 4,

@@ -11,7 +11,7 @@ export type UsePermissionBuilderOptions = {
    *  what is edited, and every rule is authored in the lens permissions judges it in.
    *  Controlled: edits flow out via onChange. */
   value: SchemaMap;
-  onChange: (map: SchemaMap) => void;
+  onChange: (schemaMap: SchemaMap) => void;
   maxDepth?: number;
 };
 
@@ -23,7 +23,7 @@ export type UsePermissionBuilderOptions = {
  */
 export type UsePermissionBuilder = {
   value: SchemaMap;
-  setSchema: (map: SchemaMap) => void;
+  setSchema: (schemaMap: SchemaMap) => void;
   /** Resources (`map:model`) with a permission entry. */
   resources: string[];
   /** Every resource's action names — `delegate` / `rel` awareness. */
@@ -65,18 +65,18 @@ export const usePermissionBuilder = (opts: UsePermissionBuilderOptions): UsePerm
     setSchema({ ...schema, permissions: rest });
   };
 
-  // As permissions' `validateSchema`: a resource is in the map, or a bridge's far end.
+  // As permissions' `validateSchemaMap`: a resource is in the map, or a bridge's far end.
   const resourceInMap = (resource: string) =>
     modelOfResource(schema, resource) !== null ||
     (schema.bridges ?? []).some((bridge) =>
-      bridge.endpoints.some((end) => endpointKey(end) === resource),
+      bridge.endpoints.some((end) => 'model' in end && endpointKey(end) === resource),
     );
 
   const actionRoot = (resource: string, action: string): ActionRuleNode | null => {
     const rule = schema.permissions[resource]?.actions[action];
     if (rule === undefined || !resourceInMap(resource)) return null;
     return buildActionRoot(rule, {
-      map: schema,
+      schemaMap: schema,
       resource,
       action,
       maxDepth,

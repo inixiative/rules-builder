@@ -191,7 +191,7 @@ export const importWorkspace = (json: string): Workspace => {
 /** permissions' schema map of the workspace: its fieldMaps are the record maps (a resource is
  *  `map:Model`), with its bridges and its rules. */
 export const schemaMapOf = (ws: Workspace, bridges = ws.bridges): SchemaMap => ({
-  maps: ws.maps,
+  fieldMaps: ws.maps,
   bridges,
   permissions: ws.permissions,
 });

@@ -6,7 +6,7 @@ import {
   type UsePermissionBuilderOptions,
   usePermissionBuilder,
 } from '../src/permissions/usePermissionBuilder';
-import { permissionsMap as map } from './fixtures/permissionsMap';
+import { permissionsMap as schemaMap } from './fixtures/permissionsMap';
 
 afterEach(cleanup);
 
@@ -16,13 +16,13 @@ const useControlled = (initial: SchemaMap) => {
   return usePermissionBuilder({ value, onChange: setValue });
 };
 
-const empty: SchemaMap = { ...map, permissions: {} };
+const empty: SchemaMap = { ...schemaMap, permissions: {} };
 
 describe('usePermissionBuilder — controlled tracking', () => {
   test('reflects the value prop and re-tracks it when the prop changes', () => {
-    const a: SchemaMap = { ...map, permissions: { 'app:User': { actions: {} } } };
+    const a: SchemaMap = { ...schemaMap, permissions: { 'app:User': { actions: {} } } };
     const b: SchemaMap = {
-      ...map,
+      ...schemaMap,
       permissions: { 'app:Organization': { actions: { read: true } } },
     };
     const { result, rerender } = renderHook(
@@ -51,14 +51,14 @@ describe('usePermissionBuilder — resource + action edits', () => {
     act(() => result.current.addResource('app:User'));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0]).toEqual({
-      ...map,
+      ...schemaMap,
       permissions: { 'app:User': { actions: {} } },
     });
   });
 
   test('addAction seeds the default ABAC leaf; round-trips into actionsOf', () => {
     const { result } = renderHook(() =>
-      useControlled({ ...map, permissions: { 'app:User': { actions: {} } } }),
+      useControlled({ ...schemaMap, permissions: { 'app:User': { actions: {} } } }),
     );
     act(() => result.current.addAction('app:User', 'read'));
     expect(result.current.actionsOf('app:User')).toEqual(['read']);
@@ -69,7 +69,10 @@ describe('usePermissionBuilder — resource + action edits', () => {
 
   test('addAction is a no-op for an empty name or an existing action', () => {
     const onChange = mock<(s: SchemaMap) => void>();
-    const seeded: SchemaMap = { ...map, permissions: { 'app:User': { actions: { read: true } } } };
+    const seeded: SchemaMap = {
+      ...schemaMap,
+      permissions: { 'app:User': { actions: { read: true } } },
+    };
     const { result } = renderHook(() => usePermissionBuilder({ value: seeded, onChange }));
     act(() => result.current.addAction('app:User', ''));
     act(() => result.current.addAction('app:User', 'read'));
@@ -79,7 +82,7 @@ describe('usePermissionBuilder — resource + action edits', () => {
   test('removeAction and removeResource round-trip through the schema', () => {
     const { result } = renderHook(() =>
       useControlled({
-        ...map,
+        ...schemaMap,
         permissions: { 'app:User': { actions: { read: true, write: false } } },
       }),
     );
@@ -91,7 +94,7 @@ describe('usePermissionBuilder — resource + action edits', () => {
 
   test('setAction replaces the whole rule and round-trips', () => {
     const { result } = renderHook(() =>
-      useControlled({ ...map, permissions: { 'app:User': { actions: { read: true } } } }),
+      useControlled({ ...schemaMap, permissions: { 'app:User': { actions: { read: true } } } }),
     );
     act(() =>
       result.current.setAction('app:User', 'read', {
@@ -108,7 +111,7 @@ describe('usePermissionBuilder — actionRoot descriptors', () => {
   test('returns a descriptor for a known resource.action', () => {
     const { result } = renderHook(() =>
       useControlled({
-        ...map,
+        ...schemaMap,
         permissions: { 'app:User': { actions: { read: { rule: { all: [] } } } } },
       }),
     );
@@ -133,7 +136,7 @@ describe('usePermissionBuilder — actionRoot descriptors', () => {
   test('actionsByResource enumerates every resource’s action names (delegate/rel awareness)', () => {
     const { result } = renderHook(() =>
       useControlled({
-        ...map,
+        ...schemaMap,
         permissions: { 'app:User': { actions: { read: true, write: false } } },
       }),
     );
