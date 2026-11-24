@@ -7,7 +7,7 @@ import { actionNamesByResource, removeSchemaAction, setSchemaAction } from './sc
 import type { ActionRule } from './types';
 
 export type UsePermissionBuilderOptions = {
-  /** permissions' schema map, the one `createRebacCheck` takes; its rules (`permissions`) are
+  /** permissions' schema map, the one `makeRebacCheck` takes; its rules (`permissions`) are
    *  what is edited, and every rule is authored in the lens permissions judges it in.
    *  Controlled: edits flow out via onChange. */
   value: SchemaMap;

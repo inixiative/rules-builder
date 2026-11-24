@@ -97,7 +97,7 @@ export type ActionGroupNode = BaseNode & { children: ActionRuleNode[]; addChild?
 export type ActionRuleNode = ActionLeafNode | ActionGroupNode;
 
 export type BuildActionOptions = {
-  /** permissions' schema map, the one `createRebacCheck` takes: its field maps, bridges and rules. */
+  /** permissions' schema map, the one `makeRebacCheck` takes: its field maps, bridges and rules. */
   map: SchemaMap;
   /** The resource the rule is on (`map:Model`, or a bridge's far end). */
   resource: string;

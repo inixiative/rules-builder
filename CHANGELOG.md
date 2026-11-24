@@ -2,7 +2,7 @@
 
 ## 0.35.0 — the permission builder takes permissions' one schema map
 
-Breaking, with no compatibility path. Requires `@inixiative/permissions` ^0.28.0.
+Breaking, with no compatibility path. Requires `@inixiative/permissions` ^0.29.0.
 
 Why: permissions 0.28 folded the rebac schema into the schema map (Aron 2026-11-23: "They should
 all just be part of the schema map"), so the builder no longer takes the two side by side.

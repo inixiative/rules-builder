@@ -499,12 +499,12 @@ what `validateSchema` accepts and nothing else.
 ```ts
 import { usePermissionBuilder } from '@inixiative/rules-builder/permissions';
 
-const pb = usePermissionBuilder({ value: map, onChange: setMap }); // map: the SchemaMap createRebacCheck takes
+const pb = usePermissionBuilder({ value: map, onChange: setMap }); // map: the SchemaMap makeRebacCheck takes
 const root = pb.actionRoot('db:User', 'read');
 ```
 
 - `usePermissionBuilder({ value, onChange, maxDepth? })` owns the rules (`permissions`) of
-  permissions' `SchemaMap`, the one object `createRebacCheck` takes: `value` is the map, and each
+  permissions' `SchemaMap`, the one object `makeRebacCheck` takes: `value` is the map, and each
   edit hands back the map with its rules changed. A resource is `map:Model`. It returns the resource and action lists, add/remove/set actions, and
   `actionRoot(resource, action)`: an `ActionRuleNode` tree whose `kind` control switches between:
   - `rule`: an embedded condition builder in the rule lens (`lensesAtRow(map, resource).rule`);
