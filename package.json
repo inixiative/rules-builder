@@ -45,7 +45,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
     "@happy-dom/global-registrator": "^20.10.3",
-    "@inixiative/config": "^0.5.253",
+    "@inixiative/config": "^0.5.254",
     "@inixiative/json-rules": "^4.7.0",
     "@inixiative/permissions": "^0.30.0",
     "@tailwindcss/vite": "^4.3.1",
